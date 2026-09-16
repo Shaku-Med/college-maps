@@ -22,10 +22,37 @@ const securityHeaders = [
   { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
 ];
 
+function httpsOrigin(raw: string | undefined) {
+  if (!raw) return null;
+  try {
+    const url = new URL(raw.includes("://") ? raw : `https://${raw}`);
+    if (url.protocol !== "https:") return null;
+    return url.origin;
+  } catch {
+    return null;
+  }
+}
+
+function apiUpstream(): string | null {
+  const raw = process.env.NEXT_PUBLIC_API_URL;
+  if (!raw) return null;
+  const url = new URL(raw);
+  if (url.protocol !== "https:" || url.pathname !== "/" || url.search || url.hash || url.username) return null;
+  // Netlify/Vercel set these to the site itself. Rewriting /v1 back there loops until timeout.
+  const siteOrigins = [process.env.URL, process.env.DEPLOY_PRIME_URL, process.env.DEPLOY_URL, process.env.VERCEL_URL].map(httpsOrigin);
+  if (siteOrigins.includes(url.origin)) return null;
+  return url.origin;
+}
+
 const nextConfig: NextConfig = {
   poweredByHeader: false,
   // Lets a phone on the same Wi-Fi load the dev server by this computer's local address.
   allowedDevOrigins: ["10.*.*.*", "192.168.*.*", ...Array.from({ length: 16 }, (_, i) => `172.${16 + i}.*.*`)],
+  async rewrites() {
+    const upstream = apiUpstream();
+    if (!upstream) return [];
+    return [{ source: "/v1/:path*", destination: `${upstream}/v1/:path*` }];
+  },
   async headers() {
     return [
       { source: "/(.*)", headers: securityHeaders },
