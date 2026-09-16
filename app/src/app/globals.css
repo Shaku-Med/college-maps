@@ -54,6 +54,47 @@
     --map-safe-left: max(0.75rem, env(safe-area-inset-left, 0px));
     --map-safe-right: max(0.75rem, env(safe-area-inset-right, 0px));
   }
+
+  /* HeroUI tokens live on .dark. Production CSP can block the inline class toggle, so
+     copy the dark variables onto the root when the system theme is dark. */
+  @media (prefers-color-scheme: dark) {
+    :root:not(.light, [data-theme="light"]) {
+      color-scheme: dark;
+      --background: oklch(12% 0.005 285.823);
+      --foreground: var(--snow);
+      --surface: oklch(0.2103 0.0059 285.89);
+      --surface-foreground: var(--foreground);
+      --surface-secondary: oklch(0.257 0.0037 286.14);
+      --surface-secondary-foreground: var(--foreground);
+      --surface-tertiary: oklch(0.2721 0.0024 247.91);
+      --surface-tertiary-foreground: var(--foreground);
+      --overlay: oklch(0.2103 0.0059 285.89);
+      --overlay-foreground: var(--foreground);
+      --muted: oklch(70.5% 0.015 286.067);
+      --default: oklch(27.4% 0.006 286.033);
+      --default-foreground: var(--snow);
+      --field-background: oklch(0.2103 0.0059 285.89);
+      --field-foreground: var(--foreground);
+      --field-placeholder: var(--muted);
+      --border: oklch(28% 0.006 286.033);
+      --separator: oklch(25% 0.006 286.033);
+      --focus: var(--accent);
+      --link: var(--foreground);
+      --backdrop: rgba(0, 0, 0, 0.6);
+      --surface-shadow: 0 0 0 0 transparent inset;
+      --overlay-shadow: 0 0 1px 0 rgba(255, 255, 255, 0.3) inset;
+      --field-shadow: 0 0 0 0 transparent inset;
+      --surface-hover: color-mix(in oklab, var(--surface) 92%, var(--surface-foreground) 8%);
+      --background-secondary: color-mix(in oklab, var(--background) 96%, var(--foreground) 4%);
+      --background-tertiary: color-mix(in oklab, var(--background) 92%, var(--foreground) 8%);
+      --background-inverse: var(--foreground);
+      --default-hover: color-mix(in oklab, var(--default) 96%, var(--default-foreground) 4%);
+      --accent-hover: color-mix(in oklab, var(--accent) 90%, var(--accent-foreground) 10%);
+      --field-hover: color-mix(in oklab, var(--field-background, var(--default)) 90%, var(--field-foreground, var(--foreground)) 2%);
+      --separator-secondary: color-mix(in oklab, var(--surface) 85%, var(--surface-foreground) 15%);
+      --border-secondary: color-mix(in oklab, var(--surface) 78%, var(--surface-foreground) 22%);
+    }
+  }
 }
 
 /* Normal flow on purpose. position:fixed is clipped to the lying iOS
@@ -137,4 +178,10 @@
 
 .dark .maplibregl-ctrl-attrib-button {
   filter: invert(1);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not(.light) .maplibregl-ctrl-attrib-button {
+    filter: invert(1);
+  }
 }

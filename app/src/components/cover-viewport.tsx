@@ -1,12 +1,14 @@
 "use client";
 
-import { useEffect } from "react";
+import { useLayoutEffect } from "react";
 
 import { applyCoverViewport } from "@/lib/cover-viewport";
 
 export function CoverViewport() {
-  useEffect(() => {
+  useLayoutEffect(() => {
     applyCoverViewport();
+    const media = window.matchMedia("(prefers-color-scheme: dark)");
+    media.addEventListener("change", applyCoverViewport);
     window.addEventListener("resize", applyCoverViewport);
     window.addEventListener("orientationchange", applyCoverViewport);
     window.addEventListener("pageshow", applyCoverViewport);
@@ -18,6 +20,7 @@ export function CoverViewport() {
       window.removeEventListener("pageshow", applyCoverViewport);
       window.visualViewport?.removeEventListener("resize", applyCoverViewport);
       window.visualViewport?.removeEventListener("scroll", applyCoverViewport);
+      media.removeEventListener("change", applyCoverViewport);
     };
   }, []);
   return null;
