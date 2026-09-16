@@ -1,0 +1,66 @@
+# Secrets. Keep only *.example files in git. Never commit a real .env.*
+.env
+.env.*
+!.env.example
+!.env.*.example
+!.env.notification.example
+
+# OS
+.DS_Store
+.DS_Store?
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Editors
+.idea/
+*.swp
+*.swo
+*~
+*.iml
+
+# Logs and debug
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+*.dump
+
+# Node / Next
+node_modules/
+.next/
+out/
+build/
+coverage/
+.turbo/
+.vercel/
+*.tsbuildinfo
+
+# Go / Air live-reload binaries
+*.exe
+*.exe~
+*.test
+*.out
+coverage.out
+tmp/
+bin/
+vendor/
+
+# Keys and certs
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+
+# Local leftovers
+*.local
+*.sqlite
+*.db
+.claude/
+.claude/*
+
+AGENTS.md
+CLAUDE.md
+HANDOFFS.md

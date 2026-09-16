@@ -1,0 +1,17 @@
+# Running `air` here starts the API (bkapp) with live reload. For the realtime server, run `air` inside rtapp.
+# The API reads .env.development from its own folder, so it is started from inside bkapp.
+root = "."
+tmp_dir = "tmp"
+
+[build]
+cmd = "go -C bkapp build -o ../tmp/api.exe ./cmd/api"
+full_bin = "cd bkapp; ../tmp/api.exe"
+include_dir = ["bkapp"]
+include_ext = ["go", "sql", "json"]
+exclude_dir = ["tmp", "bkapp/tmp", "rtapp"]
+exclude_regex = ['_test\.go$']
+delay = 500
+stop_on_error = true
+
+[misc]
+clean_on_exit = true

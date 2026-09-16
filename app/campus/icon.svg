@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <clipPath id="pin"><path d="M256 70 C 188 70 134 124 134 192 C 134 268 220 334 251 357 C 254 359.3 258 359.3 261 357 C 292 334 378 268 378 192 C 378 124 324 70 256 70 Z"/></clipPath>
+  </defs>
+  <rect width="512" height="512" fill="#1268D2"/>
+  <g transform="translate(256 256) scale(1.45) translate(-256 -214)">
+    <path d="M256 70 C 188 70 134 124 134 192 C 134 268 220 334 251 357 C 254 359.3 258 359.3 261 357 C 292 334 378 268 378 192 C 378 124 324 70 256 70 Z" fill="#FFFFFF"/>
+    <g clip-path="url(#pin)" fill="none" stroke="#1268D2" stroke-width="14">
+      <line x1="206" y1="40" x2="206" y2="380"/>
+      <line x1="292" y1="40" x2="292" y2="380"/>
+      <path d="M206 96 C 250 190 320 250 410 276"/>
+      <path d="M206 150 C 246 230 316 286 410 312"/>
+    </g>
+  </g>
+</svg>

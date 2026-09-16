@@ -1,0 +1,352 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Campus config",
+  "description": "Everything that makes this app belong to one college. Edit this file to set it up for your campus.",
+  "type": "object",
+  "required": [
+    "app",
+    "college",
+    "map",
+    "rooms",
+    "places"
+  ],
+  "additionalProperties": false,
+  "definitions": {
+    "coordinate": {
+      "type": "object",
+      "required": [
+        "latitude",
+        "longitude"
+      ],
+      "properties": {
+        "latitude": {
+          "type": "number",
+          "minimum": -90,
+          "maximum": 90
+        },
+        "longitude": {
+          "type": "number",
+          "minimum": -180,
+          "maximum": 180
+        }
+      }
+    },
+    "bounds": {
+      "type": "object",
+      "required": [
+        "south",
+        "west",
+        "north",
+        "east"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "south": {
+          "type": "number",
+          "description": "Lowest latitude of the box"
+        },
+        "west": {
+          "type": "number",
+          "description": "Lowest longitude of the box"
+        },
+        "north": {
+          "type": "number",
+          "description": "Highest latitude of the box"
+        },
+        "east": {
+          "type": "number",
+          "description": "Highest longitude of the box"
+        }
+      }
+    },
+    "hexColor": {
+      "type": "string",
+      "pattern": "^#[0-9a-fA-F]{6}$"
+    },
+    "themeColors": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "accent": {
+          "$ref": "#/definitions/hexColor",
+          "description": "Your college's main color. Used for buttons, the route line, and selected chips."
+        },
+        "accentForeground": {
+          "$ref": "#/definitions/hexColor",
+          "description": "Text on top of accent. Needs at least 4.5:1 contrast with accent."
+        }
+      }
+    }
+  },
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "app": {
+      "type": "object",
+      "required": [
+        "name",
+        "shortName",
+        "description"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "maxLength": 40,
+          "description": "Shown in the browser tab and when installed"
+        },
+        "shortName": {
+          "type": "string",
+          "maxLength": 20,
+          "description": "Home screen label"
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 160
+        },
+        "disclaimer": {
+          "type": "string",
+          "maxLength": 200,
+          "description": "Shown at the bottom of the place list"
+        },
+        "url": {
+          "type": "string",
+          "description": "Public address of the deployed site, like https://csimap.example.com. Used for canonical links and share previews."
+        }
+      }
+    },
+    "college": {
+      "type": "object",
+      "required": [
+        "name",
+        "shortName",
+        "emailDomains"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "shortName": {
+          "type": "string",
+          "maxLength": 20
+        },
+        "emailDomains": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 10,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$"
+          },
+          "description": "Email domains allowed to create accounts, like stu-mail.csi.cuny.edu. Exact matches only."
+        }
+      }
+    },
+    "theme": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Optional college colors. Leave empty to keep the default blue.",
+      "properties": {
+        "accent": {
+          "$ref": "#/definitions/hexColor",
+          "description": "Your college's main color. Used for buttons, the route line, and selected chips."
+        },
+        "accentForeground": {
+          "$ref": "#/definitions/hexColor",
+          "description": "Text on top of accent. Needs at least 4.5:1 contrast with accent."
+        },
+        "dark": {
+          "$ref": "#/definitions/themeColors",
+          "description": "Optional colors for dark mode. A lighter shade of your main color usually reads better on dark backgrounds."
+        }
+      }
+    },
+    "map": {
+      "type": "object",
+      "required": [
+        "center",
+        "zoom",
+        "bounds",
+        "walkingArea",
+        "onCampusRadiusMeters",
+        "styles"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "center": {
+          "$ref": "#/definitions/coordinate",
+          "description": "Where the map opens"
+        },
+        "zoom": {
+          "type": "number",
+          "minimum": 10,
+          "maximum": 19,
+          "description": "Starting zoom, 15 to 16 fits most campuses"
+        },
+        "bounds": {
+          "$ref": "#/definitions/bounds",
+          "description": "Users cannot pan outside this box"
+        },
+        "walkingArea": {
+          "$ref": "#/definitions/bounds",
+          "description": "Box used to download walking paths and places. Every place must be inside it."
+        },
+        "onCampusRadiusMeters": {
+          "type": "number",
+          "minimum": 100,
+          "maximum": 50000,
+          "description": "Farther than this from center counts as off campus"
+        },
+        "styles": {
+          "type": "object",
+          "required": [
+            "light",
+            "dark"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "light": {
+              "type": "string",
+              "format": "uri",
+              "pattern": "^https://"
+            },
+            "dark": {
+              "type": "string",
+              "format": "uri",
+              "pattern": "^https://"
+            }
+          }
+        },
+        "extraOrigins": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^https://"
+          },
+          "description": "Other https origins your map style loads tiles or fonts from"
+        }
+      }
+    },
+    "rooms": {
+      "type": "object",
+      "required": [
+        "pattern",
+        "floor",
+        "example"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "pattern": {
+          "type": "string",
+          "description": "Regular expression for a room code with named groups (?<building>...) and (?<room>...). Do not add ^ or $."
+        },
+        "floor": {
+          "enum": [
+            "leadingDigits",
+            "firstDigit",
+            "none"
+          ],
+          "description": "leadingDigits: 215 is floor 2, 1015 is floor 10. firstDigit: 2.14 is floor 2. none: do not show floors."
+        },
+        "example": {
+          "type": "string",
+          "maxLength": 20,
+          "description": "A real room code that matches pattern"
+        },
+        "help": {
+          "type": "string",
+          "maxLength": 200,
+          "description": "One sentence explaining how to read a room code"
+        }
+      }
+    },
+    "schedule": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "portalName": {
+          "type": "string",
+          "maxLength": 40,
+          "description": "Where students copy their schedule from"
+        }
+      }
+    },
+    "places": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 500,
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "category",
+          "latitude",
+          "longitude",
+          "isBuilding"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9-]{0,15}$",
+            "description": "Code students know, like a building code. Room search matches the building part against this."
+          },
+          "label": {
+            "type": "string",
+            "maxLength": 10,
+            "description": "Short text on the map marker. Defaults to id."
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 80
+          },
+          "category": {
+            "enum": [
+              "academic",
+              "student",
+              "admin",
+              "housing",
+              "dining",
+              "athletics",
+              "health",
+              "services",
+              "parking",
+              "transit"
+            ]
+          },
+          "latitude": {
+            "type": "number",
+            "minimum": -90,
+            "maximum": 90
+          },
+          "longitude": {
+            "type": "number",
+            "minimum": -180,
+            "maximum": 180
+          },
+          "details": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "keywords": {
+            "type": "array",
+            "maxItems": 20,
+            "items": {
+              "type": "string",
+              "maxLength": 40
+            },
+            "description": "Extra search words, like departments or services inside"
+          },
+          "isBuilding": {
+            "type": "boolean",
+            "description": "true if rooms can be inside it"
+          }
+        }
+      }
+    }
+  }
+}

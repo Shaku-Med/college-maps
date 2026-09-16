@@ -1,0 +1,15 @@
+# Secrets. Real .env.development / .env.production stay local.
+.env
+.env.*
+!.env.example
+!.env.*.example
+!.env.notification.example
+
+# Air live-reload
+tmp/
+bin/
+*.exe
+*.exe~
+*.test
+coverage.out
+vendor/

@@ -1,0 +1,12 @@
+{{define "content"}}Sign in to {{.Brand.AppName}}
+
+Here's your code. Enter it in {{.Brand.AppName}} to finish signing in.
+
+    {{groupCode .Data.Code}}
+
+It works once and expires in {{.Data.Minutes}} minutes. We'll never ask you to share it with anyone.
+
+Didn't try to sign in? You can ignore this email. Nobody can get into your account without this code.
+
+Thanks,
+The {{.Brand.AppName}} team{{end}}

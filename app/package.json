@@ -1,0 +1,37 @@
+{
+  "name": "csi-map",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "predev": "node scripts/copy-maplibre-worker.mjs",
+    "dev": "next dev",
+    "prebuild": "node scripts/copy-maplibre-worker.mjs && node scripts/sync-backend-campus.mjs",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "typecheck": "tsc --noEmit",
+    "campus:places": "node scripts/import-osm-places.mjs",
+    "campus:paths": "node scripts/build-walk-graph.mjs",
+    "campus:sync": "node scripts/sync-backend-campus.mjs",
+    "campus:icons": "node scripts/build-icons.mjs"
+  },
+  "dependencies": {
+    "@heroui/react": "^3.2.5",
+    "@heroui/styles": "^3.2.5",
+    "lucide-react": "^1.46.0",
+    "maplibre-gl": "^6.9.1",
+    "next": "16.3.5",
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.3.5",
+    "tailwindcss": "^4",
+    "typescript": "^5"
+  }
+}

@@ -1,0 +1,59 @@
+{{define "layout"}}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="x-apple-disable-message-reformatting">
+<meta name="color-scheme" content="light dark">
+<meta name="supported-color-schemes" content="light dark">
+<title>{{.Subject}}</title>
+<style>
+  body, table, td, p, a { -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%; }
+  @media only screen and (max-width: 520px) {
+    .wrap { padding: 28px 20px !important; }
+    .code { font-size: 26px !important; letter-spacing: 3px !important; }
+  }
+  @media (prefers-color-scheme: dark) {
+    .page { background-color: #111418 !important; }
+    .ink { color: #ECEFF3 !important; }
+    .body { color: #C5CBD3 !important; }
+    .muted { color: #8B95A1 !important; }
+    .codebox { background-color: #1D2229 !important; }
+    .code { color: #F3F5F8 !important; }
+    .rule { border-color: #2A3038 !important; }
+    .link { color: {{accentDark}} !important; }
+  }
+</style>
+</head>
+<body class="page" style="margin:0; padding:0; background-color:#FFFFFF;">
+<div style="display:none; max-height:0; max-width:0; overflow:hidden; opacity:0; mso-hide:all;">{{.Preheader}}&#8199;&#65279;&#847;&#8199;&#65279;&#847;&#8199;&#65279;&#847;&#8199;&#65279;&#847;&#8199;&#65279;&#847;&#8199;&#65279;&#847;</div>
+<table role="presentation" class="page" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#FFFFFF;">
+  <tr>
+    <td class="wrap" style="padding:40px 24px;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:520px; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+        <tr>
+          <td style="padding:0 0 32px 0;">
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+              <tr>
+                {{if .LogoSrc}}<td style="padding-right:10px; vertical-align:middle;"><img src="{{.LogoSrc}}" width="28" height="28" alt="" style="display:block; width:28px; height:28px; border:0;"></td>{{end}}
+                <td class="ink" style="vertical-align:middle; font-size:15px; line-height:20px; font-weight:600; color:#1A1D21;">{{.Brand.AppName}}</td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+        <tr>
+          <td>{{template "content" .}}</td>
+        </tr>
+        <tr>
+          <td class="rule" style="padding:28px 0 0 0; border-bottom:0; border-top:1px solid #E6E8EB;">
+            <p class="muted" style="margin:0 0 6px 0; font-size:12px; line-height:18px; color:#8A929C;">{{.Reason}}</p>
+            {{if .Brand.Disclaimer}}<p class="muted" style="margin:0; font-size:12px; line-height:18px; color:#8A929C;">{{.Brand.Disclaimer}}{{if .Brand.URL}} <a class="link" href="{{.Brand.URL}}" style="color:{{accent}}; text-decoration:underline;">{{hostOf .Brand.URL}}</a>{{end}}</p>{{end}}
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+</table>
+</body>
+</html>
+{{end}}

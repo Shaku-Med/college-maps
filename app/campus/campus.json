@@ -1,0 +1,352 @@
+{
+  "$schema": "./campus.schema.json",
+  "app": {
+    "name": "CSI Map",
+    "shortName": "CSI Map",
+    "description": "Find any building or room at the College of Staten Island.",
+    "disclaimer": "Unofficial student project. Not affiliated with the College of Staten Island."
+  },
+  "college": {
+    "name": "College of Staten Island",
+    "shortName": "CSI",
+    "emailDomains": ["stu-mail.csi.cuny.edu", "csi.cuny.edu"]
+  },
+  "theme": {
+    "accent": "#1268D2",
+    "accentForeground": "#FFFFFF",
+    "dark": {
+      "accent": "#83C8EF",
+      "accentForeground": "#0A1F44"
+    }
+  },
+  "map": {
+    "center": {
+      "latitude": 40.6008,
+      "longitude": -74.1495
+    },
+    "zoom": 15.4,
+    "bounds": {
+      "south": 40.55,
+      "west": -74.22,
+      "north": 40.65,
+      "east": -74.08
+    },
+    "walkingArea": {
+      "south": 40.5925,
+      "west": -74.159,
+      "north": 40.6095,
+      "east": -74.141
+    },
+    "onCampusRadiusMeters": 2500,
+    "styles": {
+      "light": "https://tiles.openfreemap.org/styles/positron",
+      "dark": "https://tiles.openfreemap.org/styles/dark"
+    }
+  },
+  "rooms": {
+    "pattern": "(?<building>[1-9][A-Z])\\s*[-\\s]?\\s*(?<room>\\d{3,4}[A-Z]?)",
+    "floor": "leadingDigits",
+    "example": "1N-215",
+    "help": "In 1N-215, 1N is the building, the 2 is the floor, and 215 is the room."
+  },
+  "schedule": {
+    "portalName": "CUNYfirst"
+  },
+  "places": [
+    {
+      "id": "1A",
+      "name": "South Administration",
+      "category": "admin",
+      "latitude": 40.598442,
+      "longitude": -74.15171,
+      "keywords": ["admissions", "registrar", "bursar", "financial aid", "one stop"],
+      "isBuilding": true
+    },
+    {
+      "id": "2A",
+      "name": "North Administration",
+      "category": "admin",
+      "latitude": 40.600895,
+      "longitude": -74.15172,
+      "isBuilding": true
+    },
+    {
+      "id": "3A",
+      "name": "West Administration",
+      "category": "admin",
+      "latitude": 40.599669,
+      "longitude": -74.15281,
+      "isBuilding": true
+    },
+    {
+      "id": "1C",
+      "name": "Campus Center",
+      "category": "student",
+      "latitude": 40.601827,
+      "longitude": -74.148505,
+      "details": "Food, student clubs, and lounges.",
+      "keywords": ["food", "cafeteria", "dining", "clubs", "student life", "bookstore"],
+      "isBuilding": true
+    },
+    {
+      "id": "1L",
+      "name": "CSI Library",
+      "category": "student",
+      "latitude": 40.597497,
+      "longitude": -74.148519,
+      "details": "Study spaces, computers, and printing.",
+      "keywords": ["library", "study", "printing", "computers", "quiet"],
+      "isBuilding": true
+    },
+    {
+      "id": "1P",
+      "name": "Performing and Creative Arts",
+      "category": "academic",
+      "latitude": 40.599665,
+      "longitude": -74.149575,
+      "keywords": ["theater", "music", "art", "dance", "center for the arts"],
+      "isBuilding": true
+    },
+    {
+      "id": "1N",
+      "name": "Physics and Astronomy",
+      "category": "academic",
+      "latitude": 40.600784,
+      "longitude": -74.147716,
+      "keywords": ["physics", "astronomy"],
+      "isBuilding": true
+    },
+    {
+      "id": "2N",
+      "name": "Marchi Hall",
+      "category": "academic",
+      "latitude": 40.600783,
+      "longitude": -74.149315,
+      "details": "Political Science, Economics, and Philosophy.",
+      "keywords": ["political science", "economics", "philosophy"],
+      "isBuilding": true
+    },
+    {
+      "id": "3N",
+      "name": "School of Business",
+      "category": "academic",
+      "latitude": 40.601845,
+      "longitude": -74.150448,
+      "keywords": ["business", "accounting", "finance", "marketing"],
+      "isBuilding": true
+    },
+    {
+      "id": "4N",
+      "name": "Engineering Technologies",
+      "category": "academic",
+      "latitude": 40.602897,
+      "longitude": -74.149321,
+      "keywords": ["engineering", "computer science", "technology"],
+      "isBuilding": true
+    },
+    {
+      "id": "5N",
+      "name": "School of Physical Therapy",
+      "category": "academic",
+      "latitude": 40.602897,
+      "longitude": -74.147725,
+      "keywords": ["physical therapy", "dpt"],
+      "isBuilding": true
+    },
+    {
+      "id": "6N",
+      "name": "Astrophysical Observatory",
+      "category": "academic",
+      "latitude": 40.604294,
+      "longitude": -74.152862,
+      "keywords": ["observatory", "telescope"],
+      "isBuilding": true
+    },
+    {
+      "id": "1S",
+      "name": "Mathematics",
+      "category": "academic",
+      "latitude": 40.598545,
+      "longitude": -74.14772,
+      "keywords": ["math", "mathematics"],
+      "isBuilding": true
+    },
+    {
+      "id": "2S",
+      "name": "World Languages and Literatures",
+      "category": "academic",
+      "latitude": 40.598547,
+      "longitude": -74.149317,
+      "keywords": ["languages", "english", "literature", "spanish"],
+      "isBuilding": true
+    },
+    {
+      "id": "3S",
+      "name": "School of Education",
+      "category": "academic",
+      "latitude": 40.597494,
+      "longitude": -74.15045,
+      "keywords": ["education", "teaching"],
+      "isBuilding": true
+    },
+    {
+      "id": "4S",
+      "name": "Psychology",
+      "category": "academic",
+      "latitude": 40.596444,
+      "longitude": -74.14932,
+      "keywords": ["psychology"],
+      "isBuilding": true
+    },
+    {
+      "id": "5S",
+      "name": "Marcus Hall",
+      "category": "academic",
+      "latitude": 40.596443,
+      "longitude": -74.147723,
+      "details": "Health Sciences and the School of Nursing.",
+      "keywords": ["nursing", "health sciences"],
+      "isBuilding": true
+    },
+    {
+      "id": "6S",
+      "name": "Building 6S",
+      "category": "academic",
+      "latitude": 40.596677,
+      "longitude": -74.150387,
+      "isBuilding": true
+    },
+    {
+      "id": "2M",
+      "name": "Academic Building 2M",
+      "category": "academic",
+      "latitude": 40.605412,
+      "longitude": -74.14901,
+      "isBuilding": true
+    },
+    {
+      "id": "1M",
+      "name": "Campus Services and Central Plant",
+      "category": "services",
+      "latitude": 40.605472,
+      "longitude": -74.150162,
+      "keywords": ["facilities", "maintenance"],
+      "isBuilding": true
+    },
+    {
+      "id": "1H",
+      "name": "Dolphin Cove South",
+      "category": "housing",
+      "latitude": 40.602585,
+      "longitude": -74.150342,
+      "keywords": ["dorm", "residence hall", "housing"],
+      "isBuilding": true
+    },
+    {
+      "id": "2H",
+      "name": "Dolphin Cove North",
+      "category": "housing",
+      "latitude": 40.602911,
+      "longitude": -74.150321,
+      "keywords": ["dorm", "residence hall", "housing"],
+      "isBuilding": true
+    },
+    {
+      "id": "LOT1",
+      "label": "P1",
+      "name": "Lot 1",
+      "category": "parking",
+      "latitude": 40.601179,
+      "longitude": -74.152036,
+      "details": "Faculty and staff lot by North Administration. Overnight parking only with Public Safety approval.",
+      "keywords": ["parking", "car", "faculty", "staff", "administration", "overnight"],
+      "isBuilding": false
+    },
+    {
+      "id": "LOT2",
+      "label": "P2",
+      "name": "Lot 2",
+      "category": "parking",
+      "latitude": 40.597176,
+      "longitude": -74.151692,
+      "details": "South campus lot by 6S, the Library, and the Center for the Arts. Accessible spaces available.",
+      "keywords": ["parking", "car", "south campus", "library", "6S", "arts", "accessible"],
+      "isBuilding": false
+    },
+    {
+      "id": "LOT3",
+      "label": "P3",
+      "name": "Lot 3",
+      "category": "parking",
+      "latitude": 40.597474,
+      "longitude": -74.146703,
+      "details": "East of the Library and the south academic buildings.",
+      "keywords": ["parking", "car", "south campus", "library"],
+      "isBuilding": false
+    },
+    {
+      "id": "LOT4",
+      "label": "P4",
+      "name": "Lot 4",
+      "category": "parking",
+      "latitude": 40.601852,
+      "longitude": -74.146805,
+      "details": "North campus lot next to the Campus Center. Closest to 1N-5N and Willowbrook A Gate.",
+      "keywords": ["parking", "car", "campus center", "north campus", "willowbrook", "a gate"],
+      "isBuilding": false
+    },
+    {
+      "id": "LOT5",
+      "label": "P5",
+      "name": "Lot 5",
+      "category": "parking",
+      "latitude": 40.60431,
+      "longitude": -74.147712,
+      "details": "East campus near Willowbrook Road (A Gate) and the Sports and Recreation Center.",
+      "keywords": ["parking", "car", "willowbrook", "a gate", "sports"],
+      "isBuilding": false
+    },
+    {
+      "id": "LOT6",
+      "label": "P6",
+      "name": "Lot 6",
+      "category": "parking",
+      "latitude": 40.604773,
+      "longitude": -74.150468,
+      "details": "Visitor and daily-pass parking. Students and employees with a CSI permit may park here too.",
+      "keywords": ["parking", "car", "visitor", "daily pass", "guest"],
+      "isBuilding": false
+    },
+    {
+      "id": "LOT7",
+      "label": "P7",
+      "name": "Lot 7",
+      "category": "parking",
+      "latitude": 40.605349,
+      "longitude": -74.149587,
+      "details": "By 1M and 2M (Chazanoff). Forest Hill Road D Gate. Accessible parking available.",
+      "keywords": ["parking", "car", "accessible", "chazanoff", "forest hill", "d gate"],
+      "isBuilding": false
+    },
+    {
+      "id": "S93",
+      "name": "S93 Bus Stop",
+      "category": "transit",
+      "latitude": 40.598861,
+      "longitude": -74.151194,
+      "details": "MTA S93 at the Loop Road by South Administration.",
+      "keywords": ["bus", "s93", "mta", "brooklyn"],
+      "isBuilding": false
+    },
+    {
+      "id": "X10",
+      "name": "Express Bus Stop",
+      "category": "transit",
+      "latitude": 40.607613,
+      "longitude": -74.147051,
+      "details": "X10 and X11 at South Gannon Ave and Willowbrook Rd.",
+      "keywords": ["bus", "express", "x10", "x11", "manhattan"],
+      "isBuilding": false
+    }
+  ]
+}

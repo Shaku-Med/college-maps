@@ -1,0 +1,8 @@
+{{define "content"}}
+{{template "heading" (printf "Sign in to %s" .Brand.AppName)}}
+{{template "paragraph" (printf "Here's your code. Enter it in %s to finish signing in." .Brand.AppName)}}
+{{template "code" .Data.Code}}
+{{template "paragraph" (printf "It works once and expires in %d minutes. We'll never ask you to share it with anyone." .Data.Minutes)}}
+{{template "note" (dict "Lead" "Didn't try to sign in?" "Body" "You can ignore this email. Nobody can get into your account without this code.")}}
+{{template "signoff" (printf "The %s team" .Brand.AppName)}}
+{{end}}

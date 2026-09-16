@@ -1,0 +1,38 @@
+{{/*
+  Building blocks for every email. Content templates combine these instead of writing markup:
+    {{template "heading" "Title"}}
+    {{template "paragraph" "Text"}}
+    {{template "code" "12345678"}}
+    {{template "button" (dict "Label" "Open the map" "URL" "https://...")}}
+    {{template "note" (dict "Lead" "Didn't ask for this?" "Body" "Text")}}
+    {{template "signoff" "The CSI Map team"}}
+  Styles are inline because many mail apps strip style tags.
+*/}}
+
+{{define "heading"}}<h1 class="ink" style="margin:0 0 16px 0; font-size:20px; line-height:28px; font-weight:600; color:#1A1D21;">{{.}}</h1>{{end}}
+
+{{define "paragraph"}}<p class="body" style="margin:0 0 16px 0; font-size:15px; line-height:24px; color:#3C434C;">{{.}}</p>{{end}}
+
+{{define "code"}}
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:8px 0 20px 0;">
+  <tr>
+    <td class="codebox" style="background-color:#F3F4F6; border-radius:6px; padding:14px 20px;">
+      <span class="code" style="font-family:'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace; font-size:30px; line-height:36px; font-weight:600; letter-spacing:4px; color:#1A1D21;">{{groupCode .}}</span>
+    </td>
+  </tr>
+</table>
+{{end}}
+
+{{define "button"}}
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:8px 0 20px 0;">
+  <tr>
+    <td style="border-radius:6px; background-color:{{accent}};">
+      <a href="{{.URL}}" style="display:inline-block; padding:11px 18px; font-size:15px; line-height:20px; font-weight:600; color:{{accentText}}; text-decoration:none;">{{.Label}}</a>
+    </td>
+  </tr>
+</table>
+{{end}}
+
+{{define "note"}}<p class="body" style="margin:0 0 16px 0; font-size:15px; line-height:24px; color:#3C434C;"><strong class="ink" style="font-weight:600; color:#1A1D21;">{{.Lead}}</strong> {{.Body}}</p>{{end}}
+
+{{define "signoff"}}<p class="body" style="margin:24px 0 28px 0; font-size:15px; line-height:24px; color:#3C434C;">Thanks,<br>{{.}}</p>{{end}}

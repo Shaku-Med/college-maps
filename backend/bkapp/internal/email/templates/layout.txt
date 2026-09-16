@@ -1,0 +1,7 @@
+{{define "layout"}}{{template "content" .}}
+
+---
+{{.Reason}}{{if .Brand.Disclaimer}}
+{{.Brand.Disclaimer}}{{end}}{{if .Brand.URL}}
+{{.Brand.URL}}{{end}}
+{{end}}

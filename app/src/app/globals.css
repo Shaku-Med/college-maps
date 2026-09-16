@@ -1,0 +1,140 @@
+@import "tailwindcss";
+@import "@heroui/styles";
+@import "maplibre-gl/dist/maplibre-gl.css";
+
+@theme inline {
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --animate-sheet-in: sheet-in 280ms cubic-bezier(0.22, 1, 0.36, 1);
+  --animate-fade-in: fade-in 160ms ease-out;
+}
+
+@keyframes sheet-in {
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@layer base {
+  html {
+    /* Safari tab: 100dvh matches the visible viewport. Installed iPhone app:
+       WebKit lies about dvh/svh/innerHeight (bug 254868) and 100vh is the
+       full screen, including under the home indicator. JS sets --app-height
+       to 100vh before paint when navigator.standalone is true. */
+    --app-height: 100dvh;
+    height: var(--app-height);
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
+  html,
+  body {
+    margin: 0;
+    width: 100%;
+    min-height: var(--app-height, 100dvh);
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
+
+  body {
+    min-height: var(--app-height, 100dvh);
+    height: var(--app-height, 100dvh);
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  :root {
+    --map-safe-top: max(0.75rem, env(safe-area-inset-top, 0px));
+    --map-safe-bottom: max(0.75rem, env(safe-area-inset-bottom, 0px), var(--standalone-home, 0px));
+    --map-safe-left: max(0.75rem, env(safe-area-inset-left, 0px));
+    --map-safe-right: max(0.75rem, env(safe-area-inset-right, 0px));
+  }
+}
+
+/* Normal flow on purpose. position:fixed is clipped to the lying iOS
+   standalone viewport, which is what painted the home-indicator gap. */
+.map-bleed {
+  position: relative;
+  width: 100%;
+  height: var(--app-height, 100dvh);
+  overflow: hidden;
+}
+
+/* Dropdowns, popovers, dialogs, and toasts stay inside the safe area. The map does not. */
+.toast-region--top,
+.toast-region--top-start,
+.toast-region--top-end {
+  top: max(1rem, env(safe-area-inset-top, 0px));
+}
+
+.toast-region--top-start {
+  inset-inline-start: max(1rem, env(safe-area-inset-left, 0px));
+}
+
+.toast-region--top-end {
+  inset-inline-end: max(1rem, env(safe-area-inset-right, 0px));
+}
+
+.toast-region--bottom,
+.toast-region--bottom-start,
+.toast-region--bottom-end {
+  bottom: max(1rem, env(safe-area-inset-bottom, 0px));
+}
+
+.toast-region--bottom-start {
+  inset-inline-start: max(1rem, env(safe-area-inset-left, 0px));
+}
+
+.toast-region--bottom-end {
+  inset-inline-end: max(1rem, env(safe-area-inset-right, 0px));
+}
+
+.alert-dialog__container {
+  padding-top: max(1rem, env(safe-area-inset-top, 0px));
+  padding-right: max(1rem, env(safe-area-inset-right, 0px));
+  padding-bottom: max(1rem, env(safe-area-inset-bottom, 0px));
+  padding-left: max(1rem, env(safe-area-inset-left, 0px));
+}
+
+@media (min-width: 640px) {
+  .alert-dialog__container {
+    padding-top: max(2.5rem, env(safe-area-inset-top, 0px));
+    padding-right: max(2.5rem, env(safe-area-inset-right, 0px));
+    padding-bottom: max(2.5rem, env(safe-area-inset-bottom, 0px));
+    padding-left: max(2.5rem, env(safe-area-inset-left, 0px));
+  }
+}
+
+.popover,
+.select__popover,
+.dropdown__popover,
+.combo-box__popover,
+.autocomplete__popover {
+  max-width: min(
+    24rem,
+    calc(100vw - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px) - 1rem)
+  );
+  max-height: min(
+    24rem,
+    calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 1.5rem)
+  );
+}
+
+.maplibregl-ctrl-attrib.maplibregl-compact {
+  background: color-mix(in oklab, var(--overlay) 88%, transparent);
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.maplibregl-ctrl-attrib a {
+  color: inherit;
+}
+
+.dark .maplibregl-ctrl-attrib-button {
+  filter: invert(1);
+}
