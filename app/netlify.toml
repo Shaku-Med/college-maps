@@ -6,11 +6,11 @@
   package = "@netlify/plugin-nextjs"
 
 # Same-origin API so the session cookie can stay SameSite=Strict.
-# On Render set CLIENT_IP_HEADER=X-Forwarded-For so rate limits use the last
-# proxy-written IP (the client cannot forge that entry). Direct hits to Render
-# then stay per-user; this CDN hop still shares Render's view of Netlify's IP.
+# On the API host set CLIENT_IP_HEADER=X-Forwarded-For so rate limits use the last
+# proxy-written IP (the client cannot forge that entry). Direct hits to the API
+# stay per-user; this CDN hop still shares the API's view of Netlify's IP.
 [[redirects]]
   from = "/v1/*"
-  to = "https://college-maps.onrender.com/v1/:splat"
+  to = "https://college-maps.vercel.app/v1/:splat"
   status = 200
   force = true
