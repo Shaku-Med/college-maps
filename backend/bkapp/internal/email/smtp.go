@@ -13,7 +13,12 @@ import (
 	"time"
 )
 
-const smtpTimeout = 20 * time.Second
+// Kept short because serverless hosts cut a request off after a few seconds. Gmail normally answers
+// in under two, so a slower server is a problem worth reporting rather than waiting on.
+const (
+	smtpTimeout = 8 * time.Second
+	dialTimeout = 5 * time.Second
+)
 
 // SMTP sends through any mail server with a login, such as a free Gmail account with an app password.
 // Port 465 uses TLS from the first byte; any other port must upgrade with STARTTLS, and the password
@@ -67,7 +72,7 @@ func (s *SMTP) deliver(ctx context.Context, to string, body []byte) error {
 	defer cancel()
 
 	addr := net.JoinHostPort(s.host, strconv.Itoa(s.port))
-	dialer := &net.Dialer{Timeout: 10 * time.Second}
+	dialer := &net.Dialer{Timeout: dialTimeout}
 	var conn net.Conn
 	var err error
 	if s.port == 465 {

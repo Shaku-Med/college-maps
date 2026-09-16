@@ -44,6 +44,7 @@ type Config struct {
 	SMTPUsername   string
 	SMTPPassword   string
 	EmailFrom      string
+	CronSecret     string
 	ClientIPHeader string
 	PushAvailable  bool
 	VAPIDPublic    string
@@ -143,6 +144,14 @@ func Load() (Config, error) {
 		} else if cfg.EmailMode == EmailModeSMTP && strings.EqualFold(cfg.SMTPHost, "smtp.gmail.com") && !strings.EqualFold(from.Address, cfg.SMTPUsername) {
 			add(errors.New("with Gmail, the address in EMAIL_FROM must be the same Gmail account as SMTP_USERNAME"))
 		}
+	}
+
+	// Only needed where cleanup runs on a schedule instead of in the server's own loop.
+	if cron := os.Getenv("CRON_SECRET"); cron != "" {
+		if len(cron) < minSecretLength || distinctBytes(cron) < 16 {
+			add(fmt.Errorf("CRON_SECRET must be at least %d characters of random text, or left unset", minSecretLength))
+		}
+		cfg.CronSecret = cron
 	}
 
 	if header := os.Getenv("CLIENT_IP_HEADER"); header != "" {

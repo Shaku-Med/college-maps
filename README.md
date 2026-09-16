@@ -154,6 +154,19 @@ Most free hosting blocks outbound SMTP. On Render's free plan, ports 25, 465 and
 
 The token only carries the `gmail.send` permission, so it can send mail as that account and cannot read the mailbox. Revoke it at myaccount.google.com/permissions if it ever leaks.
 
+#### Running bkapp on Vercel
+
+bkapp runs two ways from the same code. `cmd/api` is the normal long lived server, for a container or a virtual machine. `api/index.go` is the same API as a serverless function, which is what Vercel runs. Both build it through `internal/app`, so they can never drift apart.
+
+Vercel leaves ports 465 and 587 open, so `EMAIL_MODE=smtp` works there. Two things change when there is no long lived process:
+
+- **Cleanup.** The server normally purges expired sessions and unfinished accounts on an hourly timer. A function is frozen the moment it answers, so timers never fire. Instead, `GET /v1/maintenance` runs the same jobs, and `vercel.json` schedules it once a day. It is guarded by `CRON_SECRET`, the value Vercel sends as `Authorization: Bearer ...`. Without that variable the route answers 404, so forgetting it cannot leave the endpoint open, but nothing gets cleaned up either.
+- **Migrations.** The server applies them at startup. The function does not, since that would run on every cold start. Apply them yourself with `go run ./cmd/migrate` before deploying a schema change.
+
+Rate limit counters also live in each instance's memory, so the per IP limits get softer as Vercel adds instances. The per email limits (3 codes per 15 minutes, 8 a day) are enforced in the database and are unaffected.
+
+To deploy: point a Vercel project at `backend/bkapp` as its root directory, set the same variables that are in `.env.production` plus `CRON_SECRET`, and deploy. `PORT` is not needed. Then point the web app's `/v1/*` proxy in `app/netlify.toml` at the Vercel URL.
+
 #### Email design
 
 Every email is built from `backend/bkapp/internal/email/templates`:
@@ -194,6 +207,7 @@ Add `-find someone@school.edu` to look up one account, or `-csv > users.csv` for
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD` | Needed when `EMAIL_MODE=smtp` |
 | `GMAIL_CLIENT_ID`, `GMAIL_CLIENT_SECRET`, `GMAIL_REFRESH_TOKEN` | Needed when `EMAIL_MODE=gmail`, from `go run ./cmd/gmailtoken` |
 | `RESEND_API_KEY` | Needed when `EMAIL_MODE=resend` |
+| `CRON_SECRET` | Only on serverless hosts. Turns on `/v1/maintenance` for the scheduler that runs cleanup |
 | `EMAIL_FROM` | Sender shown to students, like `CSI Map <yourapp@gmail.com>` |
 | `CLIENT_IP_HEADER` | Optional, a client IP header your host sets itself, like `Fly-Client-IP` |
 

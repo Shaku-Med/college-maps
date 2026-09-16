@@ -11,14 +11,8 @@ import (
 	"syscall"
 	"time"
 
-	"csimap/bkapp/internal/auth"
-	"csimap/bkapp/internal/campus"
+	"csimap/bkapp/internal/app"
 	"csimap/bkapp/internal/config"
-	"csimap/bkapp/internal/db"
-	"csimap/bkapp/internal/email"
-	"csimap/bkapp/internal/httpapi"
-	"csimap/bkapp/internal/push"
-	"csimap/bkapp/internal/social"
 )
 
 func main() {
@@ -38,86 +32,22 @@ func run(logger *slog.Logger) error {
 	if err := config.EnsureNotificationEnv(); err != nil {
 		logger.Warn("could not prepare notification keys", "error", err)
 	}
-	cfg, err := config.Load()
-	if err != nil {
-		return fmt.Errorf("config: %w", err)
-	}
-
-	site, err := campus.Load()
-	if err != nil {
-		return fmt.Errorf("campus: %w", err)
-	}
-
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	openCtx, cancelOpen := context.WithTimeout(ctx, 30*time.Second)
-	pool, err := db.Open(openCtx, cfg.DatabaseURL)
-	var applied []string
-	if err == nil {
-		applied, err = db.Migrate(openCtx, pool)
-	}
-	cancelOpen()
+	built, err := app.Build(ctx, logger, true)
 	if err != nil {
-		if pool != nil {
-			pool.Close()
-		}
-		return fmt.Errorf("database: %w", err)
+		return err
 	}
-	defer pool.Close()
-	for _, name := range applied {
-		logger.Info("applied migration", "name", name)
-	}
+	defer built.Close()
+	built.StartBackground(ctx.Done())
+	cfg := built.Config
 
-	renderer, err := email.NewRenderer(site.Brand)
-	if err != nil {
-		return fmt.Errorf("email templates: %w", err)
-	}
-	var mailer email.Sender
-	switch cfg.EmailMode {
-	case config.EmailModeSMTP:
-		mailer, err = email.NewSMTP(cfg.SMTPHost, cfg.SMTPPort, cfg.SMTPUsername, cfg.SMTPPassword, cfg.EmailFrom, renderer)
-		if err != nil {
-			return fmt.Errorf("email: %w", err)
-		}
-	case config.EmailModeGmail:
-		mailer, err = email.NewGmail(cfg.GmailClientID, cfg.GmailSecret, cfg.GmailRefresh, cfg.EmailFrom, renderer)
-		if err != nil {
-			return fmt.Errorf("email: %w", err)
-		}
-	case config.EmailModeResend:
-		mailer = email.NewResend(cfg.ResendAPIKey, cfg.EmailFrom, renderer)
-	case config.EmailModeLog:
-		mailer = email.NewLog(logger)
-	default:
-		return fmt.Errorf("unsupported EMAIL_MODE %q", cfg.EmailMode)
-	}
-
-	authService, err := auth.NewService(auth.NewPostgresStore(pool), mailer, cfg.AuthSecret, site.EmailDomains)
-	if err != nil {
-		return fmt.Errorf("auth: %w", err)
-	}
-	socialService, err := social.NewService(pool, site, cfg.TicketSecret)
-	if err != nil {
-		return fmt.Errorf("social: %w", err)
-	}
-	pushService := push.New(pool, cfg, logger)
-	if cfg.PushAvailable {
-		logger.Info("push notifications enabled")
-	} else {
-		logger.Info("push notifications off")
-	}
-	socialService.SetNotify(func(senderID string, userIDs []string, title, body, path string) {
-		go pushService.Notify(context.Background(), senderID, userIDs, push.Message{Title: title, Body: body, URL: path})
-	})
-	go cleanupLoop(ctx, logger, authService.Cleanup, socialService.Cleanup)
-
-	api := httpapi.New(cfg, logger, site, authService, socialService, pushService)
-	api.StartBackground(ctx.Done())
+	go cleanupLoop(ctx, logger, built.Jobs...)
 
 	srv := &http.Server{
 		Addr:              fmt.Sprintf(":%d", cfg.Port),
-		Handler:           api.Handler(),
+		Handler:           built.Handler,
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       10 * time.Second,
 		WriteTimeout:      20 * time.Second,
