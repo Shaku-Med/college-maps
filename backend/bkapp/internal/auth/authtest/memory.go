@@ -86,6 +86,19 @@ func (m *MemoryStore) ReplaceCode(_ context.Context, index, hash []byte, expires
 	return nil
 }
 
+func (m *MemoryStore) DeleteCodes(_ context.Context, index []byte) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	kept := m.codes[:0]
+	for _, c := range m.codes {
+		if !bytes.Equal(c.index, index) {
+			kept = append(kept, c)
+		}
+	}
+	m.codes = kept
+	return nil
+}
+
 func (m *MemoryStore) CheckCode(_ context.Context, index []byte, now time.Time, maxAttempts int, matches func([]byte) bool) (auth.VerifyOutcome, int, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

@@ -139,6 +139,7 @@ const (
 type Store interface {
 	CodeStats(ctx context.Context, emailIndex []byte, since time.Time) (count int, latest time.Time, err error)
 	ReplaceCode(ctx context.Context, emailIndex, hash []byte, expiresAt time.Time) error
+	DeleteCodes(ctx context.Context, emailIndex []byte) error
 	CheckCode(ctx context.Context, emailIndex []byte, now time.Time, maxAttempts int, matches func(hash []byte) bool) (outcome VerifyOutcome, attemptsLeft int, err error)
 	UpsertUser(ctx context.Context, emailIndex, emailSealed []byte, now time.Time) (StoredUser, error)
 	CreateSession(ctx context.Context, userID string, tokenHash []byte, expiresAt time.Time) error
@@ -252,6 +253,9 @@ func (s *Service) RequestCode(ctx context.Context, rawEmail string) error {
 		return err
 	}
 	if err := s.mailer.SendLoginCode(ctx, addr, code); err != nil {
+		// Nobody received this code, so it should not spend one of the sender's tries or hold the
+		// cooldown open. WithoutCancel so the row still goes away when the request is cut short.
+		_ = s.store.DeleteCodes(context.WithoutCancel(ctx), index)
 		return fmt.Errorf("%w: %v", ErrSendFailed, err)
 	}
 	return nil

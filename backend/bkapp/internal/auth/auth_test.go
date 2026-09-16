@@ -405,3 +405,38 @@ func TestSendFailureIsReported(t *testing.T) {
 		t.Fatalf("expected ErrSendFailed, got %v", err)
 	}
 }
+
+// A mail outage on our side must not cost the person a try or hold the cooldown open.
+func TestSendFailureDoesNotSpendATry(t *testing.T) {
+	svc, store, mail, c := newTestService(t)
+	ctx := context.Background()
+
+	mail.Fail = true
+	// Well past both the per window and the daily limit, with no wait in between.
+	for i := 0; i < 12; i++ {
+		err := svc.RequestCode(ctx, student)
+		if !errors.Is(err, ErrSendFailed) {
+			t.Fatalf("attempt %d should still be an email failure, got %v", i, err)
+		}
+		var limited *RateLimitError
+		if errors.As(err, &limited) {
+			t.Fatalf("attempt %d was rate limited by our own failures", i)
+		}
+	}
+
+	count, latest, err := store.CodeStats(ctx, svc.EmailIndex(student), c.now().Add(-24*time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 || !latest.IsZero() {
+		t.Fatalf("failed sends left %d unusable codes behind (latest %v)", count, latest)
+	}
+
+	mail.Fail = false
+	if err := svc.RequestCode(ctx, student); err != nil {
+		t.Fatalf("the next request should go through once email works: %v", err)
+	}
+	if mail.Last(student) == "" {
+		t.Fatal("no code was sent")
+	}
+}

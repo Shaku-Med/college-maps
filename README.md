@@ -142,6 +142,18 @@ For Neon, use the pooled connection string with `sslmode=verify-full` and remove
 
 Gmail allows roughly 500 emails a day, which covers a campus pilot. The connection is always encrypted, and the server refuses to send the password to a mail server that does not offer TLS. When you outgrow it, switch to `resend` with your own domain without changing code.
 
+#### When the host blocks SMTP ports
+
+Most free hosting blocks outbound SMTP. On Render's free plan, ports 25, 465 and 587 are closed, so `EMAIL_MODE=smtp` fails with `dial tcp ...:465: i/o timeout` and sign in returns 502. `EMAIL_MODE=gmail` sends the exact same email through the Gmail API over https, which no host blocks, using the same free Gmail account.
+
+1. At console.cloud.google.com create a project, then under APIs & Services enable the Gmail API.
+2. Under OAuth consent screen pick External, add the Gmail account as a test user, fill in the required fields, and then press Publish app. While the app sits in Testing, Google expires the refresh token after seven days.
+3. Under Credentials create an OAuth client ID of type Desktop app and copy the client id and secret.
+4. On your own computer run `go run ./cmd/gmailtoken -id <client id> -secret <client secret>`, open the printed link, and sign in as that Gmail account. Google will warn that the app is not verified; you are the developer and the only user, so continue. The tool prints the variables to set.
+5. Set `EMAIL_MODE=gmail`, `GMAIL_CLIENT_ID`, `GMAIL_CLIENT_SECRET`, `GMAIL_REFRESH_TOKEN` and `EMAIL_FROM` on the host, and remove the `SMTP_*` variables.
+
+The token only carries the `gmail.send` permission, so it can send mail as that account and cannot read the mailbox. Revoke it at myaccount.google.com/permissions if it ever leaks.
+
 #### Email design
 
 Every email is built from `backend/bkapp/internal/email/templates`:
@@ -178,8 +190,9 @@ Add `-find someone@school.edu` to look up one account, or `-csv > users.csv` for
 | `ALLOWED_ORIGINS` | Web app origins allowed to call the API with cookies |
 | `DATABASE_URL` | Neon connection string, `sslmode=require` in production |
 | `AUTH_SECRET` | 32+ random characters. Every encryption and hashing key is derived from it (see Security below). Changing it signs everyone out and makes stored emails unreadable, so treat it like the database password |
-| `EMAIL_MODE` | `smtp` to send through a mail account (free with Gmail), `resend` for resend.com, `log` to print codes to the console (development only) |
+| `EMAIL_MODE` | `smtp` to send through a mail account over an SMTP port (free with Gmail), `gmail` to send through a Gmail account over https on hosts that block those ports, `resend` for resend.com, `log` to print codes to the console (development only) |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD` | Needed when `EMAIL_MODE=smtp` |
+| `GMAIL_CLIENT_ID`, `GMAIL_CLIENT_SECRET`, `GMAIL_REFRESH_TOKEN` | Needed when `EMAIL_MODE=gmail`, from `go run ./cmd/gmailtoken` |
 | `RESEND_API_KEY` | Needed when `EMAIL_MODE=resend` |
 | `EMAIL_FROM` | Sender shown to students, like `CSI Map <yourapp@gmail.com>` |
 | `CLIENT_IP_HEADER` | Optional, a client IP header your host sets itself, like `Fly-Client-IP` |

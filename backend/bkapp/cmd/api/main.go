@@ -80,6 +80,11 @@ func run(logger *slog.Logger) error {
 		if err != nil {
 			return fmt.Errorf("email: %w", err)
 		}
+	case config.EmailModeGmail:
+		mailer, err = email.NewGmail(cfg.GmailClientID, cfg.GmailSecret, cfg.GmailRefresh, cfg.EmailFrom, renderer)
+		if err != nil {
+			return fmt.Errorf("email: %w", err)
+		}
 	case config.EmailModeResend:
 		mailer = email.NewResend(cfg.ResendAPIKey, cfg.EmailFrom, renderer)
 	case config.EmailModeLog:

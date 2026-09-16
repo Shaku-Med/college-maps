@@ -137,6 +137,48 @@ func TestSMTPFailsClosed(t *testing.T) {
 	}
 }
 
+func setGmailAPI(t *testing.T) {
+	t.Helper()
+	t.Setenv("EMAIL_MODE", "gmail")
+	t.Setenv("GMAIL_CLIENT_ID", "1234567890-abcdef.apps.googleusercontent.com")
+	t.Setenv("GMAIL_CLIENT_SECRET", "GOCSPX-0123456789abcdef")
+	t.Setenv("GMAIL_REFRESH_TOKEN", "1//0gAbCdEfGhIjKlMnOpQrStUvWxYz")
+	t.Setenv("EMAIL_FROM", "CSI Map <csimap.signin@gmail.com>")
+}
+
+func TestLoadGmailAPI(t *testing.T) {
+	setValid(t)
+	setGmailAPI(t)
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.EmailMode != EmailModeGmail || cfg.GmailRefresh == "" || cfg.GmailClientID == "" || cfg.GmailSecret == "" {
+		t.Fatalf("unexpected gmail config: %+v", cfg.EmailMode)
+	}
+}
+
+func TestGmailAPIFailsClosed(t *testing.T) {
+	cases := map[string]func(t *testing.T){
+		"missing client id": func(t *testing.T) { t.Setenv("GMAIL_CLIENT_ID", "") },
+		"foreign client id": func(t *testing.T) { t.Setenv("GMAIL_CLIENT_ID", "abc.example.com") },
+		"missing secret":    func(t *testing.T) { t.Setenv("GMAIL_CLIENT_SECRET", "") },
+		"missing refresh":   func(t *testing.T) { t.Setenv("GMAIL_REFRESH_TOKEN", "") },
+		"short refresh":     func(t *testing.T) { t.Setenv("GMAIL_REFRESH_TOKEN", "1//short") },
+		"missing sender":    func(t *testing.T) { t.Setenv("EMAIL_FROM", "") },
+	}
+	for name, mutate := range cases {
+		t.Run(name, func(t *testing.T) {
+			setValid(t)
+			setGmailAPI(t)
+			mutate(t)
+			if _, err := Load(); err == nil {
+				t.Fatal("expected an error")
+			}
+		})
+	}
+}
+
 func TestLocalNetworkOriginsOnlyInDevelopment(t *testing.T) {
 	setValid(t)
 	t.Setenv("ALLOWED_ORIGINS", "http://localhost:3000,http://192.168.1.169:3000,http://10.0.0.5:3000")

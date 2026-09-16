@@ -15,13 +15,16 @@ import (
 const (
 	EmailModeResend = "resend"
 	EmailModeSMTP   = "smtp"
+	EmailModeGmail  = "gmail"
 	EmailModeLog    = "log"
 	minSecretLength = 32
 )
 
 var (
-	headerName = regexp.MustCompile(`^[A-Za-z0-9-]{1,64}$`)
-	hostName   = regexp.MustCompile(`^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)+$`)
+	headerName     = regexp.MustCompile(`^[A-Za-z0-9-]{1,64}$`)
+	hostName       = regexp.MustCompile(`^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)+$`)
+	googleClientID = regexp.MustCompile(`^[A-Za-z0-9-]{1,128}\.apps\.googleusercontent\.com$`)
+	opaqueSecret   = regexp.MustCompile(`^[A-Za-z0-9._~+/=-]{20,512}$`)
 )
 
 type Config struct {
@@ -33,6 +36,9 @@ type Config struct {
 	TicketSecret   []byte
 	EmailMode      string
 	ResendAPIKey   string
+	GmailClientID  string
+	GmailSecret    string
+	GmailRefresh   string
 	SMTPHost       string
 	SMTPPort       int
 	SMTPUsername   string
@@ -85,10 +91,24 @@ func Load() (Config, error) {
 	}
 	cfg.TicketSecret = []byte(ticketSecret)
 
-	cfg.EmailMode, err = requiredOneOf("EMAIL_MODE", EmailModeSMTP, EmailModeResend, EmailModeLog)
+	cfg.EmailMode, err = requiredOneOf("EMAIL_MODE", EmailModeSMTP, EmailModeGmail, EmailModeResend, EmailModeLog)
 	add(err)
 	if cfg.EmailMode == EmailModeLog && production {
 		add(errors.New("EMAIL_MODE=log prints sign-in codes to the server log and is only allowed in development"))
+	}
+	if cfg.EmailMode == EmailModeGmail {
+		cfg.GmailClientID = os.Getenv("GMAIL_CLIENT_ID")
+		if !googleClientID.MatchString(cfg.GmailClientID) {
+			add(errors.New("GMAIL_CLIENT_ID must be the client id from the Google Cloud console, ending in .apps.googleusercontent.com"))
+		}
+		cfg.GmailSecret = strings.TrimSpace(os.Getenv("GMAIL_CLIENT_SECRET"))
+		if !opaqueSecret.MatchString(cfg.GmailSecret) {
+			add(errors.New("GMAIL_CLIENT_SECRET is required when EMAIL_MODE=gmail"))
+		}
+		cfg.GmailRefresh = strings.TrimSpace(os.Getenv("GMAIL_REFRESH_TOKEN"))
+		if !opaqueSecret.MatchString(cfg.GmailRefresh) {
+			add(errors.New("GMAIL_REFRESH_TOKEN is required when EMAIL_MODE=gmail, create it with: go run ./cmd/gmailtoken"))
+		}
 	}
 	if cfg.EmailMode == EmailModeResend {
 		cfg.ResendAPIKey = os.Getenv("RESEND_API_KEY")
@@ -115,7 +135,7 @@ func Load() (Config, error) {
 			add(errors.New("SMTP_USERNAME and SMTP_PASSWORD are required when EMAIL_MODE=smtp"))
 		}
 	}
-	if cfg.EmailMode == EmailModeResend || cfg.EmailMode == EmailModeSMTP {
+	if cfg.EmailMode == EmailModeResend || cfg.EmailMode == EmailModeSMTP || cfg.EmailMode == EmailModeGmail {
 		cfg.EmailFrom = os.Getenv("EMAIL_FROM")
 		from, err := mail.ParseAddress(cfg.EmailFrom)
 		if err != nil {

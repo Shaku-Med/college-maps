@@ -63,6 +63,18 @@ func TestPostgresStoreFlow(t *testing.T) {
 	index = svc.EmailIndex(email)
 	rivalIndex = svc.EmailIndex(rival)
 
+	// A failed send has to clear its own row, which row level security must allow.
+	mail.Fail = true
+	if err := svc.RequestCode(ctx, email); !errors.Is(err, ErrSendFailed) {
+		t.Fatalf("expected the send to fail: %v", err)
+	}
+	mail.Fail = false
+	if count, _, err := NewPostgresStore(pool).CodeStats(ctx, index, time.Now().Add(-time.Hour)); err != nil {
+		t.Fatal(err)
+	} else if count != 0 {
+		t.Fatalf("a failed send left %d codes behind", count)
+	}
+
 	if err := svc.RequestCode(ctx, email); err != nil {
 		t.Fatal(err)
 	}

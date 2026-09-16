@@ -62,6 +62,15 @@ func (p *PostgresStore) ReplaceCode(ctx context.Context, emailIndex, hash []byte
 	})
 }
 
+// DeleteCodes drops every code for an email. Used when the email could not be sent, so a failure on
+// our side does not lock the person out of asking again.
+func (p *PostgresStore) DeleteCodes(ctx context.Context, emailIndex []byte) error {
+	return db.WithScope(ctx, p.pool, db.Scope{EmailIndex: emailIndex}, func(tx pgx.Tx) error {
+		_, err := tx.Exec(ctx, `delete from login_codes where email_index = $1`, emailIndex)
+		return err
+	})
+}
+
 // CheckCode locks the code row so parallel guesses are counted one at a time.
 // A correct code deletes every code for the email, so nothing reusable stays in the database.
 func (p *PostgresStore) CheckCode(ctx context.Context, emailIndex []byte, now time.Time, maxAttempts int, matches func([]byte) bool) (VerifyOutcome, int, error) {
