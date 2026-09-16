@@ -144,7 +144,11 @@ Gmail allows roughly 500 emails a day, which covers a campus pilot. The connecti
 
 #### When the host blocks SMTP ports
 
-Most free hosting blocks outbound SMTP. On Render's free plan, ports 25, 465 and 587 are closed, so `EMAIL_MODE=smtp` fails with `dial tcp ...:465: i/o timeout` and sign in returns 502. `EMAIL_MODE=gmail` sends the exact same email through the Gmail API over https, which no host blocks, using the same free Gmail account.
+Most free hosting blocks outbound SMTP. On Render's free plan, ports 25, 465 and 587 are closed, so `EMAIL_MODE=smtp` fails with `dial tcp ...:465: i/o timeout` and sign in returns 502. There are two free ways around it.
+
+**Keep SMTP, change the port.** The block covers only the three standard ports, so a relay that listens on 2525 still gets through. Brevo's free tier sends 300 a day: create an account, verify the sending address, and set `SMTP_HOST=smtp-relay.brevo.com`, `SMTP_PORT=2525`, `SMTP_USERNAME` to the Brevo login and `SMTP_PASSWORD` to the SMTP key. Mail then leaves from a shared relay rather than Gmail itself, so a plain `@gmail.com` sender is more likely to land in spam than it is over Gmail's own connection.
+
+**Or send over https.** `EMAIL_MODE=gmail` sends the exact same email through the Gmail API on port 443, which no host blocks, from the same free Gmail account, and it keeps Gmail's own signature so inbox placement stays as good as it is today.
 
 1. At console.cloud.google.com create a project, then under APIs & Services enable the Gmail API.
 2. Under OAuth consent screen pick External, add the Gmail account as a test user, fill in the required fields, and then press Publish app. While the app sits in Testing, Google expires the refresh token after seven days.

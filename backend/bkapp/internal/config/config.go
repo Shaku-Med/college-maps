@@ -122,9 +122,11 @@ func Load() (Config, error) {
 		if !hostName.MatchString(cfg.SMTPHost) {
 			add(errors.New("SMTP_HOST must be a mail server name like smtp.gmail.com"))
 		}
+		// 2525 is the usual way out when a host blocks the standard submission ports, as Render's
+		// free plan does. Mail relays offer it with the same STARTTLS handshake as 587.
 		cfg.SMTPPort, err = strconv.Atoi(os.Getenv("SMTP_PORT"))
-		if err != nil || (cfg.SMTPPort != 465 && cfg.SMTPPort != 587) {
-			add(errors.New("SMTP_PORT must be 587 (STARTTLS) or 465 (TLS)"))
+		if err != nil || (cfg.SMTPPort != 465 && cfg.SMTPPort != 587 && cfg.SMTPPort != 2525) {
+			add(errors.New("SMTP_PORT must be 587 or 2525 (STARTTLS) or 465 (TLS)"))
 		}
 		cfg.SMTPUsername = os.Getenv("SMTP_USERNAME")
 		cfg.SMTPPassword = os.Getenv("SMTP_PASSWORD")

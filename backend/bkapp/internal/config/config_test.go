@@ -117,6 +117,25 @@ func TestLoadGmailSMTP(t *testing.T) {
 	}
 }
 
+// A relay on 2525 is how mail still gets out from a host that blocks the usual submission ports.
+func TestLoadRelayOnAlternatePort(t *testing.T) {
+	setValid(t)
+	t.Setenv("EMAIL_MODE", "smtp")
+	t.Setenv("SMTP_HOST", "smtp-relay.brevo.com")
+	t.Setenv("SMTP_PORT", "2525")
+	t.Setenv("SMTP_USERNAME", "csimap.signin@gmail.com")
+	t.Setenv("SMTP_PASSWORD", "relay-key")
+	t.Setenv("EMAIL_FROM", "CSI Map <csimap.signin@gmail.com>")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.SMTPPort != 2525 || cfg.SMTPPassword != "relay-key" {
+		t.Fatalf("unexpected relay config: port %d", cfg.SMTPPort)
+	}
+}
+
 func TestSMTPFailsClosed(t *testing.T) {
 	cases := map[string]func(t *testing.T){
 		"bad host":          func(t *testing.T) { t.Setenv("SMTP_HOST", "not a host") },
