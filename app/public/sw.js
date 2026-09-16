@@ -1,4 +1,4 @@
-const VERSION = "v5";
+const VERSION = "v6";
 const APP_CACHE = `csi-map-app-${VERSION}`;
 const TILE_CACHE = `csi-map-tiles-${VERSION}`;
 const TILE_ORIGINS = new Set(
@@ -100,6 +100,8 @@ self.addEventListener("fetch", (event) => {
   if (request.method !== "GET") return;
 
   const url = new URL(request.url);
+  // Host tooling and unique CSP nonces must not be served from the tile/app cache.
+  if (url.pathname.startsWith("/.netlify/") || url.pathname.startsWith("/v1/")) return;
   // Turbopack reuses /_next/ URLs while the SSR HTML changes, so a cache-first hit
   // hydrates the previous map chrome against the new markup.
   if (isDevHost() && (isNextBuild(url) || request.mode === "navigate")) return;
@@ -125,14 +127,16 @@ self.addEventListener("push", (event) => {
     const text = event.data?.text();
     if (text) data.body = text.slice(0, 160);
   }
-  event.waitUntil(
-    self.registration.showNotification(data.title, {
-      body: data.body,
-      icon: "/icons/icon-192.png",
-      badge: "/icons/icon-192.png",
-      data: { url: data.url },
-    }),
-  );
+  if (self.registration.showNotification && Notification.permission === "granted") {
+    event.waitUntil(
+      self.registration.showNotification(data.title, {
+        body: data.body,
+        icon: "/icons/icon-192.png",
+        badge: "/icons/icon-192.png",
+        data: { url: data.url },
+      }),
+    );
+  }
 });
 
 self.addEventListener("notificationclick", (event) => {

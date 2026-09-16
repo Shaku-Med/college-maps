@@ -25,7 +25,11 @@ function themeVariables(colors: { accent?: string; accentForeground?: string } |
 
 const LIGHT_THEME = themeVariables(CAMPUS.theme);
 const DARK_THEME = themeVariables(CAMPUS.theme.dark);
-const THEME_OVERRIDES = [LIGHT_THEME && `:root{${LIGHT_THEME}}`, DARK_THEME && `:root.dark{${DARK_THEME}}`]
+const THEME_OVERRIDES = [
+  LIGHT_THEME && `:root{${LIGHT_THEME}}`,
+  DARK_THEME && `:root.dark{${DARK_THEME}}`,
+  DARK_THEME && `@media (prefers-color-scheme: dark){:root{${DARK_THEME}}}`,
+]
   .filter(Boolean)
   .join("");
 
@@ -120,7 +124,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
         {THEME_OVERRIDES ? <style nonce={nonce}>{THEME_OVERRIDES}</style> : null}
         <script nonce={nonce} type="application/ld+json" dangerouslySetInnerHTML={{ __html: STRUCTURED_DATA }} />
       </head>
-      <body className="bg-background font-sans text-foreground">
+      <body className="bg-background font-sans text-foreground" suppressHydrationWarning>
         <Toast.Provider placement="top" />
         <CoverViewport />
         <OfflineSupport />
