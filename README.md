@@ -160,16 +160,13 @@ The token only carries the `gmail.send` permission, so it can send mail as that 
 
 #### Running bkapp on Vercel
 
-bkapp runs two ways from the same code. `cmd/api` is the normal long lived server, for a container or a virtual machine. `api/index.go` is the same API as a serverless function, which is what Vercel runs. Both build it through `internal/app`, so they can never drift apart.
+Vercel's Go framework preset runs an ordinary `net/http` server, so bkapp deploys there as it is: same `cmd/api`, same startup migrations, same hourly cleanup. `vercel.json` sets `"framework": "go"`, which is what tells Vercel to build the server instead of looking for serverless functions in an `api/` folder. Vercel supplies `PORT` and the server listens on it.
 
-Vercel leaves ports 465 and 587 open, so `EMAIL_MODE=smtp` works there. Two things change when there is no long lived process:
+Vercel leaves ports 465 and 587 open, so `EMAIL_MODE=smtp` with a Gmail app password works there.
 
-- **Cleanup.** The server normally purges expired sessions and unfinished accounts on an hourly timer. A function is frozen the moment it answers, so timers never fire. Instead, `GET /v1/maintenance` runs the same jobs, and `vercel.json` schedules it once a day. It is guarded by `CRON_SECRET`, the value Vercel sends as `Authorization: Bearer ...`. Without that variable the route answers 404, so forgetting it cannot leave the endpoint open, but nothing gets cleaned up either.
-- **Migrations.** The server applies them at startup. The function does not, since that would run on every cold start. Apply them yourself with `go run ./cmd/migrate` before deploying a schema change.
+To deploy: point a Vercel project at `backend/bkapp` as its root directory, copy the variables from `.env.production`, add the three `VAPID_*` values from `.env.notification` so push notifications keep working, and deploy. Then point the web app's `/v1/*` proxy in `app/netlify.toml` at the Vercel URL.
 
-Rate limit counters also live in each instance's memory, so the per IP limits get softer as Vercel adds instances. The per email limits (3 codes per 15 minutes, 8 a day) are enforced in the database and are unaffected.
-
-To deploy: point a Vercel project at `backend/bkapp` as its root directory, set the same variables that are in `.env.production` plus `CRON_SECRET`, and deploy. `PORT` is not needed. Then point the web app's `/v1/*` proxy in `app/netlify.toml` at the Vercel URL.
+Set `CRON_SECRET` as well. A host that suspends an idle instance cannot be relied on to fire the hourly cleanup timer, so `vercel.json` schedules `GET /v1/maintenance` once a day to run the same jobs. Vercel sends the value as `Authorization: Bearer ...`. Without the variable the route answers 404 like any unknown path, so forgetting it cannot leave the endpoint open, but nothing gets cleaned up either.
 
 #### Email design
 

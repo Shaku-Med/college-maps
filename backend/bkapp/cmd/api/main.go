@@ -45,9 +45,19 @@ func run(logger *slog.Logger) error {
 
 	go cleanupLoop(ctx, logger, built.Jobs...)
 
+	// A host that suspends an idle instance cannot be counted on to fire that timer, so where a
+	// scheduler is set up it can run the same jobs over HTTP. Without a secret the route stays shut.
+	handler := built.Handler
+	if cfg.CronSecret != "" {
+		mux := http.NewServeMux()
+		mux.Handle("/v1/maintenance", app.Maintenance(cfg.CronSecret, built.Jobs, logger))
+		mux.Handle("/", handler)
+		handler = mux
+	}
+
 	srv := &http.Server{
 		Addr:              fmt.Sprintf(":%d", cfg.Port),
-		Handler:           built.Handler,
+		Handler:           handler,
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       10 * time.Second,
 		WriteTimeout:      20 * time.Second,
