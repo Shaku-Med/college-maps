@@ -86,8 +86,13 @@ export default function PrivacyPage() {
             On campus, walking routes are worked out on your device. When you ask for directions from
             somewhere else, your starting point and destination go straight from your browser to the
             free OpenStreetMap routing service run by FOSSGIS, which sends back the route. They never pass
-            through our servers and we do not keep them. Voice directions are spoken by your device and
-            nothing you hear is sent anywhere.
+            through our servers and we do not keep them.
+          </p>
+          <p className="text-sm leading-relaxed text-muted">
+            Voice directions are made on your device by an open source voice model. The first time you use
+            them, your browser downloads the model, about 90 MB, from Hugging Face and keeps it. The words
+            being spoken never leave your device. Spoken lines are saved in this browser so they play
+            instantly next time.
           </p>
         </section>
 

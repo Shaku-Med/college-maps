@@ -466,6 +466,7 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
     hasArrived,
     notice: routeNotice,
   });
+  const primeVoice = voice.prime;
 
   useEffect(() => {
     navRef.current = {
@@ -563,6 +564,11 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
   else if (origin === MY_LOCATION && geo.status === "unavailable") routeIssue = "unavailable";
   else if (origin === MY_LOCATION && !geo.position) routeIssue = "locating";
   else if (!previewRoute) routeIssue = avoidStairs ? "no-step-free" : "no-route";
+
+  // Voice lines start being made while the route is previewed, so they are ready when Start is tapped.
+  useEffect(() => {
+    if (mode === "directions" && previewRoute && origin === MY_LOCATION) primeVoice(previewRoute);
+  }, [mode, previewRoute, origin, primeVoice]);
 
   const hasPreviewRoute = previewRoute !== null;
   const previewRouteRef = useRef(previewRoute);
