@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import { MAP_ORIGINS } from "@/data/campus";
 import { API_ORIGIN, REALTIME_ORIGIN, apiOriginFor } from "@/lib/api";
+import { STREET_ROUTING_ORIGIN } from "@/lib/directions";
 import { PUSH_CONNECT_ORIGINS } from "@/lib/push-origins";
 
 // The Host header is only used to pick a private network API address in development; apiOriginFor ignores anything else.
@@ -24,7 +25,7 @@ export function proxy(request: NextRequest) {
     "style-src-attr 'unsafe-inline'",
     "img-src 'self' blob: data:",
     "font-src 'self'",
-    `connect-src 'self' ${[...MAP_ORIGINS, ...PUSH_CONNECT_ORIGINS, ...new Set([API_ORIGIN, apiOriginFor(requestHostname(request)), REALTIME_ORIGIN, apiOriginFor(requestHostname(request), REALTIME_ORIGIN)])].filter(Boolean).join(" ")}`,
+    `connect-src 'self' ${[...MAP_ORIGINS, STREET_ROUTING_ORIGIN, ...PUSH_CONNECT_ORIGINS, ...new Set([API_ORIGIN, apiOriginFor(requestHostname(request)), REALTIME_ORIGIN, apiOriginFor(requestHostname(request), REALTIME_ORIGIN)])].filter(Boolean).join(" ")}`,
     "worker-src 'self' blob:",
     "child-src 'self' blob:",
     "object-src 'none'",

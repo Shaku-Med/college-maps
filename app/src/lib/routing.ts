@@ -31,7 +31,15 @@ export type RouteStep = {
   bearing?: number;
   startDistance: number;
   length: number;
+  /** Street directions come with their own wording, like "Turn left onto Bay Street." */
+  text?: string;
+  /** Said ahead of the maneuver. */
+  alert?: string;
+  /** Said at the maneuver. */
+  spoken?: string;
 };
+
+export type TravelMode = "walk" | "drive" | "bike";
 
 export type Route = {
   path: Coordinate[];
@@ -41,6 +49,10 @@ export type Route = {
   steps: RouteStep[];
   hasStairs: boolean;
   stairs: boolean[];
+  /** Set on street routes from off campus. Campus routes are always walks on the campus paths. */
+  travel?: TravelMode;
+  /** Travel time in seconds when the router knows it, such as driving at road speeds. */
+  duration?: number;
 };
 
 /** A point on the walkway someone is on, found by matching their position to the nearest path. */

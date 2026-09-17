@@ -12,6 +12,8 @@ const TURN_TEXT: Record<TurnDirection, string> = {
 };
 
 export function stepText(step: RouteStep, destination: string): string {
+  // Street directions bring their own wording; arriving still names the place instead of "your destination".
+  if (step.text && step.kind !== "arrive") return step.text;
   switch (step.kind) {
     case "depart":
       return `Head ${cardinal(step.bearing ?? 0)}`;

@@ -1,11 +1,12 @@
 "use client";
 
 import { Button, Surface } from "@heroui/react";
-import { Flag, LocateFixed, RefreshCw, Undo2, Zap } from "lucide-react";
+import { Flag, LocateFixed, RefreshCw, Undo2, Volume2, VolumeX, Zap } from "lucide-react";
 
 import { StepIcon } from "@/components/step-icon";
 import type { Place } from "@/data/campus";
-import { formatDistance, formatDuration } from "@/lib/geo";
+import { formatRouteTime } from "@/lib/directions";
+import { formatDistance } from "@/lib/geo";
 import { stepText } from "@/lib/instructions";
 import type { Route, RouteProgress } from "@/lib/routing";
 
@@ -21,6 +22,8 @@ type NavigationHudProps = {
   hasAlternate: boolean;
   hasArrived: boolean;
   weakSignal: boolean;
+  voiceOn: boolean;
+  onToggleVoice: () => void;
   onRecenter: () => void;
   onEnd: () => void;
 };
@@ -35,6 +38,8 @@ export function NavigationHud({
   hasAlternate,
   hasArrived,
   weakSignal,
+  voiceOn,
+  onToggleVoice,
   onRecenter,
   onEnd,
 }: NavigationHudProps) {
@@ -123,13 +128,23 @@ export function NavigationHud({
               <p className="text-base font-semibold">Enjoy your class</p>
             ) : (
               <>
-                <p className="text-lg font-semibold leading-tight">{formatDuration(remaining)}</p>
+                <p className="text-lg font-semibold leading-tight">{formatRouteTime(route, remaining)}</p>
                 <p className="text-sm text-muted">
                   {formatDistance(remaining)} to {destination.id}
                 </p>
               </>
             )}
           </div>
+          <Button
+            isIconOnly
+            variant="ghost"
+            size="lg"
+            aria-label={voiceOn ? "Mute voice directions" : "Turn on voice directions"}
+            aria-pressed={voiceOn}
+            onPress={onToggleVoice}
+            className={voiceOn ? "bg-default" : undefined}>
+            {voiceOn ? <Volume2 aria-hidden /> : <VolumeX aria-hidden />}
+          </Button>
           <Button variant={hasArrived ? "primary" : "danger-soft"} size="lg" onPress={onEnd}>
             {hasArrived ? "Done" : "End"}
           </Button>

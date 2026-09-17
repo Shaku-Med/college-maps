@@ -81,6 +81,17 @@ export default function PrivacyPage() {
         </section>
 
         <section className="flex flex-col gap-3">
+          <h2 className="text-lg font-semibold">Directions from off campus</h2>
+          <p className="text-sm leading-relaxed text-muted">
+            On campus, walking routes are worked out on your device. When you ask for directions from
+            somewhere else, your starting point and destination go straight from your browser to the
+            free OpenStreetMap routing service run by FOSSGIS, which sends back the route. They never pass
+            through our servers and we do not keep them. Voice directions are spoken by your device and
+            nothing you hear is sent anywhere.
+          </p>
+        </section>
+
+        <section className="flex flex-col gap-3">
           <h2 className="text-lg font-semibold">Download a copy</h2>
           <p className="text-sm leading-relaxed text-muted">
             Signed in, open Account and choose JSON, HTML, or PDF. That file is your profile, sessions,

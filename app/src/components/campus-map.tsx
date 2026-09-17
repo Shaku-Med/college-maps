@@ -29,6 +29,13 @@ const STYLE_LIGHT = CAMPUS.map.styles.light;
 const STYLE_DARK = CAMPUS.map.styles.dark;
 const CAMPUS_ZOOM = CAMPUS.map.zoom;
 const { south, west, north, east } = CAMPUS.map.bounds;
+const CAMPUS_BOUNDS: [[number, number], [number, number]] = [
+  [west, south],
+  [east, north],
+];
+const CAMPUS_MIN_ZOOM = 13;
+// Low enough to fit a drive in from another borough.
+const STREETS_MIN_ZOOM = 9;
 const DARK_QUERY = "(prefers-color-scheme: dark)";
 const ROUTE_SOURCE = "route";
 const PREVIOUS_SOURCE = "route-previous";
@@ -39,7 +46,7 @@ const NO_PADDING = { top: 0, right: 0, bottom: 0, left: 0 };
 
 export type CampusMapHandle = {
   focus: (coordinate: Coordinate, padding?: Partial<PaddingOptions>) => void;
-  follow: (coordinate: Coordinate, padding?: Partial<PaddingOptions>) => void;
+  follow: (coordinate: Coordinate, padding?: Partial<PaddingOptions>, zoom?: number) => void;
   fitPath: (path: Coordinate[], padding?: Partial<PaddingOptions>) => void;
   showCampus: () => void;
   setHeading: (degrees: number | undefined) => void;
@@ -73,6 +80,8 @@ type CampusMapProps = {
   onPreviousRoutePress?: () => void;
   onPersonPress?: (id: string) => void;
   buildingView?: boolean;
+  /** Lets the camera leave campus, for a street route from somewhere else. */
+  unbounded?: boolean;
 };
 
 const markerBase =
@@ -469,6 +478,7 @@ export function CampusMap({
   onPreviousRoutePress,
   onPersonPress,
   buildingView = false,
+  unbounded = false,
 }: CampusMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
@@ -521,10 +531,10 @@ export function CampusMap({
         essential: true,
       });
     },
-    follow(coordinate, padding) {
+    follow(coordinate, padding, zoom) {
       mapRef.current?.easeTo({
         center: toLngLat(coordinate),
-        zoom: Math.max(mapRef.current.getZoom(), 17.5),
+        zoom: zoom ?? Math.max(mapRef.current.getZoom(), 17.5),
         padding: { ...NO_PADDING, ...padding },
         duration: 600,
         essential: true,
@@ -594,12 +604,9 @@ export function CampusMap({
         style: styleFor(media.matches),
         center: toLngLat(CAMPUS_CENTER),
         zoom: CAMPUS_ZOOM,
-        minZoom: 13,
+        minZoom: CAMPUS_MIN_ZOOM,
         maxZoom: 19.5,
-        maxBounds: [
-          [west, south],
-          [east, north],
-        ],
+        maxBounds: CAMPUS_BOUNDS,
         dragRotate: false,
         pitchWithRotate: true,
         touchPitch: false,
@@ -691,6 +698,14 @@ export function CampusMap({
     if (!isReady || !map) return;
     applyBuildingView(map, buildingView, "ease");
   }, [isReady, buildingView]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!isReady || !map) return;
+    // Back on campus the camera is pulled inside the campus again on its own.
+    map.setMaxBounds(unbounded ? null : CAMPUS_BOUNDS);
+    map.setMinZoom(unbounded ? STREETS_MIN_ZOOM : CAMPUS_MIN_ZOOM);
+  }, [isReady, unbounded]);
 
   useEffect(() => {
     const lib = libRef.current;
