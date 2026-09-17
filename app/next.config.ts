@@ -1,5 +1,6 @@
 import type { NextConfig } from "next";
 
+import { apiUpstream } from "./api-upstream";
 import campus from "./campus/campus.json";
 import { PUSH_CONNECT_ORIGINS } from "./src/lib/push-origins";
 
@@ -21,28 +22,6 @@ const securityHeaders = [
   { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains" },
   { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
 ];
-
-function httpsOrigin(raw: string | undefined) {
-  if (!raw) return null;
-  try {
-    const url = new URL(raw.includes("://") ? raw : `https://${raw}`);
-    if (url.protocol !== "https:") return null;
-    return url.origin;
-  } catch {
-    return null;
-  }
-}
-
-function apiUpstream(): string | null {
-  const raw = process.env.NEXT_PUBLIC_API_URL;
-  if (!raw) return null;
-  const url = new URL(raw);
-  if (url.protocol !== "https:" || url.pathname !== "/" || url.search || url.hash || url.username) return null;
-  // Netlify/Vercel set these to the site itself. Rewriting /v1 back there loops until timeout.
-  const siteOrigins = [process.env.URL, process.env.DEPLOY_PRIME_URL, process.env.DEPLOY_URL, process.env.VERCEL_URL].map(httpsOrigin);
-  if (siteOrigins.includes(url.origin)) return null;
-  return url.origin;
-}
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
