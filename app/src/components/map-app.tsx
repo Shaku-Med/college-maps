@@ -27,6 +27,7 @@ import { bearingDegrees, distanceMeters, turnAngle } from "@/lib/geo";
 import { loadSchedule, saveSchedule, type ClassEntry } from "@/lib/schedule";
 import {
   findRoute,
+  matchWalkway,
   parseGraph,
   remainingPath,
   routeVia,
@@ -53,6 +54,10 @@ const OPPOSITE_DEGREES = 120;
 const BACK_ON_PREVIOUS_METERS = 15;
 const ALONG_PREVIOUS_METERS = 15;
 const DROP_PREVIOUS_METERS = 200;
+// Within this of a walkway, that walkway is where the walker is.
+const WALKWAY_MATCH_METERS = 10;
+// How much closer another walkway has to be than the route before it counts as the path they took.
+const WALKWAY_GAP_METERS = 10;
 
 // Looser on a weak GPS fix so a jumpy signal does not trigger constant re-routing.
 function offRouteLimit(accuracy: number) {
@@ -175,6 +180,7 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
   const [previousRoute, setPreviousRoute] = useState<{ route: Route; path: Coordinate[] } | null>(null);
   const [isWrongWay, setIsWrongWay] = useState(false);
   const [hasArrived, setHasArrived] = useState(false);
+  const [walkwayPoint, setWalkwayPoint] = useState<Coordinate>();
 
   const selected = getPlace(selectedId);
 
@@ -200,6 +206,7 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
   const { request: requestHeading, setCourse } = useHeading(handleHeading);
   const progressHintRef = useRef(0);
   const offRouteCountRef = useRef(0);
+  const otherWalkwayCountRef = useRef(0);
   const lastRecheckRef = useRef({ at: 0, along: 0 });
   const noticeTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
@@ -233,6 +240,18 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
       let notice: RouteNotice | undefined;
       const trusted = accuracy <= UNTRUSTED_ACCURACY_METERS;
       const limit = offRouteLimit(accuracy);
+      const { graph, destination } = nav;
+
+      // Matching the fix to the walkway underfoot catches a shortcut, or stairs taken despite avoiding them,
+      // long before the walker strays far enough to count as lost. It also gives the dot a real path to sit on.
+      const match = graph ? matchWalkway(graph, position, { avoidStairs: nav.avoidStairs }) : undefined;
+      const walkway = match && match.distance <= WALKWAY_MATCH_METERS ? match : undefined;
+      const rerouteFromHere = (g: WalkGraph) =>
+        findRoute(g, position, destination.coordinate, {
+          avoidStairs: nav.avoidStairs,
+          heading: courseRef.current,
+          start: walkway,
+        });
 
       // The route being left stays on the map, faded, so the walker can still change their mind.
       const adopt = (candidate: Route, kind: RouteNotice) => {
@@ -243,6 +262,7 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
         notice = kind;
         maxAlongRef.current = next.distanceAlong;
         offRouteCountRef.current = 0;
+        otherWalkwayCountRef.current = 0;
         previousHintRef.current = leftAt.segmentIndex;
         previousStartAlongRef.current = leftAt.distanceAlong;
         previousMatchesRef.current = 0;
@@ -254,9 +274,11 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
       };
 
       const previous = nav.previousRoute;
+      let nearPrevious = false;
       if (previous && trusted) {
         const onPrevious = trackProgress(previous, position, previousHintRef.current);
         previousHintRef.current = onPrevious.segmentIndex;
+        nearPrevious = onPrevious.distanceFromRoute <= BACK_ON_PREVIOUS_METERS;
         // Only switch back once the walker is clearly following the old route, not just standing near where both begin.
         const followingPrevious =
           onPrevious.distanceFromRoute <= BACK_ON_PREVIOUS_METERS &&
@@ -275,6 +297,14 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
       offRouteCountRef.current = isOff ? offRouteCountRef.current + 1 : 0;
       const clearlyLost = isOff && next.distanceFromRoute > 80;
 
+      // Walking the old route again is handled above as switching back, which keeps that route intact.
+      const onOtherWalkway =
+        trusted &&
+        !nearPrevious &&
+        walkway !== undefined &&
+        next.distanceFromRoute - walkway.distance >= Math.max(WALKWAY_GAP_METERS, accuracy);
+      otherWalkwayCountRef.current = onOtherWalkway ? otherWalkwayCountRef.current + 1 : 0;
+
       maxAlongRef.current = Math.max(maxAlongRef.current, next.distanceAlong);
       const backtracked = maxAlongRef.current - next.distanceAlong;
       const segmentStart = route.path[Math.max(0, next.segmentIndex - 1)];
@@ -287,19 +317,21 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
         !isOff &&
         (backtracked > WRONG_WAY_WARN_METERS || (walkingOpposite && backtracked > COURSE_MIN_METERS));
 
-      if (!notice && nav.graph && (offRouteCountRef.current >= 2 || clearlyLost)) {
-        const rerouted = findRoute(nav.graph, position, nav.destination.coordinate, { avoidStairs: nav.avoidStairs });
+      // Rerouting starts from the walkway they are on and carries on the way they are heading, so a shortcut
+      // is followed instead of undone.
+      if (!notice && graph && (offRouteCountRef.current >= 2 || otherWalkwayCountRef.current >= 2 || clearlyLost)) {
+        const rerouted = rerouteFromHere(graph);
         if (rerouted) adopt(rerouted, "rerouted");
-      } else if (!notice && nav.graph && wrongWay && backtracked > WRONG_WAY_REROUTE_METERS) {
-        const rerouted = findRoute(nav.graph, position, nav.destination.coordinate, { avoidStairs: nav.avoidStairs });
+      } else if (!notice && graph && wrongWay && backtracked > WRONG_WAY_REROUTE_METERS) {
+        const rerouted = rerouteFromHere(graph);
         if (rerouted) adopt(rerouted, "rerouted");
-      } else if (!notice && nav.graph && trusted && !wrongWay) {
+      } else if (!notice && graph && trusted && !wrongWay) {
         const since = lastRecheckRef.current;
         const due =
           Date.now() - since.at > RECHECK_INTERVAL_MS || next.distanceAlong - since.along > RECHECK_WALKED_METERS;
         if (due) {
           lastRecheckRef.current = { at: Date.now(), along: next.distanceAlong };
-          const candidate = findRoute(nav.graph, position, nav.destination.coordinate, {
+          const candidate = findRoute(graph, position, destination.coordinate, {
             avoidStairs: nav.avoidStairs,
           });
           if (candidate && isMeaningfullyShorter(candidate.distance, next.remaining)) adopt(candidate, "faster");
@@ -319,13 +351,18 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
 
       // Building centers sit inside walls, so arrival counts once the walker reaches where the path meets the building.
       const reachedEntrance = next.distanceAlong >= route.arrivalDistance - ARRIVAL_METERS;
-      if (reachedEntrance || distanceMeters(position, nav.destination.coordinate) <= NEAR_DESTINATION_METERS) {
+      const arrived = reachedEntrance || distanceMeters(position, destination.coordinate) <= NEAR_DESTINATION_METERS;
+      if (arrived) {
         navRef.current = { ...navRef.current, hasArrived: true, previousRoute: null };
         setHasArrived(true);
         setPreviousRoute(null);
         setIsWrongWay(false);
       }
-      const shown = next.distanceFromRoute <= SNAP_TO_ROUTE_METERS ? next.point : position;
+      // On the route the dot sits on the route; off it, on the walkway they are actually walking.
+      const onRoute = next.distanceFromRoute <= SNAP_TO_ROUTE_METERS;
+      const offRoutePoint = onRoute || arrived ? undefined : walkway?.point;
+      setWalkwayPoint(offRoutePoint);
+      const shown = onRoute ? next.point : (offRoutePoint ?? position);
       if (navRef.current.isFollowing) mapRef.current?.follow(shown, navigationPadding());
     },
     [setCourse],
@@ -560,8 +597,10 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
     requestHeading();
     progressHintRef.current = 0;
     offRouteCountRef.current = 0;
+    otherWalkwayCountRef.current = 0;
     maxAlongRef.current = 0;
     lastRecheckRef.current = { at: Date.now(), along: 0 };
+    setWalkwayPoint(undefined);
     navRef.current = {
       ...navRef.current,
       mode: "navigate",
@@ -586,6 +625,7 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
     setPreviousRoute(null);
     setIsWrongWay(false);
     setProgress(undefined);
+    setWalkwayPoint(undefined);
     setHasArrived(false);
     if (selected) mapRef.current?.focus(selected.coordinate, sheetPadding());
   }
@@ -605,6 +645,7 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
     progressHintRef.current = next.segmentIndex;
     maxAlongRef.current = next.distanceAlong;
     offRouteCountRef.current = 0;
+    otherWalkwayCountRef.current = 0;
     previousHintRef.current = leftAt.segmentIndex;
     previousStartAlongRef.current = leftAt.distanceAlong;
     previousMatchesRef.current = 0;
@@ -635,7 +676,11 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
   );
   const mapRoute = mode === "navigate" ? navPath : mode === "directions" ? previewRoute?.path : undefined;
   const snappedToRoute = mode === "navigate" && progress && progress.distanceFromRoute <= SNAP_TO_ROUTE_METERS;
-  const shownLocation = snappedToRoute ? progress.point : geo.position;
+  const shownLocation = snappedToRoute
+    ? progress.point
+    : mode === "navigate" && walkwayPoint
+      ? walkwayPoint
+      : geo.position;
   const peopleOpenPeeked = isPeopleOpen && !isPeopleExpanded;
   const scheduleOpenPeeked = isScheduleOpen && !isScheduleExpanded;
   const accountOpenPeeked = isAccountOpen && !isAccountExpanded;

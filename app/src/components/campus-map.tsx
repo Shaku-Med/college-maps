@@ -23,6 +23,7 @@ import {
 } from "@/data/campus";
 import { cn } from "@/lib/cn";
 import { resolveCssColor } from "@/lib/css-color";
+import { distanceMeters, interpolate } from "@/lib/geo";
 
 const STYLE_LIGHT = CAMPUS.map.styles.light;
 const STYLE_DARK = CAMPUS.map.styles.dark;
@@ -342,6 +343,55 @@ function applyHeading(marker: Marker | null, degrees: number | undefined) {
   cone.style.transform = `rotate(${degrees}deg)`;
 }
 
+// Matches the camera's follow ease, so the dot and the map arrive together.
+const USER_GLIDE_MS = 600;
+// Friends report every few seconds, so their pins take longer to cover the gap.
+const PERSON_GLIDE_MS = 1000;
+// Anything farther is a first fix or a corrected signal, where sliding across campus would be wrong.
+const GLIDE_MAX_METERS = 120;
+
+type Glide = { to: (coordinate: Coordinate) => void; stop: () => void };
+
+// Slides a marker to each new position instead of jumping, easing out so it settles gently. A new
+// position mid slide carries on from wherever the marker is, so it never snaps back first.
+function createGlide(marker: Marker, duration: number): Glide {
+  let frame = 0;
+  let landing: ReturnType<typeof setTimeout> | undefined;
+  const halt = () => {
+    cancelAnimationFrame(frame);
+    frame = 0;
+    clearTimeout(landing);
+    landing = undefined;
+  };
+  return {
+    to(coordinate) {
+      halt();
+      const current = marker.getLngLat();
+      const from = { latitude: current.lat, longitude: current.lng };
+      const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      if (reduced || document.hidden || distanceMeters(from, coordinate) > GLIDE_MAX_METERS) {
+        marker.setLngLat(toLngLat(coordinate));
+        return;
+      }
+      const began = performance.now();
+      const step = (now: number) => {
+        const t = Math.min(1, (now - began) / duration);
+        marker.setLngLat(toLngLat(interpolate(from, coordinate, 1 - (1 - t) ** 3)));
+        if (t < 1) frame = requestAnimationFrame(step);
+        else halt();
+      };
+      frame = requestAnimationFrame(step);
+      // A browser can stop handing out frames while the page still counts as visible, as battery
+      // saving and some embedded views do. The marker still has to end up where the person is.
+      landing = setTimeout(() => {
+        halt();
+        marker.setLngLat(toLngLat(coordinate));
+      }, duration + 150);
+    },
+    stop: halt,
+  };
+}
+
 const FASTEST_MS = 20;
 const CALMEST_MS = 90;
 const SETTLED_DEGREES = 0.2;
@@ -426,8 +476,9 @@ export function CampusMap({
     new Map<string, { marker: Marker; el: HTMLButtonElement }>(),
   );
   const userMarkerRef = useRef<Marker | null>(null);
+  const userGlideRef = useRef<Glide | null>(null);
   const peopleMarkersRef = useRef(
-    new Map<string, { marker: Marker; el: HTMLElement }>(),
+    new Map<string, { marker: Marker; el: HTMLElement; glide: Glide }>(),
   );
   const pinMarkerRef = useRef<Marker | null>(null);
   const libRef = useRef<typeof import("maplibre-gl") | null>(null);
@@ -523,6 +574,7 @@ export function CampusMap({
   useEffect(() => {
     let cancelled = false;
     const markers = markersRef.current;
+    const peopleMarkers = peopleMarkersRef.current;
     const media = window.matchMedia(DARK_QUERY);
     const styleFor = (dark: boolean) => (dark ? STYLE_DARK : STYLE_LIGHT);
     const handleScheme = (event: MediaQueryListEvent) =>
@@ -618,8 +670,11 @@ export function CampusMap({
       window.removeEventListener("pageshow", relayout);
       markers.forEach(({ marker }) => marker.remove());
       markers.clear();
+      userGlideRef.current?.stop();
+      userGlideRef.current = null;
       userMarkerRef.current?.remove();
       userMarkerRef.current = null;
+      peopleMarkers.forEach(({ glide }) => glide.stop());
       mapRef.current?.remove();
       mapRef.current = null;
     };
@@ -691,20 +746,27 @@ export function CampusMap({
     if (!isReady || !lib || !map) return;
 
     if (!userLocation) {
+      userGlideRef.current?.stop();
+      userGlideRef.current = null;
       userMarkerRef.current?.remove();
       userMarkerRef.current = null;
       return;
     }
 
     if (!userMarkerRef.current) {
+      // The first fix places the dot; every one after that glides it along.
       userMarkerRef.current = new lib.Marker({
         element: createUserMarker(),
         anchor: "center",
-      });
+      })
+        .setLngLat(toLngLat(userLocation))
+        .addTo(map);
+      userMarkerRef.current.getElement().style.zIndex = "3";
+      userGlideRef.current = createGlide(userMarkerRef.current, USER_GLIDE_MS);
       applyHeading(userMarkerRef.current, headingRef.current?.current());
+      return;
     }
-    userMarkerRef.current.setLngLat(toLngLat(userLocation)).addTo(map);
-    userMarkerRef.current.getElement().style.zIndex = "3";
+    userGlideRef.current?.to(userLocation);
   }, [isReady, userLocation]);
 
   useEffect(() => {
@@ -716,6 +778,7 @@ export function CampusMap({
     const shown = new Set(people?.map((person) => person.id));
     for (const [id, entry] of markers) {
       if (!shown.has(id)) {
+        entry.glide.stop();
         entry.marker.remove();
         markers.delete(id);
       }
@@ -736,12 +799,13 @@ export function CampusMap({
         })
           .setLngLat(toLngLat(person.coordinate))
           .addTo(map);
-        entry = { marker, el };
+        entry = { marker, el, glide: createGlide(marker, PERSON_GLIDE_MS) };
         markers.set(person.id, entry);
+      } else {
+        entry.glide.to(person.coordinate);
       }
       paintPersonMarker(entry.el, person);
       entry.marker.getElement().style.zIndex = person.isDestination ? "4" : "3";
-      entry.marker.setLngLat(toLngLat(person.coordinate));
     }
   }, [isReady, people]);
 
