@@ -1,7 +1,7 @@
 "use client";
 
 import { Button, Surface } from "@heroui/react";
-import { Flag, LocateFixed, RefreshCw, Undo2, Volume2, VolumeX, Zap } from "lucide-react";
+import { Compass, Flag, LocateFixed, RefreshCw, Undo2, Volume2, VolumeX, Zap } from "lucide-react";
 
 import { StepIcon } from "@/components/step-icon";
 import type { Place } from "@/data/campus";
@@ -25,6 +25,8 @@ type NavigationHudProps = {
   voiceOn: boolean;
   onToggleVoice: () => void;
   onRecenter: () => void;
+  isRotated: boolean;
+  onPointNorth: () => void;
   onEnd: () => void;
 };
 
@@ -41,6 +43,8 @@ export function NavigationHud({
   voiceOn,
   onToggleVoice,
   onRecenter,
+  isRotated,
+  onPointNorth,
   onEnd,
 }: NavigationHudProps) {
   const current = progress?.stepIndex ?? 0;
@@ -114,12 +118,24 @@ export function NavigationHud({
       </div>
 
       <div className="absolute inset-x-0 bottom-0 z-30 md:bottom-4 md:left-4 md:right-auto md:w-[420px]">
-        {!isFollowing && !hasArrived ? (
-          <div className="mb-3 flex justify-end px-3 md:px-0">
-            <Button variant="secondary" onPress={onRecenter} className="rounded-full bg-overlay shadow-lg">
-              <LocateFixed aria-hidden />
-              Recenter
-            </Button>
+        {(!isFollowing || isRotated) && !hasArrived ? (
+          <div className="mb-3 flex justify-end gap-2 px-3 md:px-0">
+            {isRotated ? (
+              <Button
+                isIconOnly
+                variant="secondary"
+                aria-label="Point north"
+                onPress={onPointNorth}
+                className="rounded-full bg-overlay shadow-lg">
+                <Compass aria-hidden />
+              </Button>
+            ) : null}
+            {!isFollowing ? (
+              <Button variant="secondary" onPress={onRecenter} className="rounded-full bg-overlay shadow-lg">
+                <LocateFixed aria-hidden />
+                Recenter
+              </Button>
+            ) : null}
           </div>
         ) : null}
         <Surface className="flex items-center gap-3 rounded-t-[28px] px-5 pb-[max(1rem,var(--map-safe-bottom))] pt-4 shadow-2xl md:rounded-3xl md:pb-4">

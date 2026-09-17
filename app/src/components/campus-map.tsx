@@ -50,6 +50,7 @@ export type CampusMapHandle = {
   fitPath: (path: Coordinate[], padding?: Partial<PaddingOptions>) => void;
   showCampus: () => void;
   setHeading: (degrees: number | undefined) => void;
+  resetNorth: () => void;
 };
 
 // A friend sharing their location during a meetup, or the spot everyone is heading to.
@@ -76,12 +77,18 @@ type CampusMapProps = {
   initialFocus?: Coordinate;
   getFocusPadding?: () => Partial<PaddingOptions>;
   onSelect: (place: Place | undefined) => void;
+  /** The person started moving the map themselves: drag, pinch, twist, or scroll. */
   onUserPan?: () => void;
+  /** The map came to rest after the person moved it, including any glide after letting go. */
+  onUserSettle?: () => void;
+  onRotatedChange?: (rotated: boolean) => void;
   onPreviousRoutePress?: () => void;
   onPersonPress?: (id: string) => void;
   buildingView?: boolean;
   /** Lets the camera leave campus, for a street route from somewhere else. */
   unbounded?: boolean;
+  /** Lets the person turn the map, such as to line it up with the street in front of them. */
+  rotatable?: boolean;
 };
 
 const markerBase =
@@ -111,9 +118,9 @@ function routeFeature(
 
 type RouteLines = { active?: Coordinate[]; previous?: Coordinate[] };
 
+// isStyleLoaded() is false whenever any map tile is still loading, which is nearly always while the camera
+// follows someone. Updating a line needs nothing loaded, so only creating the layers waits for the style.
 function applyRouteLayers(map: MapLibreMap, { active, previous }: RouteLines) {
-  if (!map.isStyleLoaded()) return;
-
   const activeSource = map.getSource<GeoJSONSource>(ROUTE_SOURCE);
   if (activeSource) {
     activeSource.setData(routeFeature(active));
@@ -122,6 +129,7 @@ function applyRouteLayers(map: MapLibreMap, { active, previous }: RouteLines) {
       ?.setData(routeFeature(previous));
     return;
   }
+  if (!map.isStyleLoaded()) return;
 
   map.addSource(PREVIOUS_SOURCE, {
     type: "geojson",
@@ -178,8 +186,12 @@ function applyRouteLayers(map: MapLibreMap, { active, previous }: RouteLines) {
   });
 }
 
-function applyBuildingView(map: MapLibreMap, on: boolean, camera: "ease" | "keep") {
-  if (!map.isStyleLoaded() || !map.getSource("openmaptiles")) return;
+// Turning is allowed in building view and while getting directions. Anywhere else the map faces north.
+function applyBuildingView(map: MapLibreMap, on: boolean, camera: "ease" | "keep", rotatable: boolean) {
+  applyViewCamera(map, on, camera, rotatable);
+  // The style's own sources exist once the style has loaded, even while tiles are still coming in, which is
+  // all adding or removing a layer needs. Before that, the style.load handler applies this again.
+  if (!map.getSource("openmaptiles")) return;
 
   const dark = window.matchMedia(DARK_QUERY).matches;
   if (map.getLayer("building")) {
@@ -223,13 +235,22 @@ function applyBuildingView(map: MapLibreMap, on: boolean, camera: "ease" | "keep
   if (!on && map.getLayer(BUILDINGS_3D)) {
     map.removeLayer(BUILDINGS_3D);
   }
+}
 
+// Gestures and camera moves work whether or not the style has loaded.
+function applyViewCamera(map: MapLibreMap, on: boolean, camera: "ease" | "keep", rotatable: boolean) {
   map.setMaxPitch(60);
-  if (on) {
+  if (on || rotatable) {
     map.dragRotate.enable();
-    map.touchPitch.enable();
     map.touchZoomRotate.enableRotation();
     map.keyboard.enableRotation();
+  } else {
+    map.dragRotate.disable();
+    map.touchZoomRotate.disableRotation();
+    map.keyboard.disableRotation();
+  }
+  if (on) {
+    map.touchPitch.enable();
     if (camera === "ease" && (map.getPitch() < BUILDING_PITCH - 1 || map.getZoom() < 16)) {
       map.easeTo({
         pitch: BUILDING_PITCH,
@@ -241,12 +262,16 @@ function applyBuildingView(map: MapLibreMap, on: boolean, camera: "ease" | "keep
     return;
   }
 
-  map.dragRotate.disable();
   map.touchPitch.disable();
-  map.touchZoomRotate.disableRotation();
-  map.keyboard.disableRotation();
-  if (camera === "ease" && (map.getPitch() > 0.5 || Math.abs(map.getBearing()) > 0.5)) {
-    map.easeTo({ pitch: 0, bearing: 0, duration: 650, essential: true });
+  // One ease for both, so flattening and turning back north never cut each other off halfway.
+  const tilted = map.getPitch() > 0.5;
+  const turned = !rotatable && Math.abs(map.getBearing()) > 0.5;
+  if (camera === "ease" && (tilted || turned)) {
+    const settle = () => map.easeTo({ pitch: 0, ...(rotatable ? {} : { bearing: 0 }), duration: 650, essential: true });
+    // Only one camera move runs at a time. Ending navigation flies to the place first, and starting this
+    // right away would stop that flight halfway, so it waits for the camera to land.
+    if (map.isMoving()) map.once("moveend", settle);
+    else settle();
   }
 }
 
@@ -475,10 +500,13 @@ export function CampusMap({
   getFocusPadding,
   onSelect,
   onUserPan,
+  onUserSettle,
+  onRotatedChange,
   onPreviousRoutePress,
   onPersonPress,
   buildingView = false,
   unbounded = false,
+  rotatable = false,
 }: CampusMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
@@ -495,7 +523,13 @@ export function CampusMap({
   const [isReady, setIsReady] = useState(false);
 
   const onSelectRef = useRef(onSelect);
+  // A turn the map was asked to finish, such as back to north. Following moves the camera on every GPS fix,
+  // and each move would otherwise stop the turn wherever it had got to.
+  const bearingGoalRef = useRef<number | null>(null);
   const onUserPanRef = useRef(onUserPan);
+  const onUserSettleRef = useRef(onUserSettle);
+  const onRotatedChangeRef = useRef(onRotatedChange);
+  const rotatableRef = useRef(rotatable);
   const routesRef = useRef<RouteLines>({
     active: route,
     previous: previousRoute,
@@ -515,11 +549,24 @@ export function CampusMap({
   useEffect(() => {
     onSelectRef.current = onSelect;
     onUserPanRef.current = onUserPan;
+    onUserSettleRef.current = onUserSettle;
+    onRotatedChangeRef.current = onRotatedChange;
+    rotatableRef.current = rotatable;
     onPreviousRoutePressRef.current = onPreviousRoutePress;
     onPersonPressRef.current = onPersonPress;
     getFocusPaddingRef.current = getFocusPadding;
     buildingViewRef.current = buildingView;
-  }, [onSelect, onUserPan, onPreviousRoutePress, onPersonPress, getFocusPadding, buildingView]);
+  }, [
+    onSelect,
+    onUserPan,
+    onUserSettle,
+    onRotatedChange,
+    onPreviousRoutePress,
+    onPersonPress,
+    getFocusPadding,
+    buildingView,
+    rotatable,
+  ]);
 
   useImperativeHandle(ref, () => ({
     focus(coordinate, padding) {
@@ -532,8 +579,10 @@ export function CampusMap({
       });
     },
     follow(coordinate, padding, zoom) {
+      const goal = bearingGoalRef.current;
       mapRef.current?.easeTo({
         center: toLngLat(coordinate),
+        ...(goal === null ? {} : { bearing: goal }),
         zoom: zoom ?? Math.max(mapRef.current.getZoom(), 17.5),
         padding: { ...NO_PADDING, ...padding },
         duration: 600,
@@ -565,6 +614,10 @@ export function CampusMap({
         );
       });
       headingRef.current.set(degrees);
+    },
+    resetNorth() {
+      bearingGoalRef.current = 0;
+      mapRef.current?.easeTo({ bearing: 0, duration: 500, essential: true });
     },
     showCampus() {
       const map = mapRef.current;
@@ -636,10 +689,37 @@ export function CampusMap({
           onSelectRef.current(undefined);
         }
       });
-      map.on("dragstart", () => onUserPanRef.current?.());
+      // A camera change the person makes carries the input event behind it. Programmatic moves, like
+      // following the walker, do not, so they never count as the person taking over the map.
+      let handling = false;
+      map.on("movestart", (event) => {
+        if (!event.originalEvent) return;
+        // The person turning the map themselves overrides any turn it was still finishing.
+        bearingGoalRef.current = null;
+        handling = true;
+        onUserPanRef.current?.();
+      });
+      map.on("moveend", () => {
+        if (!handling) return;
+        handling = false;
+        onUserSettleRef.current?.();
+      });
+      let rotated = false;
+      map.on("rotate", () => {
+        // The heading cone is drawn relative to the screen, so it turns back as the map turns.
+        const shown = headingRef.current?.current();
+        applyHeading(userMarkerRef.current, shown === undefined ? undefined : shown - map.getBearing());
+        const goal = bearingGoalRef.current;
+        if (goal !== null && Math.abs(map.getBearing() - goal) < 0.5) bearingGoalRef.current = null;
+        const nowRotated = Math.abs(map.getBearing()) > 1;
+        if (nowRotated !== rotated) {
+          rotated = nowRotated;
+          onRotatedChangeRef.current?.(nowRotated);
+        }
+      });
       map.on("style.load", () => {
         applyRouteLayers(map, routesRef.current);
-        applyBuildingView(map, buildingViewRef.current, "keep");
+        applyBuildingView(map, buildingViewRef.current, "keep", rotatableRef.current);
       });
       map.on("click", PREVIOUS_HIT, (event) => {
         event.preventDefault();
@@ -696,8 +776,8 @@ export function CampusMap({
   useEffect(() => {
     const map = mapRef.current;
     if (!isReady || !map) return;
-    applyBuildingView(map, buildingView, "ease");
-  }, [isReady, buildingView]);
+    applyBuildingView(map, buildingView, "ease", rotatable);
+  }, [isReady, buildingView, rotatable]);
 
   useEffect(() => {
     const map = mapRef.current;

@@ -1,7 +1,7 @@
 "use client";
 
 import { Button, Separator, Spinner, Surface, ToggleButton, ToggleButtonGroup, toast } from "@heroui/react";
-import { Building2, CalendarClock, LocateFixed, Navigation, Radio, School, UserRound, Users } from "lucide-react";
+import { Building2, CalendarClock, Compass, LocateFixed, Navigation, Radio, School, UserRound, Users } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { AccountPanel, initials } from "@/components/account-panel";
@@ -69,6 +69,9 @@ const FOLLOW_ZOOM: Record<TravelMode, number> = { walk: 17.5, bike: 16.5, drive:
 const STREET_ARRIVAL_METERS: Record<TravelMode, number> = { walk: 20, bike: 30, drive: 50 };
 // Faster travel covers more ground between fixes, so wrong way and off route need more room before firing.
 const TRAVEL_SLACK: Record<TravelMode, number> = { walk: 1, bike: 2, drive: 4 };
+// After someone moves the map during navigation, it goes back to following them once it has sat still
+// this long, so looking around never means losing the route.
+const FOLLOW_AGAIN_MS = 8_000;
 
 // Looser on a weak GPS fix so a jumpy signal does not trigger constant re-routing.
 function offRouteLimit(accuracy: number) {
@@ -110,19 +113,31 @@ function MapViewControls({
   buildingView,
   locating,
   located,
+  rotated,
   onToggleBuildingView,
   onCampus,
   onLocate,
+  onPointNorth,
 }: {
   buildingView: boolean;
   locating: boolean;
   located: boolean;
+  rotated: boolean;
   onToggleBuildingView: () => void;
   onCampus: () => void;
   onLocate: () => void;
+  onPointNorth: () => void;
 }) {
   return (
     <Surface className="flex flex-col overflow-hidden rounded-2xl p-1 shadow-lg">
+      {rotated ? (
+        <>
+          <Button isIconOnly variant="ghost" aria-label="Point north" onPress={onPointNorth}>
+            <Compass aria-hidden />
+          </Button>
+          <Separator className="mx-2 my-0.5 w-auto" />
+        </>
+      ) : null}
       <Button
         isIconOnly
         variant="ghost"
@@ -192,6 +207,7 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
   const [isWrongWay, setIsWrongWay] = useState(false);
   const [hasArrived, setHasArrived] = useState(false);
   const [walkwayPoint, setWalkwayPoint] = useState<Coordinate>();
+  const [isRotated, setIsRotated] = useState(false);
   const [travelMode, setTravelMode] = useState<TravelMode>("drive");
   const [streetResult, setStreetResult] = useState<{ key: string; route: Route | null; failed: boolean } | null>(null);
 
@@ -227,7 +243,23 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
   const streetFetchRef = useRef<{ key: string; origin: Coordinate } | null>(null);
   const streetRerouteRef = useRef({ inflight: false, at: 0 });
 
+  const followAgainRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
   useEffect(() => () => clearTimeout(noticeTimerRef.current), []);
+  useEffect(() => () => clearTimeout(followAgainRef.current), []);
+
+  // Picks up following where the walker is right now, not where they were when the timer started. The
+  // rotation they chose stays; only the position and zoom come back.
+  const followAgain = useCallback(() => {
+    clearTimeout(followAgainRef.current);
+    const nav = navRef.current;
+    if (nav.mode !== "navigate" || nav.isFollowing) return;
+    navRef.current = { ...nav, isFollowing: true };
+    setIsFollowing(true);
+    const at = latestFixRef.current;
+    const travel = nav.navRoute?.travel;
+    if (at) mapRef.current?.follow(at, navigationPadding(), travel ? FOLLOW_ZOOM[travel] : undefined);
+  }, []);
 
   // Swaps in a new route and keeps the one being left on the map, faded, so the walker can change their mind.
   const commitRoute = useCallback((chosen: Route, leaving: Route, position: Coordinate, notice: RouteNotice) => {
@@ -754,6 +786,7 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
   }
 
   function endNavigation() {
+    clearTimeout(followAgainRef.current);
     setMode("browse");
     setNavRoute(null);
     setPreviousRoute(null);
@@ -783,6 +816,7 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
   }
 
   function recenter() {
+    clearTimeout(followAgainRef.current);
     setIsFollowing(true);
     if (geo.position) {
       mapRef.current?.follow(geo.position, navigationPadding(), navRoute?.travel ? FOLLOW_ZOOM[navRoute.travel] : undefined);
@@ -832,8 +866,19 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
         getFocusPadding={meetupSheetOpen || peopleExpanded || scheduleExpanded || accountExpanded || (mode === "directions" && isDirectionsExpanded) ? sheetPadding : hasPeek ? peekPadding : sheetPadding}
         onSelect={selectPlace}
         onUserPan={() => {
-          if (mode === "navigate") setIsFollowing(false);
+          if (mode !== "navigate") return;
+          clearTimeout(followAgainRef.current);
+          // Set right away, so a GPS fix arriving mid gesture does not pull the map out from under a finger.
+          navRef.current = { ...navRef.current, isFollowing: false };
+          setIsFollowing(false);
         }}
+        onUserSettle={() => {
+          if (mode !== "navigate" || hasArrived) return;
+          clearTimeout(followAgainRef.current);
+          followAgainRef.current = setTimeout(followAgain, FOLLOW_AGAIN_MS);
+        }}
+        onRotatedChange={setIsRotated}
+        rotatable={mode === "directions" || mode === "navigate"}
         onPersonPress={(id) => setActivePersonId((current) => (current === id ? null : id))}
         buildingView={buildingView}
         unbounded={mode === "directions" ? isOffCampus : mode === "navigate" && navRoute?.travel !== undefined}
@@ -1092,6 +1137,8 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
               onToggleBuildingView={() => setBuildingView((on) => !on)}
               onCampus={() => mapRef.current?.showCampus()}
               onLocate={handleLocate}
+              rotated={isRotated}
+              onPointNorth={() => mapRef.current?.resetNorth()}
             />
           </div>
 
@@ -1154,6 +1201,8 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
             onToggleBuildingView={() => setBuildingView((on) => !on)}
             onCampus={() => mapRef.current?.showCampus()}
             onLocate={handleLocate}
+            rotated={isRotated}
+            onPointNorth={() => mapRef.current?.resetNorth()}
           />
         </div>
       ) : null}
@@ -1172,6 +1221,8 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
           voiceOn={voice.enabled}
           onToggleVoice={voice.toggle}
           onRecenter={recenter}
+          isRotated={isRotated}
+          onPointNorth={() => mapRef.current?.resetNorth()}
           onEnd={endNavigation}
         />
       ) : null}
