@@ -167,7 +167,9 @@ Vercel's Go framework preset runs an ordinary `net/http` server, so bkapp deploy
 
 Vercel leaves ports 465 and 587 open, so `EMAIL_MODE=smtp` with a Gmail app password works there.
 
-To deploy: point a Vercel project at `backend/bkapp` as its root directory, copy the variables from `.env.production`, add the three `VAPID_*` values from `.env.notification` so push notifications keep working, and deploy. Then point the web app's `/v1/*` proxy in `app/netlify.toml` at the Vercel URL.
+To deploy: point a Vercel project at `backend/bkapp` as its root directory, copy the variables from `.env.production`, add the three `VAPID_*` values from `.env.notification` so push notifications keep working, and deploy.
+
+Then point the web app's `/v1` at it. The browser always calls the web app's own origin, so the session cookie stays first party, and the site forwards `/v1` to the API. On Vercel, set `API_UPSTREAM` to the API's address; on Netlify, the redirect in `app/netlify.toml` does it. Set `NEXT_PUBLIC_API_URL` to the web app's own address in both cases. Getting this wrong used to make the site forward `/v1` to itself, which Vercel answers with `508 INFINITE_LOOP_DETECTED`; the build now stops instead. Whichever host the web app lives on, that address also has to be in the API's `ALLOWED_ORIGINS`, and in rtapp's, or sign in and live meetups are refused.
 
 Set `CRON_SECRET` as well. A host that suspends an idle instance cannot be relied on to fire the hourly cleanup timer, so `vercel.json` schedules `GET /v1/maintenance` once a day to run the same jobs. Vercel sends the value as `Authorization: Bearer ...`. Without the variable the route answers 404 like any unknown path, so forgetting it cannot leave the endpoint open, but nothing gets cleaned up either.
 

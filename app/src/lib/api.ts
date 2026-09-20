@@ -41,8 +41,9 @@ export const API_ORIGIN = readOrigin("NEXT_PUBLIC_API_URL", process.env.NEXT_PUB
 // The realtime server (backend/rtapp) that streams friends' positions during a meetup.
 export const REALTIME_ORIGIN = readOrigin("NEXT_PUBLIC_REALTIME_URL", process.env.NEXT_PUBLIC_REALTIME_URL);
 
-// Production talks to this website; Netlify (or next.config) forwards /v1 to the Go API so the
-// SameSite=Strict session cookie stays first-party. Development still hits the Go process directly.
+// Production talks to this website, which forwards /v1 to the Go API (API_UPSTREAM in next.config, or a
+// redirect rule on hosts that have one) so the SameSite=Strict session cookie stays first-party.
+// Development still hits the Go process directly.
 export function apiOriginFor(pageHostname: string, origin: string | null = API_ORIGIN) {
   if (!origin) return origin;
   // Only the cookie API is proxied onto this site. Realtime stays on its own host.
