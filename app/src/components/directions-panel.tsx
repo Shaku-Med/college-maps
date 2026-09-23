@@ -20,7 +20,6 @@ import { useState } from "react";
 import { CollapseButton, SheetGrabber } from "@/components/sheet-chrome";
 import { StepIcon } from "@/components/step-icon";
 import { CATEGORY_LABELS, PLACES, type Place } from "@/data/campus";
-import type { GeoStatus } from "@/hooks/use-geolocation";
 import { BROWSE_ORDER } from "@/lib/categories";
 import { formatRouteTime } from "@/lib/directions";
 import { formatDistance } from "@/lib/geo";
@@ -57,7 +56,8 @@ type DirectionsPanelProps = {
   avoidStairs: boolean;
   route: Route | null;
   issue?: RouteIssue;
-  geoStatus: GeoStatus;
+  /** True once any position has arrived, even a rough one. */
+  located: boolean;
   /** How someone off campus is getting there. On campus there is no choice to make: it is a walk. */
   travel: TravelMode | null;
   onTravelChange: (travel: TravelMode) => void;
@@ -70,8 +70,8 @@ type DirectionsPanelProps = {
 };
 
 const ISSUE_TEXT: Record<Exclude<RouteIssue, "loading" | "locating" | "finding">, string> = {
-  denied: "Location is off for this site. Allow it in your browser settings, or pick a starting building.",
-  unavailable: "This browser cannot share your location. Pick a starting building instead.",
+  denied: "Location is off for this site. Allow it in your browser settings, or pick a starting building and follow the steps.",
+  unavailable: "This browser cannot share your location. Pick a starting building and follow the steps instead.",
   "no-route": "We could not find a walking route between these places.",
   "no-step-free": "There is no step-free route here yet. Turn off Avoid stairs to see the fastest walk.",
   "no-street-route": "We could not find a route from where you are. Try another way to travel.",
@@ -84,7 +84,7 @@ export function DirectionsPanel({
   avoidStairs,
   route,
   issue,
-  geoStatus,
+  located,
   travel,
   onTravelChange,
   onOriginChange,
@@ -95,7 +95,10 @@ export function DirectionsPanel({
   onClose,
 }: DirectionsPanelProps) {
   const [showSteps, setShowSteps] = useState(false);
-  const canStart = origin === MY_LOCATION && route !== null && geoStatus === "active";
+  // A rough fix is enough to set off; the route tightens as better ones arrive. With no location at all, a
+  // walk from a chosen building can still be followed step by step.
+  const live = origin === MY_LOCATION && located;
+  const canStart = route !== null && (live || origin !== MY_LOCATION);
   const mode = TRAVEL_MODES.find((option) => option.id === (travel ?? "walk")) ?? TRAVEL_MODES[1];
 
   return (
@@ -221,16 +224,13 @@ export function DirectionsPanel({
             </div>
 
             <div className="mt-4 flex gap-2">
-              {origin === MY_LOCATION ? (
-                <Button variant="primary" size="lg" className="flex-1" isDisabled={!canStart} onPress={onStart}>
-                  <Navigation aria-hidden />
-                  Start
-                </Button>
-              ) : null}
+              <Button variant="primary" size="lg" className="flex-1" isDisabled={!canStart} onPress={onStart}>
+                <Navigation aria-hidden />
+                {live ? "Start" : "Follow steps"}
+              </Button>
               <Button
                 variant="secondary"
                 size="lg"
-                className={origin === MY_LOCATION ? undefined : "flex-1"}
                 onPress={() => setShowSteps((value) => !value)}
                 aria-expanded={showSteps}>
                 {showSteps ? "Hide steps" : "Steps"}

@@ -31,6 +31,7 @@ import {
   findRoute,
   matchWalkway,
   parseGraph,
+  progressAtDistance,
   remainingPath,
   routeVia,
   trackProgress,
@@ -72,6 +73,8 @@ const TRAVEL_SLACK: Record<TravelMode, number> = { walk: 1, bike: 2, drive: 4 };
 // After someone moves the map during navigation, it goes back to following them once it has sat still
 // this long, so looking around never means losing the route.
 const FOLLOW_AGAIN_MS = 8_000;
+// Standing still, a phone's reported course is meaningless, so it only counts above a walking pace.
+const COURSE_SPEED_MPS = 0.7;
 
 // Looser on a weak GPS fix so a jumpy signal does not trigger constant re-routing.
 function offRouteLimit(accuracy: number) {
@@ -208,6 +211,11 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
   const [hasArrived, setHasArrived] = useState(false);
   const [walkwayPoint, setWalkwayPoint] = useState<Coordinate>();
   const [isRotated, setIsRotated] = useState(false);
+  // Navigation turns the map the way the walker faces, like every navigation app. The compass button flips
+  // it back to north up.
+  const [facingUp, setFacingUp] = useState(true);
+  // Set when navigating without a live location: the walker moves through the steps themselves.
+  const [manualStep, setManualStep] = useState<number | null>(null);
   const [travelMode, setTravelMode] = useState<TravelMode>("drive");
   const [streetResult, setStreetResult] = useState<{ key: string; route: Route | null; failed: boolean } | null>(null);
 
@@ -312,7 +320,7 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
   );
 
   const handlePosition = useCallback(
-    ({ position, accuracy }: GeoFix) => {
+    ({ position, accuracy, heading, speed }: GeoFix) => {
       if (centerOnFixRef.current) {
         centerOnFixRef.current = false;
         if (distanceMeters(position, CAMPUS_CENTER) > OFF_CAMPUS_METERS) {
@@ -322,18 +330,27 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
         }
       }
 
-      const lastCourseFix = lastCourseFixRef.current;
-      if (!lastCourseFix || distanceMeters(lastCourseFix, position) >= COURSE_MIN_METERS) {
-        if (lastCourseFix && accuracy <= UNTRUSTED_ACCURACY_METERS) {
-          courseRef.current = bearingDegrees(lastCourseFix, position);
-          setCourse(courseRef.current);
-        }
+      // A phone that reports its own course while moving knows better than two fixes compared by hand.
+      if (heading !== undefined && (speed ?? 0) >= COURSE_SPEED_MPS) {
+        courseRef.current = heading;
+        setCourse(heading);
         lastCourseFixRef.current = position;
+      } else {
+        const lastCourseFix = lastCourseFixRef.current;
+        if (!lastCourseFix || distanceMeters(lastCourseFix, position) >= COURSE_MIN_METERS) {
+          if (lastCourseFix && accuracy <= UNTRUSTED_ACCURACY_METERS) {
+            courseRef.current = bearingDegrees(lastCourseFix, position);
+            setCourse(courseRef.current);
+          }
+          lastCourseFixRef.current = position;
+        }
       }
       latestFixRef.current = position;
 
       const nav = navRef.current;
       if (nav.mode !== "navigate" || !nav.navRoute || !nav.destination || nav.hasArrived) return;
+      // Location arriving mid trip takes over from stepping through by hand.
+      setManualStep(null);
 
       let route = nav.navRoute;
       let next = trackProgress(route, position, progressHintRef.current);
@@ -701,7 +718,7 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
     setMeetupId(id);
     setIsMeetupSheetOpen(true);
     geo.start();
-    requestHeading();
+    requestCompass();
   }
 
   function openAccount() {
@@ -731,7 +748,7 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
   }
 
   function handleLocate() {
-    requestHeading();
+    requestCompass();
     if (geo.position) {
       mapRef.current?.focus(geo.position);
       return;
@@ -741,7 +758,6 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
   }
 
   function openDirections() {
-    requestHeading();
     setIsDirectionsExpanded(true);
     setMode("directions");
     geo.start();
@@ -752,9 +768,39 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
     if (next === MY_LOCATION) geo.start();
   }
 
+  // iPhones show one permission dialog at a time and drop the rest, so the compass is only ever asked for
+  // once a location is in hand. Without a compass the map still turns, using the direction of travel.
+  function requestCompass() {
+    if (geo.position) requestHeading();
+  }
+
   function startNavigation() {
-    if (!previewRoute || !geo.position) return;
-    requestHeading();
+    if (!previewRoute) return;
+    const from = geo.position;
+    // No location, but a starting building was picked: walk through the steps by hand instead of blocking.
+    if (!from) {
+      if (origin === MY_LOCATION) return;
+      setManualStep(0);
+      setProgress(progressAtDistance(previewRoute, 0));
+      setNavRoute(previewRoute);
+      setPreviousRoute(null);
+      setIsWrongWay(false);
+      setHasArrived(false);
+      setIsFollowing(false);
+      navRef.current = {
+        ...navRef.current,
+        mode: "navigate",
+        navRoute: previewRoute,
+        previousRoute: null,
+        isFollowing: false,
+        hasArrived: false,
+      };
+      voice.begin(previewRoute);
+      setMode("navigate");
+      mapRef.current?.fitPath(previewRoute.path, previewPadding());
+      return;
+    }
+    requestCompass();
     progressHintRef.current = 0;
     offRouteCountRef.current = 0;
     otherWalkwayCountRef.current = 0;
@@ -762,6 +808,7 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
     lastRecheckRef.current = { at: Date.now(), along: 0 };
     streetRerouteRef.current = { inflight: false, at: Date.now() };
     setWalkwayPoint(undefined);
+    setManualStep(null);
     voice.begin(previewRoute);
     navRef.current = {
       ...navRef.current,
@@ -774,12 +821,12 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
     setPreviousRoute(null);
     setIsWrongWay(false);
     setNavRoute(previewRoute);
-    setProgress(trackProgress(previewRoute, geo.position, 0));
+    setProgress(trackProgress(previewRoute, from, 0));
     setHasArrived(false);
     setIsFollowing(true);
     setMode("navigate");
     mapRef.current?.follow(
-      geo.position,
+      from,
       navigationPadding(),
       previewRoute.travel ? FOLLOW_ZOOM[previewRoute.travel] : undefined,
     );
@@ -787,6 +834,8 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
 
   function endNavigation() {
     clearTimeout(followAgainRef.current);
+    setManualStep(null);
+    setFacingUp(true);
     setMode("browse");
     setNavRoute(null);
     setPreviousRoute(null);
@@ -813,6 +862,19 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
       return;
     }
     commitRoute(chosen, nav.navRoute, geo.position, "switched");
+  }
+
+  // Without a live location the walker moves through the steps themselves, and the map shows each one.
+  function showStep(index: number) {
+    const route = navRoute;
+    if (!route) return;
+    const clamped = Math.max(0, Math.min(route.steps.length - 1, index));
+    const at = progressAtDistance(route, route.steps[clamped].startDistance);
+    setManualStep(clamped);
+    setProgress(at);
+    setHasArrived(clamped === route.steps.length - 1);
+    voice.announceStep(route, clamped);
+    mapRef.current?.focus(at.point, navigationPadding());
   }
 
   function recenter() {
@@ -879,6 +941,7 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
         }}
         onRotatedChange={setIsRotated}
         rotatable={mode === "directions" || mode === "navigate"}
+        headingUp={mode === "navigate" && isFollowing && facingUp && manualStep === null}
         onPersonPress={(id) => setActivePersonId((current) => (current === id ? null : id))}
         buildingView={buildingView}
         unbounded={mode === "directions" ? isOffCampus : mode === "navigate" && navRoute?.travel !== undefined}
@@ -1169,7 +1232,7 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
             avoidStairs={avoidStairs}
             route={previewRoute}
             issue={routeIssue}
-            geoStatus={geo.status}
+            located={geo.located}
             travel={isOffCampus ? travelMode : null}
             onTravelChange={setTravelMode}
             onOriginChange={handleOriginChange}
@@ -1223,6 +1286,16 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
           onRecenter={recenter}
           isRotated={isRotated}
           onPointNorth={() => mapRef.current?.resetNorth()}
+          facingUp={facingUp}
+          onToggleFacing={() => {
+            const next = !facingUp;
+            setFacingUp(next);
+            if (next) recenter();
+            else mapRef.current?.resetNorth();
+          }}
+          manualStep={manualStep}
+          onStepBack={() => showStep((manualStep ?? 0) - 1)}
+          onStepNext={() => showStep((manualStep ?? 0) + 1)}
           onEnd={endNavigation}
         />
       ) : null}

@@ -475,6 +475,32 @@ export function trackProgress(route: Route, position: Coordinate, hintSegment = 
   };
 }
 
+/**
+ * Where someone would be after covering this much of the route. Used when there is no live location and the
+ * walker is stepping through the directions themselves.
+ */
+export function progressAtDistance(route: Route, meters: number): RouteProgress {
+  const along = Math.max(0, Math.min(route.distance, meters));
+  let segment = 1;
+  while (segment < route.path.length - 1 && route.cumulative[segment] < along) segment++;
+  const span = route.cumulative[segment] - route.cumulative[segment - 1];
+  const t = span === 0 ? 0 : (along - route.cumulative[segment - 1]) / span;
+
+  let stepIndex = 0;
+  for (let i = 0; i < route.steps.length; i++) {
+    if (route.steps[i].startDistance <= along + 3) stepIndex = i;
+  }
+
+  return {
+    point: interpolate(route.path[segment - 1], route.path[segment], t),
+    distanceAlong: along,
+    distanceFromRoute: 0,
+    remaining: Math.max(0, route.distance - along),
+    stepIndex,
+    segmentIndex: segment,
+  };
+}
+
 export function remainingPath(route: Route, progress: RouteProgress): Coordinate[] {
   return [progress.point, ...route.path.slice(progress.segmentIndex)];
 }

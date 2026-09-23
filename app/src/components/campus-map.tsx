@@ -34,6 +34,11 @@ const CAMPUS_BOUNDS: [[number, number], [number, number]] = [
   [east, north],
 ];
 const CAMPUS_MIN_ZOOM = 13;
+// Turning the map to match the way someone faces: small sensor wobble is ignored, and turns are spaced out
+// so the map glides instead of twitching on every compass reading.
+const HEADING_UP_MIN_DEGREES = 4;
+const HEADING_UP_GAP_MS = 450;
+const HEADING_UP_MS = 500;
 // Low enough to fit a drive in from another borough.
 const STREETS_MIN_ZOOM = 9;
 const DARK_QUERY = "(prefers-color-scheme: dark)";
@@ -89,6 +94,8 @@ type CampusMapProps = {
   unbounded?: boolean;
   /** Lets the person turn the map, such as to line it up with the street in front of them. */
   rotatable?: boolean;
+  /** Turns the map so the way the person is facing is up, the way navigation apps do. */
+  headingUp?: boolean;
 };
 
 const markerBase =
@@ -507,6 +514,7 @@ export function CampusMap({
   buildingView = false,
   unbounded = false,
   rotatable = false,
+  headingUp = false,
 }: CampusMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
@@ -530,6 +538,10 @@ export function CampusMap({
   const onUserSettleRef = useRef(onUserSettle);
   const onRotatedChangeRef = useRef(onRotatedChange);
   const rotatableRef = useRef(rotatable);
+  const headingUpRef = useRef(headingUp);
+  // The heading the map is being turned to. Null while the map is not following anyone's heading.
+  const facingRef = useRef<number | null>(null);
+  const turnedAtRef = useRef(0);
   const routesRef = useRef<RouteLines>({
     active: route,
     previous: previousRoute,
@@ -552,6 +564,8 @@ export function CampusMap({
     onUserSettleRef.current = onUserSettle;
     onRotatedChangeRef.current = onRotatedChange;
     rotatableRef.current = rotatable;
+    headingUpRef.current = headingUp;
+    if (!headingUp) facingRef.current = null;
     onPreviousRoutePressRef.current = onPreviousRoutePress;
     onPersonPressRef.current = onPersonPress;
     getFocusPaddingRef.current = getFocusPadding;
@@ -566,7 +580,21 @@ export function CampusMap({
     getFocusPadding,
     buildingView,
     rotatable,
+    headingUp,
   ]);
+
+  // Eases the map round to the way the person faces. Tiny corrections are skipped so a wobbling compass does
+  // not shake the map, and turns stay out of the way of the move that follows the walker.
+  const turnMapToFacing = () => {
+    const map = mapRef.current;
+    const facing = facingRef.current;
+    if (!map || facing === null || !headingUpRef.current || map.isMoving()) return;
+    const now = performance.now();
+    if (now - turnedAtRef.current < HEADING_UP_GAP_MS) return;
+    if (Math.abs(((facing - map.getBearing() + 540) % 360) - 180) < HEADING_UP_MIN_DEGREES) return;
+    turnedAtRef.current = now;
+    map.easeTo({ bearing: facing, duration: HEADING_UP_MS, essential: true });
+  };
 
   useImperativeHandle(ref, () => ({
     focus(coordinate, padding) {
@@ -579,7 +607,8 @@ export function CampusMap({
       });
     },
     follow(coordinate, padding, zoom) {
-      const goal = bearingGoalRef.current;
+      // Moving and turning go in one camera move, or each would cut the other short.
+      const goal = headingUpRef.current ? facingRef.current : bearingGoalRef.current;
       mapRef.current?.easeTo({
         center: toLngLat(coordinate),
         ...(goal === null ? {} : { bearing: goal }),
@@ -605,6 +634,10 @@ export function CampusMap({
       });
     },
     setHeading(degrees) {
+      if (headingUpRef.current && degrees !== undefined) {
+        facingRef.current = degrees;
+        turnMapToFacing();
+      }
       headingRef.current ??= createHeadingAnimator((shown) => {
         // The map never rotates today, but subtracting the bearing keeps the cone true if it ever does.
         const bearing = mapRef.current?.getBearing() ?? 0;

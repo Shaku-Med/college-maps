@@ -1,7 +1,19 @@
 "use client";
 
 import { Button, Surface } from "@heroui/react";
-import { Compass, Flag, LocateFixed, RefreshCw, Undo2, Volume2, VolumeX, Zap } from "lucide-react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  Compass,
+  Flag,
+  LocateFixed,
+  Navigation2,
+  RefreshCw,
+  Undo2,
+  Volume2,
+  VolumeX,
+  Zap,
+} from "lucide-react";
 
 import { StepIcon } from "@/components/step-icon";
 import type { Place } from "@/data/campus";
@@ -27,6 +39,13 @@ type NavigationHudProps = {
   onRecenter: () => void;
   isRotated: boolean;
   onPointNorth: () => void;
+  /** The map turns to face the way the walker is going. Off means north stays up. */
+  facingUp: boolean;
+  onToggleFacing: () => void;
+  /** Set when there is no live location and the walker moves through the steps themselves. */
+  manualStep: number | null;
+  onStepBack: () => void;
+  onStepNext: () => void;
   onEnd: () => void;
 };
 
@@ -45,12 +64,21 @@ export function NavigationHud({
   onRecenter,
   isRotated,
   onPointNorth,
+  facingUp,
+  onToggleFacing,
+  manualStep,
+  onStepBack,
+  onStepNext,
   onEnd,
 }: NavigationHudProps) {
   const current = progress?.stepIndex ?? 0;
   const next = route.steps[Math.min(current + 1, route.steps.length - 1)];
   const toNext = Math.max(0, next.startDistance - (progress?.distanceAlong ?? 0));
   const remaining = progress?.remaining ?? route.distance;
+  // Stepping through by hand shows the step being walked; following live shows the one coming up.
+  const stepping = manualStep !== null;
+  const shownStep = stepping ? route.steps[manualStep] : next;
+  const shownDistance = stepping ? shownStep.length : toNext;
 
   return (
     <>
@@ -81,10 +109,10 @@ export function NavigationHud({
             </>
           ) : (
             <>
-              <StepIcon step={next} className="size-9 shrink-0" strokeWidth={2.25} />
+              <StepIcon step={shownStep} className="size-9 shrink-0" strokeWidth={2.25} />
               <div className="min-w-0">
-                <p className="text-2xl font-semibold leading-tight tracking-tight">{formatDistance(toNext)}</p>
-                <p className="truncate text-base opacity-90">{stepText(next, destination.name)}</p>
+                <p className="text-2xl font-semibold leading-tight tracking-tight">{formatDistance(shownDistance)}</p>
+                <p className="truncate text-base opacity-90">{stepText(shownStep, destination.name)}</p>
               </div>
             </>
           )}
@@ -118,9 +146,9 @@ export function NavigationHud({
       </div>
 
       <div className="absolute inset-x-0 bottom-0 z-30 md:bottom-4 md:left-4 md:right-auto md:w-[420px]">
-        {(!isFollowing || isRotated) && !hasArrived ? (
+        {!hasArrived && !stepping ? (
           <div className="mb-3 flex justify-end gap-2 px-3 md:px-0">
-            {isRotated ? (
+            {!facingUp && isRotated ? (
               <Button
                 isIconOnly
                 variant="secondary"
@@ -130,6 +158,15 @@ export function NavigationHud({
                 <Compass aria-hidden />
               </Button>
             ) : null}
+            <Button
+              isIconOnly
+              variant="secondary"
+              aria-label={facingUp ? "Keep north up" : "Turn the map the way I am going"}
+              aria-pressed={facingUp}
+              onPress={onToggleFacing}
+              className={facingUp ? "rounded-full bg-accent-soft text-accent-soft-foreground shadow-lg" : "rounded-full bg-overlay shadow-lg"}>
+              {facingUp ? <Navigation2 aria-hidden /> : <Compass aria-hidden />}
+            </Button>
             {!isFollowing ? (
               <Button variant="secondary" onPress={onRecenter} className="rounded-full bg-overlay shadow-lg">
                 <LocateFixed aria-hidden />
@@ -142,6 +179,13 @@ export function NavigationHud({
           <div className="min-w-0 flex-1">
             {hasArrived ? (
               <p className="text-base font-semibold">Enjoy your class</p>
+            ) : stepping ? (
+              <>
+                <p className="text-lg font-semibold leading-tight">
+                  Step {manualStep + 1} of {route.steps.length}
+                </p>
+                <p className="truncate text-sm text-muted">Location is off, so tap through the steps</p>
+              </>
             ) : (
               <>
                 <p className="text-lg font-semibold leading-tight">{formatRouteTime(route, remaining)}</p>
@@ -151,6 +195,22 @@ export function NavigationHud({
               </>
             )}
           </div>
+          {stepping && !hasArrived ? (
+            <>
+              <Button
+                isIconOnly
+                variant="secondary"
+                size="lg"
+                aria-label="Previous step"
+                isDisabled={manualStep === 0}
+                onPress={onStepBack}>
+                <ChevronLeft aria-hidden />
+              </Button>
+              <Button isIconOnly variant="primary" size="lg" aria-label="Next step" onPress={onStepNext}>
+                <ChevronRight aria-hidden />
+              </Button>
+            </>
+          ) : null}
           <Button
             isIconOnly
             variant="ghost"

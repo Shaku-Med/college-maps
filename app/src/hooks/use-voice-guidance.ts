@@ -152,6 +152,13 @@ export function useVoiceGuidance({ route, progress, destinationName, isWrongWay,
     if (!next.travel) prepareSpeech(COMMON_CAMPUS_LINES, { later: true });
   }, []);
 
+  /** Says one step right now, for someone stepping through the directions by hand without a live location. */
+  const announceStep = useCallback((route: Route, index: number) => {
+    if (!enabledRef.current) return;
+    unlockAudio();
+    speak(actLine(route, index, nameRef.current ?? "your destination"), { urgent: true });
+  }, []);
+
   const toggle = useCallback(() => {
     const next = !enabledRef.current;
     enabledRef.current = next;
@@ -219,5 +226,5 @@ export function useVoiceGuidance({ route, progress, destinationName, isWrongWay,
     if (hasArrived && enabledRef.current) speak(arrivalLine(nameRef.current ?? "your destination"), { urgent: true });
   }, [hasArrived]);
 
-  return { enabled, toggle, begin, prime };
+  return { enabled, toggle, begin, prime, announceStep };
 }
