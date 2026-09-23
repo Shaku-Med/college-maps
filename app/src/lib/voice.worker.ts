@@ -16,13 +16,18 @@ const VOICES = new Set(["af_heart", "am_michael"]);
 
 type Voice = Parameters<KokoroTTS["generate"]>[1] extends { voice?: infer V } ? V : never;
 
+// 0 is a line being said right now, 1 a line for the route being walked, 2 a phrase made in the background.
+type Priority = 0 | 1 | 2;
+
 type Request =
   | { type: "load" }
   | { type: "clear" }
-  | { type: "promote"; id: number }
-  | { type: "speak"; id: number; text: string; voice: string; soon?: boolean };
+  | { type: "promote"; id: number; priority: Priority }
+  | { type: "speak"; id: number; text: string; voice: string; priority: Priority };
 
-type Job = { id: number; text: string; voice: string; soon: boolean };
+type Job = { id: number; text: string; voice: string; priority: Priority };
+
+const isPriority = (value: unknown): value is Priority => value === 0 || value === 1 || value === 2;
 
 let model: Promise<KokoroTTS> | null = null;
 
@@ -35,10 +40,16 @@ function load() {
   return model;
 }
 
-// One line at a time. Lines for the route being walked go ahead of background ones, because making
-// speech is slower than walking on a phone and only the next turn really matters.
+// One line at a time, most urgent first and in the order asked within each priority, because making speech
+// is slower than walking on a phone and only the next thing to say really matters.
 const jobs: Job[] = [];
 let busy = false;
+
+function enqueue(job: Job) {
+  const at = jobs.findIndex((queued) => queued.priority > job.priority);
+  if (at === -1) jobs.push(job);
+  else jobs.splice(at, 0, job);
+}
 
 async function work() {
   if (busy) return;
@@ -68,34 +79,34 @@ self.onmessage = (event: MessageEvent<Request>) => {
     return;
   }
   if (message?.type === "promote") {
-    // A background line that the route now needs moves up with the other route lines.
+    // A line that is suddenly needed sooner moves up to where it now belongs.
     const index = jobs.findIndex((job) => job.id === message.id);
-    if (index === -1 || jobs[index].soon) return;
+    if (index === -1 || !isPriority(message.priority) || jobs[index].priority <= message.priority) return;
     const [job] = jobs.splice(index, 1);
-    job.soon = true;
-    const at = jobs.findIndex((queued) => !queued.soon);
-    if (at === -1) jobs.push(job);
-    else jobs.splice(at, 0, job);
+    job.priority = message.priority;
+    enqueue(job);
     return;
   }
   if (message?.type === "clear") {
-    // A new route makes queued lines for the old one pointless. The page is told so it stops waiting.
-    for (const job of jobs.splice(0)) self.postMessage({ type: "error", id: job.id });
+    // A new route makes the old route's queued lines pointless. Lines being said right now and background
+    // phrases are kept: dropping them is how a reroute used to lose its own "Route updated".
+    for (let i = jobs.length - 1; i >= 0; i--) {
+      if (jobs[i].priority !== 1) continue;
+      const [job] = jobs.splice(i, 1);
+      self.postMessage({ type: "error", id: job.id });
+    }
     return;
   }
   if (
     message?.type !== "speak" ||
     !Number.isInteger(message.id) ||
     typeof message.text !== "string" ||
-    !VOICES.has(message.voice)
+    !VOICES.has(message.voice) ||
+    !isPriority(message.priority)
   ) {
     return;
   }
-  const job = { id: message.id, text: message.text.slice(0, MAX_TEXT), voice: message.voice, soon: message.soon === true };
-  // Route lines keep the order they were asked in, ahead of every background line.
-  const at = job.soon ? jobs.findIndex((queued) => !queued.soon) : -1;
-  if (at === -1) jobs.push(job);
-  else jobs.splice(at, 0, job);
+  enqueue({ id: message.id, text: message.text.slice(0, MAX_TEXT), voice: message.voice, priority: message.priority });
   while (jobs.length > MAX_JOBS) {
     const dropped = jobs.pop();
     if (dropped) self.postMessage({ type: "error", id: dropped.id });

@@ -6,16 +6,19 @@
 const STORAGE_KEY = "csimap.voice";
 const VOICE = "af_heart";
 const MAX_TEXT = 300;
-// How long a heads up may wait for its natural clip before the device voice says it.
-const WAIT_FOR_CLIP_MS = 2_500;
-const MAX_CLIPS_IN_MEMORY = 120;
-const MAX_CLIPS_STORED = 150;
+// How long a heads up may wait for its own clip. Heads ups come about ten seconds before a turn, so there is
+// room to wait, and past this a natural stand in, or failing that the device voice, says it instead.
+const WAIT_FOR_CLIP_MS = 4_000;
+const MAX_CLIPS_IN_MEMORY = 160;
+const MAX_CLIPS_STORED = 250;
 // The same heads up twice in a row, as happens right after a reroute, is said once.
 const REPEAT_WINDOW_MS = 8_000;
 const DB_NAME = "csimap-voice";
 const DB_STORE = "clips";
 
 type Clip = { samples: Float32Array<ArrayBuffer>; rate: number };
+// 0 is a line being said right now, 1 a line for the route being walked, 2 a phrase made in the background.
+type Priority = 0 | 1 | 2;
 type ModelState = "idle" | "loading" | "ready" | "failed";
 
 export function voiceSupported() {
@@ -59,7 +62,7 @@ let worker: Worker | null = null;
 let modelState: ModelState = "idle";
 let nextRequest = 1;
 const clips = new Map<string, Clip>();
-const pending = new Map<string, { job: Promise<Clip | null>; id?: number; soon: boolean }>();
+const pending = new Map<string, { job: Promise<Clip | null>; id?: number; priority: Priority }>();
 const waiting = new Map<number, (clip: Clip | null) => void>();
 
 function neuralAllowed() {
@@ -116,19 +119,19 @@ function remember(text: string, clip: Clip) {
   if (clips.size > MAX_CLIPS_IN_MEMORY) clips.delete(clips.keys().next().value as string);
 }
 
-function synthesize(text: string, soon = true): Promise<Clip | null> {
+function synthesize(text: string, priority: Priority): Promise<Clip | null> {
   const cached = clips.get(text);
   if (cached) return Promise.resolve(cached);
   const inflight = pending.get(text);
   if (inflight) {
-    if (soon && !inflight.soon) {
-      inflight.soon = true;
-      if (inflight.id !== undefined) worker?.postMessage({ type: "promote", id: inflight.id });
+    if (priority < inflight.priority) {
+      inflight.priority = priority;
+      if (inflight.id !== undefined) worker?.postMessage({ type: "promote", id: inflight.id, priority });
     }
     return inflight.job;
   }
 
-  const entry: { job: Promise<Clip | null>; id?: number; soon: boolean } = { job: Promise.resolve(null), soon };
+  const entry: { job: Promise<Clip | null>; id?: number; priority: Priority } = { job: Promise.resolve(null), priority };
   entry.job = (async () => {
     const stored = await readStoredClip(text);
     if (stored) {
@@ -142,7 +145,7 @@ function synthesize(text: string, soon = true): Promise<Clip | null> {
     entry.id = id;
     const clip = await new Promise<Clip | null>((resolve) => {
       waiting.set(id, resolve);
-      w.postMessage({ type: "speak", id, text, voice: VOICE, soon: entry.soon });
+      w.postMessage({ type: "speak", id, text, voice: VOICE, priority: entry.priority });
     });
     if (clip) {
       remember(text, clip);
@@ -163,11 +166,11 @@ export function prepareSpeech(lines: readonly string[], { later = false } = {}) 
   if (!neuralAllowed()) return;
   for (const line of lines) {
     const text = clean(line);
-    if (text) void synthesize(text, !later);
+    if (text) void synthesize(text, later ? 2 : 1);
   }
 }
 
-/** Drops lines still waiting to be made, such as the rest of a route that was just replaced. */
+/** Drops route lines still waiting to be made, such as the rest of a route that was just replaced. */
 export function clearPreparedSpeech() {
   worker?.postMessage({ type: "clear" });
 }
@@ -310,12 +313,14 @@ function speakWithDevice(text: string) {
 // ---- Speaking ---------------------------------------------------------------------------------------
 
 /**
- * Says a line. Urgent lines, like the turn right now, cut off anything still playing and never wait:
- * if the natural clip is not ready they use the device voice at once.
+ * Says a line. Urgent lines, like the turn right now, cut off anything still playing and never wait. When
+ * the exact line is not ready yet, the `fallback` line is said instead if it already exists in the natural
+ * voice, such as "Turn right." for "Turn right onto Fort Place.", so the voice does not switch mid trip. The
+ * device voice only speaks when neither is ready.
  */
 let lastSpoken = { text: "", at: 0 };
 
-export function speak(line: string, { urgent = false } = {}) {
+export function speak(line: string, { urgent = false, fallback }: { urgent?: boolean; fallback?: string } = {}) {
   const text = clean(line);
   if (!text) return;
   const now = Date.now();
@@ -326,27 +331,31 @@ export function speak(line: string, { urgent = false } = {}) {
   const ready = clips.get(text);
   if (ready && play(ready)) return;
 
+  const standIn = () => {
+    const clip = fallback ? clips.get(clean(fallback)) : undefined;
+    return clip !== undefined && play(clip);
+  };
+
   const modelComing = modelState === "loading" || modelState === "ready";
   if (urgent || !modelComing || !neuralAllowed()) {
-    speakWithDevice(text);
-    // Made in the background, so the same line sounds natural the next time.
-    if (modelComing) void synthesize(text);
+    if (!standIn()) speakWithDevice(text);
+    // Made now, so the same line is ready in the natural voice the next time it comes up.
+    if (modelComing) void synthesize(text, 1);
     return;
   }
 
-  // A heads up can afford a short wait, which keeps the voice from switching back and forth.
   const asked = epoch;
   let spoken = false;
-  const fallback = setTimeout(() => {
+  const giveUp = setTimeout(() => {
     if (spoken || asked !== epoch) return;
     spoken = true;
-    speakWithDevice(text);
+    if (!standIn()) speakWithDevice(text);
   }, WAIT_FOR_CLIP_MS);
-  void synthesize(text).then((clip) => {
+  void synthesize(text, 0).then((clip) => {
     if (spoken || asked !== epoch) return;
     spoken = true;
-    clearTimeout(fallback);
-    if (!clip || !play(clip)) speakWithDevice(text);
+    clearTimeout(giveUp);
+    if (!(clip && play(clip)) && !standIn()) speakWithDevice(text);
   });
 }
 
