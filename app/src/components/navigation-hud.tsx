@@ -2,6 +2,7 @@
 
 import { Button, Surface } from "@heroui/react";
 import {
+  Bus,
   ChevronLeft,
   ChevronRight,
   Compass,
@@ -34,6 +35,8 @@ type NavigationHudProps = {
   hasAlternate: boolean;
   hasArrived: boolean;
   weakSignal: boolean;
+  /** Moving faster than this way of travel allows, like walking directions on a bus. Guidance holds still. */
+  isRiding: boolean;
   voiceOn: boolean;
   onToggleVoice: () => void;
   onRecenter: () => void;
@@ -59,6 +62,7 @@ export function NavigationHud({
   hasAlternate,
   hasArrived,
   weakSignal,
+  isRiding,
   voiceOn,
   onToggleVoice,
   onRecenter,
@@ -117,7 +121,16 @@ export function NavigationHud({
             </>
           )}
         </div>
-        {notice && !hasArrived ? (
+        {isRiding && !hasArrived ? (
+          <p
+            role="status"
+            className="animate-fade-in pointer-events-auto mx-auto mt-2 flex w-fit max-w-[calc(100%-1.5rem)] items-center gap-1.5 rounded-full bg-overlay px-3 py-1.5 text-xs font-medium text-overlay-foreground shadow-md">
+            <Bus className="size-3.5 shrink-0 text-accent" aria-hidden />
+            {route.travel === "bike"
+              ? "Looks like you're in a vehicle. Directions pick up when you're back on your bike"
+              : "Looks like you're riding. Directions pick up when you're back on foot"}
+          </p>
+        ) : notice && !hasArrived ? (
           <p
             role="status"
             className="animate-fade-in pointer-events-auto mx-auto mt-2 flex w-fit items-center gap-1.5 rounded-full bg-overlay px-3 py-1.5 text-xs font-medium text-overlay-foreground shadow-md">

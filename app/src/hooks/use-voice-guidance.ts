@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { RouteNotice } from "@/components/navigation-hud";
+import { turnAngle } from "@/lib/geo";
 import { stepText } from "@/lib/instructions";
 import type { Route, RouteProgress, RouteStep, TravelMode, TurnDirection } from "@/lib/routing";
 import {
@@ -31,6 +32,19 @@ const NOTICE_LINES: Record<RouteNotice, string> = {
   switched: "Back on your earlier route.",
 };
 const WRONG_WAY_LINE = "Wrong way. Turn around when it is safe.";
+const RIDING_LINES = {
+  walk: "Looks like you're riding. Walking directions will pick up when you're back on foot.",
+  bike: "Looks like you're in a vehicle. Directions will pick up when you're back on your bike.",
+};
+// Moving faster needs more warning: the heads up comes about ten seconds before the turn and the call itself
+// a few seconds before, never less than the usual distance for that way of travel.
+const HEADS_UP_SECONDS = 10;
+const CALL_SECONDS = 3.5;
+// Within this of the way the route leaves, the person is already facing it.
+const FACING_AHEAD_DEGREES = 35;
+// Beyond this the route leaves behind them.
+const FACING_BEHIND_DEGREES = 145;
+const FACING_TURNS = ["Turn around", "Turn right", "Turn left"] as const;
 // How many turns ahead get their lines made in advance. Making speech takes a moment on a phone.
 const LOOKAHEAD_STEPS = 2;
 
@@ -65,11 +79,32 @@ function actLine(route: Route, index: number, destination: string) {
   return step.spoken ?? `${stepText(step, destination)}.`;
 }
 
+function cueFor(travel: TravelMode | undefined, speed: number) {
+  const base = CUES[travel ?? "walk"];
+  return { prepare: Math.max(base.prepare, speed * HEADS_UP_SECONDS), act: Math.max(base.act, speed * CALL_SECONDS) };
+}
+
+// "Head west" only helps someone who knows which way west is. When the way they face is known, the first
+// instruction says which way to turn to set off.
+function departLine(route: Route, destination: string, facing: number | undefined) {
+  const line = actLine(route, 0, destination);
+  const step = route.steps[0];
+  if (facing === undefined || step.kind !== "depart" || step.bearing === undefined) return line;
+  const turn = turnAngle(facing, step.bearing);
+  const size = Math.abs(turn);
+  if (size < FACING_AHEAD_DEGREES) return line;
+  const lead = size > FACING_BEHIND_DEGREES ? FACING_TURNS[0] : turn > 0 ? FACING_TURNS[1] : FACING_TURNS[2];
+  return `${lead}, then ${lowerFirst(line)}`;
+}
+
+const departVariants = (route: Route, destination: string) =>
+  FACING_TURNS.map((lead) => `${lead}, then ${lowerFirst(actLine(route, 0, destination))}`);
+
 // The heads up names a distance. It is fixed when the line is planned, so the clip made in advance is
 // exactly what gets said. A turn that is already close only gets the call at the turn.
-function planLines(route: Route, index: number, from: number, destination: string): StepLines {
+function planLines(route: Route, index: number, from: number, destination: string, speed: number): StepLines {
   const step = route.steps[index];
-  const cue = CUES[route.travel ?? "walk"];
+  const cue = cueFor(route.travel, speed);
   const act = actLine(route, index, destination);
   const ahead = step.startDistance - from;
   if (ahead <= cue.act) return { act };
@@ -83,7 +118,7 @@ function planLines(route: Route, index: number, from: number, destination: strin
 }
 
 /** Plans the next few turns and returns the lines that were not planned before. */
-function planAhead(spoken: Spoken, route: Route, stepIndex: number, along: number, destination: string) {
+function planAhead(spoken: Spoken, route: Route, stepIndex: number, along: number, destination: string, speed: number) {
   const fresh: string[] = [];
   const last = Math.min(stepIndex + LOOKAHEAD_STEPS, route.steps.length - 1);
   for (let i = stepIndex + 1; i <= last; i++) {
@@ -91,7 +126,7 @@ function planAhead(spoken: Spoken, route: Route, stepIndex: number, along: numbe
     if (spoken.lines.has(i)) continue;
     // A later turn is announced after passing the one before it, so its distance counts from there.
     const from = i === stepIndex + 1 ? along : route.steps[i - 1].startDistance;
-    const lines = planLines(route, i, from, destination);
+    const lines = planLines(route, i, from, destination, speed);
     spoken.lines.set(i, lines);
     if (lines.prepare) fresh.push(lines.prepare);
     fresh.push(lines.act);
@@ -106,34 +141,59 @@ type Guidance = {
   isWrongWay: boolean;
   hasArrived: boolean;
   notice?: RouteNotice;
+  /** Guidance holds still, such as walking directions while the person is on a bus. */
+  paused?: boolean;
+  /** Current speed in metres per second. */
+  speed?: () => number;
 };
 
-export function useVoiceGuidance({ route, progress, destinationName, isWrongWay, hasArrived, notice }: Guidance) {
+export function useVoiceGuidance({
+  route,
+  progress,
+  destinationName,
+  isWrongWay,
+  hasArrived,
+  notice,
+  paused = false,
+  speed: currentSpeed,
+}: Guidance) {
   const [enabled, setEnabled] = useState(readVoicePreference);
   const enabledRef = useRef(enabled);
   const nameRef = useRef(destinationName);
   const spokenRef = useRef<Spoken>({ route: null, prepared: new Set(), acted: new Set(), lines: new Map() });
   const primedRef = useRef<{ route: Route | null; lines: Map<number, StepLines> }>({ route: null, lines: new Map() });
+  const routeRef = useRef(route);
+  const speedRef = useRef(currentSpeed);
 
   useEffect(() => {
     nameRef.current = destinationName;
-  }, [destinationName]);
+    routeRef.current = route;
+    speedRef.current = currentSpeed;
+  }, [destinationName, route, currentSpeed]);
 
   /** Starts making the opening lines while the route is only being previewed, so they are ready on Start. */
   const prime = useCallback((preview: Route) => {
     if (!enabledRef.current || primedRef.current.route === preview) return;
     const destination = nameRef.current ?? "your destination";
     const spoken: Spoken = { route: preview, prepared: new Set(), acted: new Set(), lines: new Map() };
-    const lines = planAhead(spoken, preview, 0, 0, destination);
+    const lines = planAhead(spoken, preview, 0, 0, destination, 0);
     primedRef.current = { route: preview, lines: spoken.lines };
     warmUpVoice();
-    prepareSpeech([actLine(preview, 0, destination), ...lines, ...Object.values(NOTICE_LINES), WRONG_WAY_LINE, arrivalLine(destination)]);
+    prepareSpeech([
+      actLine(preview, 0, destination),
+      ...departVariants(preview, destination),
+      ...lines,
+      ...Object.values(NOTICE_LINES),
+      WRONG_WAY_LINE,
+      arrivalLine(destination),
+    ]);
+    prepareSpeech(Object.values(RIDING_LINES), { later: true });
     if (!preview.travel) prepareSpeech(COMMON_CAMPUS_LINES, { later: true });
   }, []);
 
   /** Speaks the first instruction. Call it from the tap that starts navigation: iPhones only allow sound
    * that begins inside a tap, and after that the rest of the trip can talk freely. */
-  const begin = useCallback((next: Route) => {
+  const begin = useCallback((next: Route, facing?: number) => {
     const primed = primedRef.current;
     spokenRef.current = {
       route: next,
@@ -145,8 +205,8 @@ export function useVoiceGuidance({ route, progress, destinationName, isWrongWay,
     unlockAudio();
     warmUpVoice();
     const destination = nameRef.current ?? "your destination";
-    speak(actLine(next, 0, destination), { urgent: true });
-    planAhead(spokenRef.current, next, 0, 0, destination);
+    speak(departLine(next, destination, facing), { urgent: true });
+    planAhead(spokenRef.current, next, 0, 0, destination, 0);
     const planned = [...spokenRef.current.lines.values()].flatMap((lines) => (lines.prepare ? [lines.prepare, lines.act] : [lines.act]));
     prepareSpeech([...planned, ...Object.values(NOTICE_LINES), WRONG_WAY_LINE, arrivalLine(destination)]);
     if (!next.travel) prepareSpeech(COMMON_CAMPUS_LINES, { later: true });
@@ -182,10 +242,25 @@ export function useVoiceGuidance({ route, progress, destinationName, isWrongWay,
     if (notice && enabledRef.current) speak(NOTICE_LINES[notice]);
   }, [notice]);
 
+  // Said once when guidance holds still, so the silence that follows makes sense.
+  useEffect(() => {
+    if (!paused || !enabledRef.current) return;
+    speak(routeRef.current?.travel === "bike" ? RIDING_LINES.bike : RIDING_LINES.walk);
+  }, [paused]);
+
   useEffect(() => {
     if (!route || !progress || hasArrived || isWrongWay || !enabledRef.current) return;
     const spoken = spokenRef.current;
     const destination = nameRef.current ?? "your destination";
+    if (paused) {
+      // Turns passed while riding are not read out afterwards.
+      for (let i = 0; i <= progress.stepIndex; i++) {
+        spoken.prepared.add(i);
+        spoken.acted.add(i);
+      }
+      return;
+    }
+    const speed = speedRef.current?.() ?? 0;
     if (spoken.route !== route) {
       // A new route after rerouting stays quiet about steps that are already behind the walker, and the
       // lines still queued for the old route give way to the new one.
@@ -200,13 +275,13 @@ export function useVoiceGuidance({ route, progress, destinationName, isWrongWay,
       }
       if (!route.travel) prepareSpeech(COMMON_CAMPUS_LINES, { later: true });
     }
-    prepareSpeech(planAhead(spoken, route, progress.stepIndex, progress.distanceAlong, destination));
+    prepareSpeech(planAhead(spoken, route, progress.stepIndex, progress.distanceAlong, destination, speed));
 
     const index = Math.min(progress.stepIndex + 1, route.steps.length - 1);
     if (route.steps[index].kind === "arrive") return;
-    const cue = CUES[route.travel ?? "walk"];
+    const cue = cueFor(route.travel, speed);
     const toStep = route.steps[index].startDistance - progress.distanceAlong;
-    const lines = spoken.lines.get(index) ?? planLines(route, index, progress.distanceAlong, destination);
+    const lines = spoken.lines.get(index) ?? planLines(route, index, progress.distanceAlong, destination, speed);
 
     if (toStep <= cue.act && !spoken.acted.has(index)) {
       spoken.acted.add(index);
@@ -216,7 +291,7 @@ export function useVoiceGuidance({ route, progress, destinationName, isWrongWay,
       spoken.prepared.add(index);
       speak(lines.prepare);
     }
-  }, [route, progress, hasArrived, isWrongWay]);
+  }, [route, progress, hasArrived, isWrongWay, paused]);
 
   useEffect(() => {
     if (isWrongWay && enabledRef.current) speak(WRONG_WAY_LINE, { urgent: true });

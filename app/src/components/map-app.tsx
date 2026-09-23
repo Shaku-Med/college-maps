@@ -26,6 +26,7 @@ import { useWakeLock } from "@/hooks/use-wake-lock";
 import { MAP_FILTERS, type MapFilter } from "@/lib/categories";
 import { fetchStreetRoute } from "@/lib/directions";
 import { bearingDegrees, distanceMeters, turnAngle } from "@/lib/geo";
+import { ON_FOOT_MAX_MPS, RIDING_MAX_MPS, createMotionTracker, isOnFoot, type MotionState } from "@/lib/motion";
 import { loadSchedule, saveSchedule, type ClassEntry } from "@/lib/schedule";
 import {
   findRoute,
@@ -43,6 +44,18 @@ import {
 } from "@/lib/routing";
 
 const OFF_CAMPUS_METERS = CAMPUS.map.onCampusRadiusMeters;
+const WALKING_AREA = CAMPUS.map.walkingArea;
+
+// Campus walking directions only exist where the campus path network does. Anywhere outside it, even a
+// few hundred metres away on the expressway, the route has to come from the street network instead.
+function onCampusPaths({ latitude, longitude }: Coordinate) {
+  return (
+    latitude >= WALKING_AREA.south &&
+    latitude <= WALKING_AREA.north &&
+    longitude >= WALKING_AREA.west &&
+    longitude <= WALKING_AREA.east
+  );
+}
 const ARRIVAL_METERS = 15;
 const NEAR_DESTINATION_METERS = 25;
 const WEAK_ACCURACY_METERS = 60;
@@ -75,6 +88,10 @@ const TRAVEL_SLACK: Record<TravelMode, number> = { walk: 1, bike: 2, drive: 4 };
 const FOLLOW_AGAIN_MS = 8_000;
 // Standing still, a phone's reported course is meaningless, so it only counts above a walking pace.
 const COURSE_SPEED_MPS = 0.7;
+// Above this, the way the phone points stops meaning anything: it is in a pocket, a bag, or a hand on a bus.
+const COURSE_OVER_COMPASS_MPS = 5;
+// Fast movement puts GPS fixes further behind, so the off route and wrong way limits widen with speed.
+const MAX_SPEED_SLACK = 8;
 
 // Looser on a weak GPS fix so a jumpy signal does not trigger constant re-routing.
 function offRouteLimit(accuracy: number) {
@@ -240,7 +257,21 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
   const previousMatchesRef = useRef(0);
 
   const handleHeading = useCallback((degrees: number) => mapRef.current?.setHeading(degrees), []);
-  const { request: requestHeading, setCourse } = useHeading(handleHeading);
+  const { request: requestHeading, setCourse, compass } = useHeading(handleHeading);
+  const motionRef = useRef(createMotionTracker());
+  const motionStateRef = useRef<MotionState>({ speed: 0, motion: "still" });
+  // Set while the person is clearly going faster than the chosen way of travel allows, like walking
+  // directions on a bus. Guidance holds still until they are back to that pace.
+  const ridingRef = useRef(false);
+  const [isRiding, setIsRiding] = useState(false);
+
+  // The direction someone is actually travelling. Only a moving course counts; roads are matched to this.
+  const travelHeading = useCallback(
+    () => (motionStateRef.current.speed >= COURSE_SPEED_MPS ? courseRef.current : undefined),
+    [],
+  );
+  // The way someone faces: their travel direction while moving, the compass while they stand still.
+  const facing = useCallback(() => travelHeading() ?? compass(), [travelHeading, compass]);
   const progressHintRef = useRef(0);
   const offRouteCountRef = useRef(0);
   const otherWalkwayCountRef = useRef(0);
@@ -303,7 +334,15 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
       }
       state.inflight = true;
       state.at = Date.now();
-      fetchStreetRoute(position, nav.destination.coordinate, travel, { avoidStairs: nav.avoidStairs })
+      const destination = nav.destination.coordinate;
+      const heading = travelHeading();
+      fetchStreetRoute(position, destination, travel, { avoidStairs: nav.avoidStairs, heading })
+        // If nothing runs the way they are going, a route without the heading beats no route at all.
+        .then((candidate) =>
+          candidate || heading === undefined
+            ? candidate
+            : fetchStreetRoute(position, destination, travel, { avoidStairs: nav.avoidStairs }),
+        )
         .then((candidate) => {
           const current = navRef.current;
           // An answer that lands after the trip ended, or after the route already changed, is stale.
@@ -316,7 +355,7 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
           state.inflight = false;
         });
     },
-    [commitRoute],
+    [commitRoute, travelHeading],
   );
 
   const handlePosition = useCallback(
@@ -330,17 +369,21 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
         }
       }
 
+      const motionState = motionRef.current.update({ position, accuracy, speed }, Date.now());
+      motionStateRef.current = motionState;
+      const courseWins = motionState.speed >= COURSE_OVER_COMPASS_MPS;
+
       // A phone that reports its own course while moving knows better than two fixes compared by hand.
       if (heading !== undefined && (speed ?? 0) >= COURSE_SPEED_MPS) {
         courseRef.current = heading;
-        setCourse(heading);
+        setCourse(heading, courseWins);
         lastCourseFixRef.current = position;
       } else {
         const lastCourseFix = lastCourseFixRef.current;
         if (!lastCourseFix || distanceMeters(lastCourseFix, position) >= COURSE_MIN_METERS) {
           if (lastCourseFix && accuracy <= UNTRUSTED_ACCURACY_METERS) {
             courseRef.current = bearingDegrees(lastCourseFix, position);
-            setCourse(courseRef.current);
+            setCourse(courseRef.current, courseWins);
           }
           lastCourseFixRef.current = position;
         }
@@ -358,17 +401,35 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
       const trusted = accuracy <= UNTRUSTED_ACCURACY_METERS;
       const { graph, destination } = nav;
       const travel = route.travel;
-      const slack = TRAVEL_SLACK[travel ?? "walk"];
+
+      // Walking directions on a bus would read every stop and turn it makes as getting lost, and reroute onto
+      // whatever walkway lies under the road. So while someone is moving faster than their way of travel
+      // allows, guidance holds its place, and picks up from wherever they get off.
+      const riding =
+        travel === "drive" ? false : travel === "bike" ? motionState.motion === "vehicle" : !isOnFoot(motionState.motion);
+      const justGotOff = ridingRef.current && !riding;
+      if (riding !== ridingRef.current) {
+        ridingRef.current = riding;
+        setIsRiding(riding);
+      }
+      // Being sure someone is riding takes a few seconds. Rerouting holds from the first fast fix, so a bus
+      // pulling away from the route cannot trigger one while that is still being worked out.
+      const fastest = Math.max(motionState.speed, speed ?? 0);
+      const holding =
+        riding || (travel !== "drive" && fastest >= (travel === "bike" ? RIDING_MAX_MPS : ON_FOOT_MAX_MPS));
+
+      const slack = Math.max(TRAVEL_SLACK[travel ?? "walk"], Math.min(MAX_SPEED_SLACK, motionState.speed / 2));
       const limit = offRouteLimit(accuracy) * Math.sqrt(slack);
 
       // Matching the fix to the walkway underfoot catches a shortcut, or stairs taken despite avoiding them,
       // long before the walker strays far enough to count as lost. It also gives the dot a real path to sit on.
-      const match = graph && !travel ? matchWalkway(graph, position, { avoidStairs: nav.avoidStairs }) : undefined;
+      const match =
+        graph && !travel && !holding ? matchWalkway(graph, position, { avoidStairs: nav.avoidStairs }) : undefined;
       const walkway = match && match.distance <= WALKWAY_MATCH_METERS ? match : undefined;
       const rerouteFromHere = (g: WalkGraph) =>
         findRoute(g, position, destination.coordinate, {
           avoidStairs: nav.avoidStairs,
-          heading: courseRef.current,
+          heading: facing(),
           start: walkway,
         });
 
@@ -394,7 +455,7 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
 
       const previous = nav.previousRoute;
       let nearPrevious = false;
-      if (previous && trusted) {
+      if (previous && trusted && !holding) {
         const onPrevious = trackProgress(previous, position, previousHintRef.current);
         previousHintRef.current = onPrevious.segmentIndex;
         nearPrevious = onPrevious.distanceFromRoute <= BACK_ON_PREVIOUS_METERS;
@@ -412,7 +473,7 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
         }
       }
 
-      const isOff = trusted && next.distanceFromRoute > limit;
+      const isOff = trusted && !holding && next.distanceFromRoute > limit;
       offRouteCountRef.current = isOff ? offRouteCountRef.current + 1 : 0;
       const clearlyLost = isOff && next.distanceFromRoute > 80;
 
@@ -433,19 +494,25 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
         Math.abs(turnAngle(bearingDegrees(segmentStart, segmentEnd), courseRef.current)) > OPPOSITE_DEGREES;
       const wrongWay =
         trusted &&
+        !holding &&
         !isOff &&
         (backtracked > WRONG_WAY_WARN_METERS * slack || (walkingOpposite && backtracked > COURSE_MIN_METERS * slack));
 
       // Rerouting starts from the walkway they are on and carries on the way they are heading, so a shortcut
       // is followed instead of undone.
-      const lost = offRouteCountRef.current >= 2 || otherWalkwayCountRef.current >= 2 || clearlyLost;
+      // Stepping off somewhere away from the route means rerouting from there straight away.
+      const lost =
+        offRouteCountRef.current >= 2 ||
+        otherWalkwayCountRef.current >= 2 ||
+        clearlyLost ||
+        (justGotOff && next.distanceFromRoute > limit);
       const turnedBack = wrongWay && backtracked > WRONG_WAY_REROUTE_METERS * slack;
       if (!notice && travel && (lost || turnedBack)) {
         rerouteStreet(position);
       } else if (!notice && graph && (lost || turnedBack)) {
         const rerouted = rerouteFromHere(graph);
         if (rerouted) adopt(rerouted, "rerouted");
-      } else if (!notice && graph && !travel && trusted && !wrongWay) {
+      } else if (!notice && graph && !travel && trusted && !holding && !wrongWay) {
         const since = lastRecheckRef.current;
         const due =
           Date.now() - since.at > RECHECK_INTERVAL_MS || next.distanceAlong - since.along > RECHECK_WALKED_METERS;
@@ -472,7 +539,9 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
       // Building centers sit inside walls, so arrival counts once the walker reaches where the path meets the building.
       const reachedEntrance =
         next.distanceAlong >= route.arrivalDistance - (travel ? STREET_ARRIVAL_METERS[travel] : ARRIVAL_METERS);
-      const arrived = reachedEntrance || distanceMeters(position, destination.coordinate) <= NEAR_DESTINATION_METERS;
+      // Riding past the place is not arriving at it.
+      const arrived =
+        !holding && (reachedEntrance || distanceMeters(position, destination.coordinate) <= NEAR_DESTINATION_METERS);
       if (arrived) {
         navRef.current = { ...navRef.current, hasArrived: true, previousRoute: null };
         setHasArrived(true);
@@ -485,10 +554,11 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
       setWalkwayPoint(offRoutePoint);
       const shown = onRoute ? next.point : (offRoutePoint ?? position);
       if (navRef.current.isFollowing) {
-        mapRef.current?.follow(shown, navigationPadding(), travel ? FOLLOW_ZOOM[travel] : undefined);
+        const zoom = riding ? FOLLOW_ZOOM.drive : travel ? FOLLOW_ZOOM[travel] : undefined;
+        mapRef.current?.follow(shown, navigationPadding(), zoom);
       }
     },
-    [setCourse, rerouteStreet],
+    [setCourse, rerouteStreet, facing],
   );
 
   const handleGeoError = useCallback((status: "denied" | "unavailable" | "error") => {
@@ -514,6 +584,8 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
     isWrongWay,
     hasArrived,
     notice: routeNotice,
+    paused: isRiding,
+    speed: () => motionStateRef.current.speed,
   });
   const primeVoice = voice.prime;
 
@@ -558,7 +630,7 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
   const isOffCampus =
     origin === MY_LOCATION &&
     geo.position !== undefined &&
-    distanceMeters(geo.position, CAMPUS_CENTER) > OFF_CAMPUS_METERS;
+    !onCampusPaths(geo.position);
 
   const campusRoute = useMemo(() => {
     if (mode !== "directions" || !graph || !selected || !originCoordinate || isOffCampus) return null;
@@ -580,7 +652,7 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
 
     const controller = new AbortController();
     let settled = false;
-    fetchStreetRoute(from, selected.coordinate, travelMode, { avoidStairs, signal: controller.signal })
+    fetchStreetRoute(from, selected.coordinate, travelMode, { avoidStairs, heading: travelHeading(), signal: controller.signal })
       .then((route) => {
         settled = true;
         setStreetResult({ key: streetKey, route, failed: false });
@@ -597,7 +669,7 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
       controller.abort();
       if (streetFetchRef.current?.key === streetKey) streetFetchRef.current = null;
     };
-  }, [streetKey, streetCell, selected, travelMode, avoidStairs]);
+  }, [streetKey, streetCell, selected, travelMode, avoidStairs, travelHeading]);
 
   const streetRoute = streetKey && streetResult?.key === streetKey ? streetResult.route : null;
   const previewRoute = isOffCampus ? streetRoute : campusRoute;
@@ -795,7 +867,7 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
         isFollowing: false,
         hasArrived: false,
       };
-      voice.begin(previewRoute);
+      voice.begin(previewRoute, facing());
       setMode("navigate");
       mapRef.current?.fitPath(previewRoute.path, previewPadding());
       return;
@@ -809,7 +881,9 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
     streetRerouteRef.current = { inflight: false, at: Date.now() };
     setWalkwayPoint(undefined);
     setManualStep(null);
-    voice.begin(previewRoute);
+    ridingRef.current = false;
+    setIsRiding(false);
+    voice.begin(previewRoute, facing());
     navRef.current = {
       ...navRef.current,
       mode: "navigate",
@@ -834,6 +908,8 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
 
   function endNavigation() {
     clearTimeout(followAgainRef.current);
+    ridingRef.current = false;
+    setIsRiding(false);
     setManualStep(null);
     setFacingUp(true);
     setMode("browse");
@@ -1281,6 +1357,7 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
           hasAlternate={previousRoute !== null}
           hasArrived={hasArrived}
           weakSignal={(geo.accuracy ?? 0) > WEAK_ACCURACY_METERS}
+          isRiding={isRiding}
           voiceOn={voice.enabled}
           onToggleVoice={voice.toggle}
           onRecenter={recenter}

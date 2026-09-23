@@ -27,6 +27,10 @@ export function useHeading(onHeading: (heading: number) => void) {
   const emittedRef = useRef<number | undefined>(undefined);
   const listeningRef = useRef(false);
   const compassSeenAtRef = useRef(0);
+  const compassRef = useRef<number | undefined>(undefined);
+  // While moving fast the direction of travel is the truth: a phone held sideways on a bus or lying on a car
+  // seat points anywhere. Until this time, compass readings do not steer the map.
+  const courseWinsUntilRef = useRef(0);
   const callbackRef = useRef(onHeading);
 
   useEffect(() => {
@@ -45,6 +49,8 @@ export function useHeading(onHeading: (heading: number) => void) {
     compassSeenAtRef.current = Date.now();
 
     const heading = normalize(raw + screenAngle());
+    compassRef.current = heading;
+    if (Date.now() < courseWinsUntilRef.current) return;
     headingRef.current = heading;
 
     const last = emittedRef.current;
@@ -66,9 +72,10 @@ export function useHeading(onHeading: (heading: number) => void) {
     await permission?.().catch(() => undefined);
   }, [handleOrientation]);
 
-  // GPS course is a fallback for devices without a compass, and only means something while walking.
-  const setCourse = useCallback((course: number) => {
-    if (Date.now() - compassSeenAtRef.current < COMPASS_FRESH_MS) return;
+  // GPS course is a fallback for devices without a compass, and the only thing to trust when moving fast.
+  const setCourse = useCallback((course: number, preferCourse = false) => {
+    if (preferCourse) courseWinsUntilRef.current = Date.now() + COMPASS_FRESH_MS;
+    else if (Date.now() - compassSeenAtRef.current < COMPASS_FRESH_MS) return;
     headingRef.current = normalize(course);
     emittedRef.current = headingRef.current;
     callbackRef.current(headingRef.current);
@@ -82,5 +89,11 @@ export function useHeading(onHeading: (heading: number) => void) {
     [handleOrientation],
   );
 
-  return { headingRef, request, setCourse };
+  // Where the phone points right now, if the compass has spoken recently.
+  const compass = useCallback(
+    () => (Date.now() - compassSeenAtRef.current < COMPASS_FRESH_MS ? compassRef.current : undefined),
+    [],
+  );
+
+  return { headingRef, request, setCourse, compass };
 }

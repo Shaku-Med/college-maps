@@ -14,6 +14,11 @@ const MAX_TEXT = 200;
 // Valhalla will happily snap a point to a road 14 km away. A start or end that far from any road is a
 // bad fix or open water, and a route from there would only look like the walker is lost.
 const MAX_SNAP_METERS = 1_000;
+// With a known direction of travel, the start is matched to a road running that way. Left to itself the
+// router only looks at the single nearest road, which on a divided road or a bridge can be the wrong
+// carriageway or the street underneath, so it is also given room to consider the others.
+const HEADING_TOLERANCE_DEGREES = 45;
+const HEADING_SEARCH_METERS: Record<TravelMode, number> = { walk: 15, bike: 25, drive: 35 };
 
 const COSTING: Record<TravelMode, string> = { walk: "pedestrian", drive: "auto", bike: "bicycle" };
 
@@ -50,8 +55,16 @@ export async function fetchStreetRoute(
   from: Coordinate,
   to: Coordinate,
   travel: TravelMode,
-  { avoidStairs = false, signal }: { avoidStairs?: boolean; signal?: AbortSignal } = {},
+  {
+    avoidStairs = false,
+    heading,
+    signal,
+  }: { avoidStairs?: boolean; heading?: number; signal?: AbortSignal } = {},
 ): Promise<Route | null> {
+  const facing =
+    heading !== undefined && Number.isFinite(heading)
+      ? { heading: ((heading % 360) + 360) % 360, heading_tolerance: HEADING_TOLERANCE_DEGREES, radius: HEADING_SEARCH_METERS[travel] }
+      : {};
   const controller = new AbortController();
   const abort = () => controller.abort();
   signal?.addEventListener("abort", abort, { once: true });
@@ -63,7 +76,7 @@ export async function fetchStreetRoute(
       headers: { "Content-Type": "application/json", "X-Client-Id": CLIENT_ID },
       body: JSON.stringify({
         locations: [
-          { lat: from.latitude, lon: from.longitude, search_cutoff: MAX_SNAP_METERS },
+          { lat: from.latitude, lon: from.longitude, search_cutoff: MAX_SNAP_METERS, ...facing },
           { lat: to.latitude, lon: to.longitude, search_cutoff: MAX_SNAP_METERS },
         ],
         costing: COSTING[travel],
