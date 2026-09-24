@@ -7,6 +7,7 @@ import (
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -23,10 +24,10 @@ import (
 // AUTH_SECRET. A copy of the database alone does not reveal the private key.
 
 const (
-	vapidRow        = "vapid"
 	sealVersion     = 1
 	sealNonceBytes  = 12
 	keySealingLabel = "csimap/push/v1/key-sealing"
+	keyRowLabel     = "csimap/push/v1/key-row"
 )
 
 // ErrKeysUnreadable means stored keys exist but cannot be opened, most likely because AUTH_SECRET changed.
@@ -37,6 +38,15 @@ type vapidKeys struct {
 	Public  string `json:"public"`
 	Private string `json:"private"`
 	Subject string `json:"subject"`
+}
+
+// keyRow names the row for one AUTH_SECRET. Two setups with different secrets sharing a database, like a
+// laptop and production, each get their own keypair instead of finding one they cannot open. The name is a
+// one way fingerprint, so it says nothing about the secret.
+func keyRow(secret []byte) string {
+	mac := hmac.New(sha256.New, secret)
+	mac.Write([]byte(keyRowLabel))
+	return "vapid_" + hex.EncodeToString(mac.Sum(nil)[:8])
 }
 
 func sealer(secret []byte) (cipher.AEAD, error) {
@@ -80,7 +90,7 @@ func open(aead cipher.AEAD, name string, sealed []byte) ([]byte, error) {
 // with whichever keypair was stored first. It connects as the database owner, the only role that can read
 // app_keys.
 func ResolveKeys(ctx context.Context, pool *pgxpool.Pool, cfg *config.Config) error {
-	return resolveKeys(ctx, pool, cfg, vapidRow)
+	return resolveKeys(ctx, pool, cfg, keyRow(cfg.AuthSecret))
 }
 
 // resolveKeys takes the row name so tests can use their own row and never touch the real keys.

@@ -3,6 +3,7 @@ package push
 import (
 	"bytes"
 	"errors"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -61,5 +62,27 @@ func TestSealedKeysRefuseAnythingElse(t *testing.T) {
 func TestSealerNeedsARealSecret(t *testing.T) {
 	if _, err := sealer([]byte("short")); err == nil {
 		t.Fatal("a short secret must be refused")
+	}
+}
+
+// A laptop and production share one database but not one secret, so each must get a row of its own.
+func TestEachSecretGetsItsOwnRow(t *testing.T) {
+	laptop := keyRow([]byte(strings.Repeat("d", 40)))
+	production := keyRow([]byte(strings.Repeat("p", 40)))
+	if laptop == production {
+		t.Fatal("two secrets share one row")
+	}
+	if keyRow([]byte(strings.Repeat("p", 40))) != production {
+		t.Fatal("the same secret must always find the same row")
+	}
+	// The same rule the database enforces on app_keys.name.
+	allowed := regexp.MustCompile(`^[a-z][a-z0-9_]{1,40}$`)
+	for _, row := range []string{laptop, production} {
+		if !allowed.MatchString(row) {
+			t.Errorf("%q would be refused by the database", row)
+		}
+		if strings.Contains(row, "ddd") || strings.Contains(row, "ppp") {
+			t.Errorf("%q leaks the secret", row)
+		}
 	}
 }
