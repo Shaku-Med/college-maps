@@ -85,6 +85,10 @@ func Build(ctx context.Context, logger *slog.Logger, migrate bool) (*App, error)
 		return nil, fmt.Errorf("social: %w", err)
 	}
 
+	// Notification keys live in the database, so every instance and every deploy signs with the same ones.
+	if err := push.ResolveKeys(ctx, pool, &cfg); err != nil {
+		logger.Warn("notifications are off: their keys could not be set up", "error", err)
+	}
 	pushService := push.New(pool, cfg, logger)
 	if cfg.PushAvailable {
 		logger.Info("push notifications enabled")

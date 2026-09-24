@@ -170,7 +170,7 @@ Vercel's Go framework preset runs an ordinary `net/http` server, so bkapp deploy
 
 Vercel leaves ports 465 and 587 open, so `EMAIL_MODE=smtp` with a Gmail app password works there.
 
-To deploy: point a Vercel project at `backend/bkapp` as its root directory, copy the variables from `.env.production`, add the three `VAPID_*` values from `.env.notification` so push notifications keep working, and deploy.
+To deploy: point a Vercel project at `backend/bkapp` as its root directory, copy the variables from `.env.production`, and deploy. Push notification keys need nothing: the API makes them once and keeps them in the database (`app_keys`, migration 0015), sealed with a key derived from `AUTH_SECRET`, so every instance and every deploy signs with the same keypair and subscriptions keep working. Only the server's own startup can read that table; the API's restricted role has no access. To replace the keys, delete the `vapid` row and restart; `VAPID_*` values, if set, become the new ones.
 
 Then point the web app's `/v1` at it. The browser always calls the web app's own origin, so the session cookie stays first party, and the site forwards `/v1` to the API. On Vercel, set `API_UPSTREAM` to the API's address; on Netlify, the redirect in `app/netlify.toml` does it. Set `NEXT_PUBLIC_API_URL` to the web app's own address in both cases. Getting this wrong used to make the site forward `/v1` to itself, which Vercel answers with `508 INFINITE_LOOP_DETECTED`; the build now stops instead. Whichever host the web app lives on, that address also has to be in the API's `ALLOWED_ORIGINS`, and in rtapp's, or sign in and live meetups are refused.
 

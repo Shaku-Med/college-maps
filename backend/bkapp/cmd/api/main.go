@@ -29,8 +29,8 @@ func run(logger *slog.Logger) error {
 		return fmt.Errorf("config: %w", err)
 	}
 	logger.Info("loading settings", "env", env, "file", file)
-	if err := config.EnsureNotificationEnv(); err != nil {
-		logger.Warn("could not prepare notification keys", "error", err)
+	if err := config.LoadNotificationFile(); err != nil {
+		logger.Warn("could not read the notification keys file", "error", err)
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()

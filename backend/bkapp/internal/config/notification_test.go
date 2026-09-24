@@ -2,42 +2,29 @@ package config
 
 import (
 	"os"
-	"strings"
 	"testing"
 )
 
-func TestEnsureNotificationEnvCreatesOnce(t *testing.T) {
+// Keys are made in the database now. A file is only read, so a host with a read-only disk never fails here.
+func TestNotificationFileIsNeverCreated(t *testing.T) {
 	inTempDir(t)
-	unset(t, "VAPID_PUBLIC_KEY", "VAPID_PRIVATE_KEY", "VAPID_SUBJECT", "EMAIL_FROM", "ALLOWED_ORIGINS")
-	t.Setenv("EMAIL_FROM", "CSI Map <ops@example.com>")
-
-	if err := EnsureNotificationEnv(); err != nil {
-		t.Fatal(err)
-	}
-	firstPub := os.Getenv("VAPID_PUBLIC_KEY")
-	firstPriv := os.Getenv("VAPID_PRIVATE_KEY")
-	if err := validPush(firstPub, firstPriv, os.Getenv("VAPID_SUBJECT")); err != nil {
-		t.Fatal(err)
-	}
-	body, err := os.ReadFile(NotificationEnvFile)
-	if err != nil || !strings.Contains(string(body), firstPub) {
-		t.Fatalf("file should contain the generated public key: %v", err)
-	}
-
 	unset(t, "VAPID_PUBLIC_KEY", "VAPID_PRIVATE_KEY", "VAPID_SUBJECT")
-	if err := EnsureNotificationEnv(); err != nil {
+	if err := LoadNotificationFile(); err != nil {
 		t.Fatal(err)
 	}
-	if os.Getenv("VAPID_PUBLIC_KEY") != firstPub || os.Getenv("VAPID_PRIVATE_KEY") != firstPriv {
-		t.Fatal("an existing .env.notification must not be regenerated")
+	if _, err := os.Stat(NotificationEnvFile); !os.IsNotExist(err) {
+		t.Fatalf("the keys file should not be created: %v", err)
+	}
+	if os.Getenv("VAPID_PUBLIC_KEY") != "" {
+		t.Fatal("no keys should appear without a file")
 	}
 }
 
-func TestEnsureNotificationEnvLeavesEmptyFileAlone(t *testing.T) {
+func TestNotificationFileLeavesEmptyValuesAlone(t *testing.T) {
 	inTempDir(t)
 	unset(t, "VAPID_PUBLIC_KEY", "VAPID_PRIVATE_KEY", "VAPID_SUBJECT")
 	writeFile(t, NotificationEnvFile, "VAPID_PUBLIC_KEY=\nVAPID_PRIVATE_KEY=\nVAPID_SUBJECT=\n")
-	if err := EnsureNotificationEnv(); err != nil {
+	if err := LoadNotificationFile(); err != nil {
 		t.Fatal(err)
 	}
 	if os.Getenv("VAPID_PUBLIC_KEY") != "" {
@@ -73,7 +60,7 @@ func TestLoadRejectsEmptyVAPIDValues(t *testing.T) {
 
 func TestLoadAcceptsGeneratedVAPID(t *testing.T) {
 	setValid(t)
-	pub, priv, err := generateVAPIDKeys()
+	pub, priv, err := GenerateVAPIDKeys()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,7 +75,7 @@ func TestLoadAcceptsGeneratedVAPID(t *testing.T) {
 
 func TestNotificationFileFillsEmptyEnv(t *testing.T) {
 	inTempDir(t)
-	pub, priv, err := generateVAPIDKeys()
+	pub, priv, err := GenerateVAPIDKeys()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -96,7 +83,7 @@ func TestNotificationFileFillsEmptyEnv(t *testing.T) {
 	t.Setenv("VAPID_PUBLIC_KEY", "")
 	t.Setenv("VAPID_PRIVATE_KEY", "")
 	t.Setenv("VAPID_SUBJECT", "")
-	if err := EnsureNotificationEnv(); err != nil {
+	if err := LoadNotificationFile(); err != nil {
 		t.Fatal(err)
 	}
 	if os.Getenv("VAPID_PUBLIC_KEY") != pub || os.Getenv("VAPID_PRIVATE_KEY") != priv {

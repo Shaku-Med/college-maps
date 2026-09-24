@@ -22,60 +22,18 @@ func (c *Config) applyPush() {
 	c.PushAvailable = validPush(c.VAPIDPublic, c.VAPIDPrivate, c.VAPIDSubject) == nil
 }
 
-// EnsureNotificationEnv writes .env.notification with VAPID keys the first time the API starts.
-// An existing file is never replaced. Empty or invalid values leave push off; the rest of the
-// server still starts.
-func EnsureNotificationEnv() error {
-	if _, err := os.Stat(NotificationEnvFile); err == nil {
-		return overlayVAPIDFromFile(NotificationEnvFile)
-	} else if !errors.Is(err, os.ErrNotExist) {
+// LoadNotificationFile reads VAPID keys from .env.notification when one exists, such as on a laptop that
+// ran an older version of the API. It never creates the file: the keys are made and kept in the database
+// instead, because hosts like Vercel have no disk that lasts. Anything read here only seeds the database
+// the first time.
+func LoadNotificationFile() error {
+	if _, err := os.Stat(NotificationEnvFile); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
 		return err
 	}
-
-	if vapidEnvPresent() {
-		return nil
-	}
-
-	pub, priv, err := generateVAPIDKeys()
-	if err != nil {
-		return err
-	}
-	subject := defaultVAPIDSubject()
-	if err := validPush(pub, priv, subject); err != nil {
-		return err
-	}
-	body := "# Generated on first API start. The server will not overwrite this file.\n" +
-		"VAPID_PUBLIC_KEY=" + pub + "\n" +
-		"VAPID_PRIVATE_KEY=" + priv + "\n" +
-		"VAPID_SUBJECT=" + subject + "\n"
-
-	file, err := os.OpenFile(NotificationEnvFile, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
-	if errors.Is(err, os.ErrExist) {
-		return overlayVAPIDFromFile(NotificationEnvFile)
-	}
-	if err != nil {
-		return err
-	}
-	_, writeErr := file.WriteString(body)
-	closeErr := file.Close()
-	if writeErr != nil {
-		return writeErr
-	}
-	if closeErr != nil {
-		return closeErr
-	}
-
-	return applyVAPIDEnv(pub, priv, subject)
-}
-
-func applyVAPIDEnv(pub, priv, subject string) error {
-	if err := os.Setenv("VAPID_PUBLIC_KEY", pub); err != nil {
-		return err
-	}
-	if err := os.Setenv("VAPID_PRIVATE_KEY", priv); err != nil {
-		return err
-	}
-	return os.Setenv("VAPID_SUBJECT", subject)
+	return overlayVAPIDFromFile(NotificationEnvFile)
 }
 
 // overlayVAPIDFromFile copies VAPID values from .env.notification when the process does not
@@ -112,13 +70,9 @@ func overlayVAPIDFromFile(path string) error {
 	return nil
 }
 
-func vapidEnvPresent() bool {
-	return strings.TrimSpace(os.Getenv("VAPID_PUBLIC_KEY")) != "" ||
-		strings.TrimSpace(os.Getenv("VAPID_PRIVATE_KEY")) != "" ||
-		strings.TrimSpace(os.Getenv("VAPID_SUBJECT")) != ""
-}
-
-func defaultVAPIDSubject() string {
+// DefaultVAPIDSubject is the contact push services see for this server: the sending email address,
+// otherwise the site itself.
+func DefaultVAPIDSubject() string {
 	if from, err := mail.ParseAddress(os.Getenv("EMAIL_FROM")); err == nil && from.Address != "" {
 		return "mailto:" + from.Address
 	}
@@ -131,7 +85,8 @@ func defaultVAPIDSubject() string {
 	return "mailto:notifications@localhost"
 }
 
-func generateVAPIDKeys() (public, private string, err error) {
+// GenerateVAPIDKeys makes a new P-256 keypair in the form Web Push expects.
+func GenerateVAPIDKeys() (public, private string, err error) {
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		return "", "", err
@@ -143,6 +98,11 @@ func generateVAPIDKeys() (public, private string, err error) {
 	key.PublicKey.X.FillBytes(pub[1:33])
 	key.PublicKey.Y.FillBytes(pub[33:65])
 	return base64.RawURLEncoding.EncodeToString(pub), base64.RawURLEncoding.EncodeToString(priv), nil
+}
+
+// ValidVAPID checks a keypair and contact before they are used to sign anything.
+func ValidVAPID(public, private, subject string) error {
+	return validPush(public, private, subject)
 }
 
 func validPush(public, private, subject string) error {
