@@ -15,6 +15,7 @@ import (
 
 	"csimap/bkapp/internal/auth"
 	"csimap/bkapp/internal/push"
+	"csimap/bkapp/internal/settings"
 	"csimap/bkapp/internal/social"
 )
 
@@ -36,11 +37,12 @@ func sessionCookie(production bool) cookieSettings {
 }
 
 type authHandlers struct {
-	service *auth.Service
-	social  *social.Service
-	push    *push.Service
-	logger  *slog.Logger
-	cookie  cookieSettings
+	service  *auth.Service
+	social   *social.Service
+	push     *push.Service
+	settings *settings.Service
+	logger   *slog.Logger
+	cookie   cookieSettings
 }
 
 // userResponse is only ever sent to the account owner. Anything shown to other people must
@@ -222,6 +224,15 @@ func (a *authHandlers) exportMe(w http.ResponseWriter, r *http.Request, user aut
 		}
 	}
 
+	preferences := settings.Settings{}
+	if a.settings != nil {
+		preferences, err = a.settings.Get(r.Context(), user)
+		if err != nil {
+			a.fail(w, r, err)
+			return
+		}
+	}
+
 	sessions := make([]map[string]string, 0, len(record.Sessions))
 	for _, s := range record.Sessions {
 		sessions = append(sessions, map[string]string{
@@ -250,6 +261,7 @@ func (a *authHandlers) exportMe(w http.ResponseWriter, r *http.Request, user aut
 		"friends":       friends,
 		"meetups":       meetups,
 		"notifications": notifications,
+		"settings":      preferences,
 		"notStored": []string{
 			"Live location is never written down. It only exists in memory during a private meetup.",
 			"Your class list is saved only in this browser, and is added when you download from the app.",

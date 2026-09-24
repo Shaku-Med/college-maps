@@ -16,6 +16,7 @@ import (
 	"csimap/bkapp/internal/email"
 	"csimap/bkapp/internal/httpapi"
 	"csimap/bkapp/internal/push"
+	"csimap/bkapp/internal/settings"
 	"csimap/bkapp/internal/social"
 )
 
@@ -94,7 +95,7 @@ func Build(ctx context.Context, logger *slog.Logger, migrate bool) (*App, error)
 		go pushService.Notify(context.Background(), senderID, userIDs, push.Message{Title: title, Body: body, URL: path})
 	})
 
-	api := httpapi.New(cfg, logger, site, authService, socialService, pushService)
+	api := httpapi.New(cfg, logger, site, authService, socialService, pushService, settings.NewService(pool))
 	return &App{
 		Handler: api.Handler(),
 		Config:  cfg,

@@ -45,7 +45,7 @@ func newTestEnv(t *testing.T) testEnv {
 		t.Fatal(err)
 	}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	return testEnv{handler: New(cfg, logger, site, svc, nil, nil).Handler(), mail: mail}
+	return testEnv{handler: New(cfg, logger, site, svc, nil, nil, nil).Handler(), mail: mail}
 }
 
 func jsonRequest(method, path, body string) *http.Request {

@@ -7,6 +7,7 @@ import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } fro
 
 import { CAMPUS } from "@/data/campus";
 import { CollapseButton, SheetGrabber } from "@/components/sheet-chrome";
+import { VoicePicker } from "@/components/voice-picker";
 import type { AccountState } from "@/hooks/use-account";
 import {
   CODE_LENGTH,
@@ -24,9 +25,13 @@ import {
 import { saveExport, type AccountExport, type ExportFormat } from "@/lib/account-export";
 import { canOfferNotifications, currentPushSubscription, disablePush, enablePush } from "@/lib/push";
 import { clearSchedule } from "@/lib/schedule";
+import type { VoiceId } from "@/lib/voice";
 
 type AccountPanelProps = {
   state: AccountState;
+  voice: VoiceId;
+  voiceSavedTo: "account" | "device";
+  onChooseVoice: (voice: VoiceId) => void;
   onUser: (user: AccountUser | null) => void;
   onRetry: () => void;
   onCollapse: () => void;
@@ -41,9 +46,21 @@ export function initials(user: AccountUser) {
   return letters || user.username.slice(0, 2).toUpperCase();
 }
 
-export function AccountPanel({ state, onUser, onRetry, onCollapse, onClose, onDeleted }: AccountPanelProps) {
+export function AccountPanel({
+  state,
+  voice,
+  voiceSavedTo,
+  onChooseVoice,
+  onUser,
+  onRetry,
+  onCollapse,
+  onClose,
+  onDeleted,
+}: AccountPanelProps) {
   const subtitle =
     state.status === "signed-in" ? "Signed in" : `Sign in with your ${CAMPUS.college.shortName} email`;
+  // Everyone can pick a voice, signed in or not. Signed in, it is kept with the account.
+  const voiceRow = <VoicePicker voice={voice} savedTo={voiceSavedTo} onChoose={onChooseVoice} />;
 
   return (
     <Surface
@@ -70,11 +87,14 @@ export function AccountPanel({ state, onUser, onRetry, onCollapse, onClose, onDe
             <Spinner />
           </div>
         ) : state.status === "unreachable" ? (
-          <div className="flex flex-col gap-3 rounded-2xl bg-surface-secondary px-4 py-5">
-            <p className="text-sm">We couldn&apos;t reach the account server. The map still works while you&apos;re offline.</p>
-            <Button variant="secondary" onPress={onRetry} className="self-start">
-              Try again
-            </Button>
+          <div className="flex flex-col gap-5">
+            <div className="flex flex-col gap-3 rounded-2xl bg-surface-secondary px-4 py-5">
+              <p className="text-sm">We couldn&apos;t reach the account server. The map still works while you&apos;re offline.</p>
+              <Button variant="secondary" onPress={onRetry} className="self-start">
+                Try again
+              </Button>
+            </div>
+            {voiceRow}
           </div>
         ) : state.status === "signed-in" && state.user.needsProfile ? (
           <div className="flex flex-col gap-5">
@@ -84,14 +104,15 @@ export function AccountPanel({ state, onUser, onRetry, onCollapse, onClose, onDe
               submitLabel="Continue"
               onSaved={onUser}
             />
+            {voiceRow}
             <PrivacyRow />
             <DownloadData />
             <DangerZone user={state.user} onDeleted={onDeleted} onUser={onUser} />
           </div>
         ) : state.status === "signed-in" ? (
-          <Profile user={state.user} onUser={onUser} onDeleted={onDeleted} />
+          <Profile user={state.user} onUser={onUser} onDeleted={onDeleted} voiceRow={voiceRow} />
         ) : state.status === "signed-out" ? (
-          <SignIn onUser={onUser} />
+          <SignIn onUser={onUser} voiceRow={voiceRow} />
         ) : null}
       </div>
     </Surface>
@@ -107,7 +128,7 @@ function ErrorText({ message, className = "" }: { message?: string; className?: 
   );
 }
 
-function SignIn({ onUser }: { onUser: (user: AccountUser) => void }) {
+function SignIn({ onUser, voiceRow }: { onUser: (user: AccountUser) => void; voiceRow: ReactNode }) {
   const [email, setEmail] = useState("");
   const [sentTo, setSentTo] = useState<string>();
   const [code, setCode] = useState("");
@@ -200,6 +221,7 @@ function SignIn({ onUser }: { onUser: (user: AccountUser) => void }) {
           <Lock className="mt-0.5 size-3.5 shrink-0" aria-hidden />
           Your email is encrypted and never shown to other students.
         </p>
+        {voiceRow}
         <PrivacyRow />
       </form>
     );
@@ -390,10 +412,12 @@ function Profile({
   user,
   onUser,
   onDeleted,
+  voiceRow,
 }: {
   user: AccountUser;
   onUser: (user: AccountUser | null) => void;
   onDeleted?: () => void;
+  voiceRow: ReactNode;
 }) {
   const [isEditing, setIsEditing] = useState(false);
   const [pending, setPending] = useState<"one" | "all">();
@@ -460,6 +484,7 @@ function Profile({
       </div>
 
       <NotificationsRow />
+      {voiceRow}
 
       <div className="flex flex-col gap-2">
         <SignOutConfirm

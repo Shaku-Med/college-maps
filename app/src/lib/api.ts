@@ -150,6 +150,12 @@ export const accountApi = {
   exportData: () => apiCall<Record<string, unknown>>("/v1/me/export", "GET"),
 };
 
+// Preferences kept with the account so they follow the student to any device.
+export const settingsApi = {
+  get: () => apiCall<{ voice: string }>("/v1/me/settings", "GET"),
+  save: (voice: string) => apiCall<{ voice: string }>("/v1/me/settings", "PATCH", { voice }),
+};
+
 export const pushApi = {
   config: () => apiCall<{ available: boolean; publicKey?: string }>("/v1/push/config", "GET"),
   save: (subscription: { endpoint: string; keys: { p256dh: string; auth: string } }) =>

@@ -10,6 +10,7 @@ import (
 	"csimap/bkapp/internal/campus"
 	"csimap/bkapp/internal/config"
 	"csimap/bkapp/internal/push"
+	"csimap/bkapp/internal/settings"
 	"csimap/bkapp/internal/social"
 )
 
@@ -18,7 +19,15 @@ type Server struct {
 	limiters []*rateLimiter
 }
 
-func New(cfg config.Config, logger *slog.Logger, site *campus.Campus, authService *auth.Service, socialService *social.Service, pushService *push.Service) *Server {
+func New(
+	cfg config.Config,
+	logger *slog.Logger,
+	site *campus.Campus,
+	authService *auth.Service,
+	socialService *social.Service,
+	pushService *push.Service,
+	settingsService *settings.Service,
+) *Server {
 	ip := clientIPFunc(cfg.ClientIPHeader)
 	general := newRateLimiter(20_000, time.Minute)
 	codeRequests := newRateLimiter(200, 15*time.Minute)
@@ -27,13 +36,15 @@ func New(cfg config.Config, logger *slog.Logger, site *campus.Campus, authServic
 	wipeUser := newRateLimiter(8, 15*time.Minute)
 	exportUser := newRateLimiter(40, 15*time.Minute)
 	pushUser := newRateLimiter(40, 15*time.Minute)
+	settingsUser := newRateLimiter(60, 15*time.Minute)
 
 	a := &authHandlers{
-		service: authService,
-		social:  socialService,
-		push:    pushService,
-		logger:  logger,
-		cookie:  sessionCookie(cfg.IsProduction()),
+		service:  authService,
+		social:   socialService,
+		push:     pushService,
+		settings: settingsService,
+		logger:   logger,
+		cookie:   sessionCookie(cfg.IsProduction()),
 	}
 	ph := &pushHandlers{service: pushService}
 
@@ -51,6 +62,11 @@ func New(cfg config.Config, logger *slog.Logger, site *campus.Campus, authServic
 	mux.HandleFunc("GET /v1/push/config", ph.config)
 	mux.Handle("POST /v1/push/subscriptions", limitRoute(accountDataIP, ip, a.requireUser(limitUser(pushUser, ph.save))))
 	mux.Handle("DELETE /v1/push/subscriptions", limitRoute(accountDataIP, ip, a.requireUser(ph.remove)))
+	if settingsService != nil {
+		st := &settingsHandlers{service: settingsService}
+		mux.Handle("GET /v1/me/settings", limitRoute(accountDataIP, ip, a.requireUser(st.get)))
+		mux.Handle("PATCH /v1/me/settings", limitRoute(accountDataIP, ip, a.requireUser(limitUser(settingsUser, st.save))))
+	}
 	if socialService != nil {
 		sh := &socialHandlers{service: socialService, logger: logger}
 		mux.HandleFunc("GET /v1/friends", a.requireUser(sh.overview))
@@ -84,7 +100,7 @@ func New(cfg config.Config, logger *slog.Logger, site *campus.Campus, authServic
 		sameOriginWrites(cfg.AllowedOrigins),
 		limitBody,
 	)
-	return &Server{handler: handler, limiters: []*rateLimiter{general, codeRequests, codeChecks, accountDataIP, wipeUser, exportUser, pushUser}}
+	return &Server{handler: handler, limiters: []*rateLimiter{general, codeRequests, codeChecks, accountDataIP, wipeUser, exportUser, pushUser, settingsUser}}
 }
 
 func (s *Server) Handler() http.Handler {

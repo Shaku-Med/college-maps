@@ -12,7 +12,7 @@ env.wasmPaths = "/ort/";
 transformers.remotePathTemplate = `{model}/resolve/${MODEL_REVISION}/`;
 const MAX_TEXT = 300;
 const MAX_JOBS = 60;
-const VOICES = new Set(["af_heart", "am_michael"]);
+const VOICES = new Set(["af_heart", "af_bella", "af_nicole", "bf_emma", "am_michael", "am_fenrir", "bm_george"]);
 
 type Voice = Parameters<KokoroTTS["generate"]>[1] extends { voice?: infer V } ? V : never;
 
@@ -22,6 +22,7 @@ type Priority = 0 | 1 | 2;
 type Request =
   | { type: "load" }
   | { type: "clear" }
+  | { type: "reset" }
   | { type: "promote"; id: number; priority: Priority }
   | { type: "speak"; id: number; text: string; voice: string; priority: Priority };
 
@@ -85,6 +86,11 @@ self.onmessage = (event: MessageEvent<Request>) => {
     const [job] = jobs.splice(index, 1);
     job.priority = message.priority;
     enqueue(job);
+    return;
+  }
+  if (message?.type === "reset") {
+    // The voice changed, so nothing queued is wanted any more.
+    for (const job of jobs.splice(0)) self.postMessage({ type: "error", id: job.id });
     return;
   }
   if (message?.type === "clear") {

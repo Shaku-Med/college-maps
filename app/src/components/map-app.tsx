@@ -21,6 +21,7 @@ import { useGeolocation, type GeoFix } from "@/hooks/use-geolocation";
 import { useHeading } from "@/hooks/use-heading";
 import { useMeetupLive } from "@/hooks/use-meetup-live";
 import { useSocial } from "@/hooks/use-social";
+import { useVoiceChoice } from "@/hooks/use-voice-choice";
 import { useVoiceGuidance } from "@/hooks/use-voice-guidance";
 import { useWakeLock } from "@/hooks/use-wake-lock";
 import { MAP_FILTERS, type MapFilter } from "@/lib/categories";
@@ -211,6 +212,7 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
   const [buildingView, setBuildingView] = useState(false);
   const [activePersonId, setActivePersonId] = useState<string | null>(null);
   const account = useAccount();
+  const voiceChoice = useVoiceChoice(account.state);
   const social = useSocial(account.state);
   const [classes, setClasses] = useState<ClassEntry[]>([]);
 
@@ -1095,6 +1097,9 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
         <SheetLayer wrapClassName={SHEET_FULL_WRAP} onCollapse={() => setIsAccountExpanded(false)}>
           <AccountPanel
             state={account.state}
+            voice={voiceChoice.voice}
+            voiceSavedTo={voiceChoice.savedTo}
+            onChooseVoice={voiceChoice.choose}
             onUser={account.setUser}
             onRetry={() => void account.refresh()}
             onCollapse={() => setIsAccountExpanded(false)}

@@ -4,7 +4,29 @@
 // time, the device's own speech engine says it instead, because late directions are worse than plain ones.
 
 const STORAGE_KEY = "csimap.voice";
-const VOICE = "af_heart";
+const CHOICE_KEY = "csimap.voiceName";
+
+// The voices on offer, best first. The Kokoro ones run on the phone; "device" is the phone's own speech
+// engine, for anyone who would rather not download a voice. The account API accepts exactly these ids.
+export const VOICE_OPTIONS = [
+  { id: "af_heart", name: "Heart", description: "Warm, American" },
+  { id: "af_bella", name: "Bella", description: "Bright, American" },
+  { id: "af_nicole", name: "Nicole", description: "Soft, American" },
+  { id: "bf_emma", name: "Emma", description: "British" },
+  { id: "am_michael", name: "Michael", description: "Calm, American" },
+  { id: "am_fenrir", name: "Fenrir", description: "Deep, American" },
+  { id: "bm_george", name: "George", description: "British" },
+  { id: "device", name: "Your phone's voice", description: "Nothing to download, but more robotic" },
+] as const;
+
+export type VoiceId = (typeof VOICE_OPTIONS)[number]["id"];
+export const DEFAULT_VOICE: VoiceId = "af_heart";
+const PREVIEW_LINE = "In 100 feet, turn right.";
+
+export const isVoiceId = (value: unknown): value is VoiceId =>
+  typeof value === "string" && VOICE_OPTIONS.some((option) => option.id === value);
+
+let voice: VoiceId = DEFAULT_VOICE;
 const MAX_TEXT = 300;
 // How long a heads up may wait for its own clip. Heads ups come about ten seconds before a turn, so there is
 // room to wait, and past this a natural stand in, or failing that the device voice, says it instead.
@@ -42,6 +64,33 @@ export function saveVoicePreference(on: boolean) {
   }
 }
 
+/** The voice chosen on this device, or undefined when none has been picked here. */
+export function readVoiceChoice(): VoiceId | undefined {
+  if (typeof window === "undefined") return undefined;
+  try {
+    const saved = window.localStorage.getItem(CHOICE_KEY);
+    return isVoiceId(saved) ? saved : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+export function saveVoiceChoice(id: VoiceId) {
+  try {
+    window.localStorage.setItem(CHOICE_KEY, id);
+  } catch {
+    // Kept for this visit only.
+  }
+}
+
+/** Switches the voice everything is said in. Lines made for the old one stay saved for switching back. */
+export function selectVoice(id: VoiceId) {
+  if (!isVoiceId(id) || id === voice) return;
+  voice = id;
+  // Queued lines are for the old voice; the new one makes its own as they are needed.
+  worker?.postMessage({ type: "reset" });
+}
+
 /** Speech for distances, so "80 ft" is read as "80 feet" and long ones are rounded the way people say them. */
 export function spokenDistance(meters: number) {
   const feet = meters * 3.28084;
@@ -55,6 +104,8 @@ export function spokenDistance(meters: number) {
 }
 
 const clean = (text: string) => text.trim().slice(0, MAX_TEXT);
+// Clips are kept per voice, so switching voices never plays a line in the wrong one.
+const clipId = (text: string, speaker: VoiceId = voice) => `${speaker}|${text}`;
 
 // ---- The natural voice ------------------------------------------------------------------------------
 
@@ -69,7 +120,7 @@ function neuralAllowed() {
   if (typeof window === "undefined" || typeof Worker === "undefined" || typeof AudioContext === "undefined") return false;
   // The model is a large download, so a phone asking to save data keeps the device voice.
   const connection = (navigator as Navigator & { connection?: { saveData?: boolean } }).connection;
-  return !connection?.saveData;
+  return !connection?.saveData && voice !== "device";
 }
 
 function ensureWorker() {
@@ -113,16 +164,17 @@ export function warmUpVoice() {
   w.postMessage({ type: "load" });
 }
 
-function remember(text: string, clip: Clip) {
-  clips.delete(text);
-  clips.set(text, clip);
+function remember(id: string, clip: Clip) {
+  clips.delete(id);
+  clips.set(id, clip);
   if (clips.size > MAX_CLIPS_IN_MEMORY) clips.delete(clips.keys().next().value as string);
 }
 
-function synthesize(text: string, priority: Priority): Promise<Clip | null> {
-  const cached = clips.get(text);
+function synthesize(text: string, priority: Priority, speaker: VoiceId = voice): Promise<Clip | null> {
+  const id = clipId(text, speaker);
+  const cached = clips.get(id);
   if (cached) return Promise.resolve(cached);
-  const inflight = pending.get(text);
+  const inflight = pending.get(id);
   if (inflight) {
     if (priority < inflight.priority) {
       inflight.priority = priority;
@@ -133,28 +185,28 @@ function synthesize(text: string, priority: Priority): Promise<Clip | null> {
 
   const entry: { job: Promise<Clip | null>; id?: number; priority: Priority } = { job: Promise.resolve(null), priority };
   entry.job = (async () => {
-    const stored = await readStoredClip(text);
+    const stored = await readStoredClip(text, speaker);
     if (stored) {
-      remember(text, stored);
+      remember(id, stored);
       return stored;
     }
     const w = ensureWorker();
     if (!w) return null;
     warmUpVoice();
-    const id = nextRequest++;
-    entry.id = id;
+    const request = nextRequest++;
+    entry.id = request;
     const clip = await new Promise<Clip | null>((resolve) => {
-      waiting.set(id, resolve);
-      w.postMessage({ type: "speak", id, text, voice: VOICE, priority: entry.priority });
+      waiting.set(request, resolve);
+      w.postMessage({ type: "speak", id: request, text, voice: speaker, priority: entry.priority });
     });
     if (clip) {
-      remember(text, clip);
-      void storeClip(text, clip);
+      remember(id, clip);
+      void storeClip(text, clip, speaker);
     }
     return clip;
-  })().finally(() => pending.delete(text));
+  })().finally(() => pending.delete(id));
 
-  pending.set(text, entry);
+  pending.set(id, entry);
   return entry.job;
 }
 
@@ -328,11 +380,11 @@ export function speak(line: string, { urgent = false, fallback }: { urgent?: boo
   lastSpoken = { text, at: now };
   if (urgent) silenceAll();
 
-  const ready = clips.get(text);
+  const ready = clips.get(clipId(text));
   if (ready && play(ready)) return;
 
   const standIn = () => {
-    const clip = fallback ? clips.get(clean(fallback)) : undefined;
+    const clip = fallback ? clips.get(clipId(clean(fallback))) : undefined;
     return clip !== undefined && play(clip);
   };
 
@@ -363,6 +415,27 @@ export function stopSpeaking() {
   silenceAll();
 }
 
+/**
+ * Plays a short sample of a voice. Call it from a tap, so a phone lets the sound start. The first sample of
+ * a Kokoro voice waits for the model to download and the line to be made, so it can take a while.
+ */
+export async function previewVoice(id: VoiceId): Promise<"played" | "unavailable"> {
+  silenceAll();
+  if (id === "device") {
+    if (!voiceSupported()) return "unavailable";
+    speakWithDevice(PREVIEW_LINE);
+    return "played";
+  }
+  const connection = (navigator as Navigator & { connection?: { saveData?: boolean } }).connection;
+  if (typeof Worker === "undefined" || typeof AudioContext === "undefined" || connection?.saveData) return "unavailable";
+  unlockAudio();
+  if (modelState === "failed") return "unavailable";
+  if (!ensureWorker()) return "unavailable";
+  warmUpVoice();
+  const clip = await synthesize(PREVIEW_LINE, 0, id);
+  return clip && play(clip) ? "played" : "unavailable";
+}
+
 // ---- Keeping clips between trips --------------------------------------------------------------------
 
 let database: Promise<IDBDatabase | null> | null = null;
@@ -383,14 +456,14 @@ function openDatabase() {
 }
 
 // The model and voice are part of the key, so changing either never replays a clip made by the old one.
-const clipKey = (text: string) => `kokoro-82m-q8|${VOICE}|${text}`;
+const clipKey = (text: string, speaker: VoiceId) => `kokoro-82m-q8|${speaker}|${text}`;
 
-async function readStoredClip(text: string): Promise<Clip | null> {
+async function readStoredClip(text: string, speaker: VoiceId): Promise<Clip | null> {
   const db = await openDatabase();
   if (!db) return null;
   return new Promise((resolve) => {
     try {
-      const request = db.transaction(DB_STORE).objectStore(DB_STORE).get(clipKey(text));
+      const request = db.transaction(DB_STORE).objectStore(DB_STORE).get(clipKey(text, speaker));
       request.onsuccess = () => {
         const value = request.result as { pcm?: unknown; rate?: unknown } | undefined;
         if (!(value?.pcm instanceof Int16Array) || typeof value.rate !== "number") return resolve(null);
@@ -406,7 +479,7 @@ async function readStoredClip(text: string): Promise<Clip | null> {
 }
 
 // Stored as 16 bit samples, half the size of the float audio and no audible difference for speech.
-async function storeClip(text: string, clip: Clip) {
+async function storeClip(text: string, clip: Clip, speaker: VoiceId) {
   const db = await openDatabase();
   if (!db) return;
   try {
@@ -415,7 +488,7 @@ async function storeClip(text: string, clip: Clip) {
       pcm[i] = Math.max(-32_768, Math.min(32_767, Math.round(clip.samples[i] * 32_768)));
     }
     const store = db.transaction(DB_STORE, "readwrite").objectStore(DB_STORE);
-    store.put({ pcm, rate: clip.rate, at: Date.now() }, clipKey(text));
+    store.put({ pcm, rate: clip.rate, at: Date.now() }, clipKey(text, speaker));
     const count = store.count();
     count.onsuccess = () => {
       let extra = count.result - MAX_CLIPS_STORED;
