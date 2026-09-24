@@ -12,6 +12,9 @@ env.wasmPaths = "/ort/";
 transformers.remotePathTemplate = `{model}/resolve/${MODEL_REVISION}/`;
 const MAX_TEXT = 300;
 const MAX_JOBS = 60;
+// Only the model file counts toward progress. The small tokenizer files finish first and would otherwise make
+// it jump to 100 and back.
+const COUNTED_BYTES = 1_000_000;
 const VOICES = new Set(["af_heart", "af_bella", "af_nicole", "bf_emma", "am_michael", "am_fenrir", "bm_george"]);
 
 type Voice = Parameters<KokoroTTS["generate"]>[1] extends { voice?: infer V } ? V : never;
@@ -31,10 +34,22 @@ type Job = { id: number; text: string; voice: string; priority: Priority };
 const isPriority = (value: unknown): value is Priority => value === 0 || value === 1 || value === 2;
 
 let model: Promise<KokoroTTS> | null = null;
+let reported = { percent: -1, at: 0 };
+
+// Also sent every few seconds while bytes keep arriving, even when the percent has not moved, so the page
+// can tell a slow download from one that stopped.
+function reportProgress(info: { status: string; loaded?: number; total?: number }) {
+  if (info.status !== "progress" || info.loaded === undefined || !info.total || info.total < COUNTED_BYTES) return;
+  const percent = Math.min(100, Math.floor((info.loaded / info.total) * 100));
+  const now = Date.now();
+  if (percent === reported.percent && now - reported.at < 5_000) return;
+  reported = { percent, at: now };
+  self.postMessage({ type: "progress", percent });
+}
 
 // The smaller quantized model: about 90 MB, and it runs on any phone's CPU through WebAssembly.
 function load() {
-  model ??= KokoroTTS.from_pretrained(MODEL, { dtype: "q8", device: "wasm" }).catch((err: unknown) => {
+  model ??= KokoroTTS.from_pretrained(MODEL, { dtype: "q8", device: "wasm", progress_callback: reportProgress }).catch((err: unknown) => {
     model = null;
     throw err;
   });

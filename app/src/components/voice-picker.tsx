@@ -2,10 +2,18 @@
 
 import { Button, Spinner, toast } from "@heroui/react";
 import { AudioLines, Check, ChevronDown, Play } from "lucide-react";
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 
 import { cn } from "@/lib/cn";
-import { VOICE_OPTIONS, previewVoice, type VoiceId } from "@/lib/voice";
+import {
+  VOICE_OPTIONS,
+  idleVoiceStatus,
+  previewVoice,
+  subscribeVoiceStatus,
+  voiceStatus,
+  type VoiceId,
+  type VoiceStatus,
+} from "@/lib/voice";
 
 type VoicePickerProps = {
   voice: VoiceId;
@@ -13,17 +21,28 @@ type VoicePickerProps = {
   onChoose: (id: VoiceId) => void;
 };
 
+function sampleProgress(status: VoiceStatus) {
+  if (status.state === "ready") return { text: "Making a sample", percent: null };
+  if (status.state === "loading" && status.percent !== null && status.percent < 100) {
+    return { text: `Downloading voices, ${status.percent}%`, percent: status.percent };
+  }
+  return { text: "Starting the voices", percent: null };
+}
+
 export function VoicePicker({ voice, savedTo, onChoose }: VoicePickerProps) {
   const [open, setOpen] = useState(false);
   const [previewing, setPreviewing] = useState<VoiceId | null>(null);
+  const status = useSyncExternalStore(subscribeVoiceStatus, voiceStatus, idleVoiceStatus);
   const current = VOICE_OPTIONS.find((option) => option.id === voice) ?? VOICE_OPTIONS[0];
 
   async function preview(id: VoiceId) {
     setPreviewing(id);
     const result = await previewVoice(id);
     setPreviewing((playing) => (playing === id ? null : playing));
-    if (result === "unavailable") {
+    if (result === "unsupported") {
       toast.danger("That voice can't play on this device", { description: "Your phone's own voice will be used." });
+    } else if (result === "failed") {
+      toast.danger("That voice didn't load", { description: "Check your connection and try again." });
     }
   }
 
@@ -52,6 +71,7 @@ export function VoicePicker({ voice, savedTo, onChoose }: VoicePickerProps) {
           <ul role="radiogroup" aria-label="Navigation voice" className="flex flex-col gap-0.5">
             {VOICE_OPTIONS.map((option) => {
               const selected = option.id === voice;
+              const progress = previewing === option.id && option.id !== "device" ? sampleProgress(status) : null;
               return (
                 <li
                   key={option.id}
@@ -64,7 +84,15 @@ export function VoicePicker({ voice, savedTo, onChoose }: VoicePickerProps) {
                     className="flex min-w-0 flex-1 items-center gap-3 rounded-xl px-3 py-2.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-accent">
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-sm font-medium">{option.name}</span>
-                      <span className="block truncate text-xs text-muted">{option.description}</span>
+                      <span className="block truncate text-xs text-muted">{progress?.text ?? option.description}</span>
+                      {progress?.percent != null ? (
+                        <span className="mt-1.5 block h-1 overflow-hidden rounded-full bg-surface-secondary">
+                          <span
+                            className="block h-full rounded-full bg-accent transition-[width] duration-300"
+                            style={{ width: `${progress.percent}%` }}
+                          />
+                        </span>
+                      ) : null}
                     </span>
                     {selected ? <Check className="size-4 shrink-0 text-accent" aria-hidden /> : null}
                   </button>

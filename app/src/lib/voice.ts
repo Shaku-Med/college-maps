@@ -38,6 +38,9 @@ const REPEAT_WINDOW_MS = 8_000;
 // Loading the model again after it failed is only worth a few tries: a download cut off by a weak signal
 // may work later, a phone without the memory for it never will.
 const MAX_LOAD_ATTEMPTS = 3;
+// A voice engine that is busy but has said nothing for this long is stuck, like a download that stopped
+// partway, and is restarted instead of leaving every line waiting on it.
+const STALL_MS = 60_000;
 const DB_NAME = "csimap-voice";
 const DB_STORE = "clips";
 
@@ -115,10 +118,47 @@ const clipId = (text: string, speaker: VoiceId = voice) => `${speaker}|${text}`;
 let worker: Worker | null = null;
 let modelState: ModelState = "idle";
 let loadAttempts = 0;
+let lastHeard = 0;
+let watchdog: ReturnType<typeof setInterval> | undefined;
 let nextRequest = 1;
 const clips = new Map<string, Clip>();
 const pending = new Map<string, { job: Promise<Clip | null>; id?: number; priority: Priority }>();
 const waiting = new Map<number, (clip: Clip | null) => void>();
+
+export type VoiceStatus = { state: ModelState; percent: number | null };
+const IDLE_STATUS: VoiceStatus = { state: "idle", percent: null };
+let status = IDLE_STATUS;
+const statusListeners = new Set<() => void>();
+
+function setModelState(state: ModelState, percent: number | null = null) {
+  modelState = state;
+  if (status.state === state && status.percent === percent) return;
+  status = { state, percent };
+  for (const listener of statusListeners) listener();
+}
+
+/** What the voice engine is doing, such as how much of the model has downloaded. For useSyncExternalStore. */
+export function subscribeVoiceStatus(listener: () => void) {
+  statusListeners.add(listener);
+  return () => void statusListeners.delete(listener);
+}
+export const voiceStatus = () => status;
+export const idleVoiceStatus = () => IDLE_STATUS;
+
+const engineBusy = () => modelState === "loading" || waiting.size > 0;
+
+// Call just before giving the engine something to do.
+function watchEngine() {
+  if (!engineBusy()) lastHeard = Date.now();
+  watchdog ??= setInterval(() => {
+    if (!engineBusy()) {
+      clearInterval(watchdog);
+      watchdog = undefined;
+    } else if (Date.now() - lastHeard > STALL_MS) {
+      giveUp();
+    }
+  }, 5_000);
+}
 
 // Whether this device can run the natural voices at all, whichever voice is chosen right now.
 function modelAllowed() {
@@ -133,7 +173,7 @@ const neuralAllowed = () => voice !== "device" && modelAllowed();
 
 // A tap asking for a natural voice tries the model again after it failed, a few times per visit at most.
 function retryModel() {
-  if (modelState === "failed" && loadAttempts < MAX_LOAD_ATTEMPTS) modelState = "idle";
+  if (modelState === "failed" && loadAttempts < MAX_LOAD_ATTEMPTS) setModelState("idle");
 }
 
 function ensureWorker() {
@@ -141,13 +181,17 @@ function ensureWorker() {
   try {
     worker = new Worker(new URL("./voice.worker.ts", import.meta.url), { type: "module" });
   } catch {
-    modelState = "failed";
+    setModelState("failed");
     return null;
   }
   worker.onmessage = (event: MessageEvent) => {
-    const message = event.data as { type?: string; id?: number; samples?: unknown; rate?: unknown };
-    if (message.type === "ready") modelState = "ready";
+    lastHeard = Date.now();
+    const message = event.data as { type?: string; id?: number; samples?: unknown; rate?: unknown; percent?: unknown };
+    if (message.type === "ready") setModelState("ready");
     else if (message.type === "failed") giveUp();
+    else if (message.type === "progress" && typeof message.percent === "number" && modelState === "loading") {
+      setModelState("loading", Math.max(0, Math.min(100, Math.round(message.percent))));
+    }
     else if ((message.type === "audio" || message.type === "error") && typeof message.id === "number") {
       const resolve = waiting.get(message.id);
       waiting.delete(message.id);
@@ -161,7 +205,7 @@ function ensureWorker() {
 
 // A device that cannot run the model uses its own voice until a tap tries again.
 function giveUp() {
-  modelState = "failed";
+  setModelState("failed");
   worker?.terminate();
   worker = null;
   for (const resolve of waiting.values()) resolve(null);
@@ -177,7 +221,8 @@ function loadModel() {
   if (modelState !== "idle") return;
   const w = ensureWorker();
   if (!w) return;
-  modelState = "loading";
+  watchEngine();
+  setModelState("loading");
   loadAttempts++;
   w.postMessage({ type: "load" });
 }
@@ -215,6 +260,7 @@ function synthesize(text: string, priority: Priority, speaker: VoiceId = voice):
     const request = nextRequest++;
     entry.id = request;
     const clip = await new Promise<Clip | null>((resolve) => {
+      watchEngine();
       waiting.set(request, resolve);
       w.postMessage({ type: "speak", id: request, text, voice: speaker, priority: entry.priority });
     });
@@ -443,19 +489,19 @@ export function stopSpeaking() {
  * Plays a short sample of a voice. Call it from a tap, so a phone lets the sound start. The first sample of
  * a Kokoro voice waits for the model to download and the line to be made, so it can take a while.
  */
-export async function previewVoice(id: VoiceId): Promise<"played" | "unavailable"> {
+export async function previewVoice(id: VoiceId): Promise<"played" | "unsupported" | "failed"> {
   silenceAll();
   if (id === "device") {
-    if (!voiceSupported()) return "unavailable";
+    if (!voiceSupported()) return "unsupported";
     speakWithDevice(PREVIEW_LINE);
     return "played";
   }
   // Any voice can be heard, not just the chosen one, including while the phone's own voice is chosen.
-  if (!modelAllowed()) return "unavailable";
+  if (!modelAllowed()) return "unsupported";
   startAudio();
   retryModel();
   const clip = await synthesize(PREVIEW_LINE, 0, id);
-  return clip && play(clip) ? "played" : "unavailable";
+  return clip && play(clip) ? "played" : "failed";
 }
 
 // ---- Keeping clips between trips --------------------------------------------------------------------
