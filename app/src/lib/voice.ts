@@ -35,6 +35,9 @@ const MAX_CLIPS_IN_MEMORY = 160;
 const MAX_CLIPS_STORED = 250;
 // The same heads up twice in a row, as happens right after a reroute, is said once.
 const REPEAT_WINDOW_MS = 8_000;
+// Loading the model again after it failed is only worth a few tries: a download cut off by a weak signal
+// may work later, a phone without the memory for it never will.
+const MAX_LOAD_ATTEMPTS = 3;
 const DB_NAME = "csimap-voice";
 const DB_STORE = "clips";
 
@@ -111,20 +114,30 @@ const clipId = (text: string, speaker: VoiceId = voice) => `${speaker}|${text}`;
 
 let worker: Worker | null = null;
 let modelState: ModelState = "idle";
+let loadAttempts = 0;
 let nextRequest = 1;
 const clips = new Map<string, Clip>();
 const pending = new Map<string, { job: Promise<Clip | null>; id?: number; priority: Priority }>();
 const waiting = new Map<number, (clip: Clip | null) => void>();
 
-function neuralAllowed() {
+// Whether this device can run the natural voices at all, whichever voice is chosen right now.
+function modelAllowed() {
   if (typeof window === "undefined" || typeof Worker === "undefined" || typeof AudioContext === "undefined") return false;
   // The model is a large download, so a phone asking to save data keeps the device voice.
   const connection = (navigator as Navigator & { connection?: { saveData?: boolean } }).connection;
-  return !connection?.saveData && voice !== "device";
+  return !connection?.saveData;
+}
+
+// Whether directions are said in a natural voice.
+const neuralAllowed = () => voice !== "device" && modelAllowed();
+
+// A tap asking for a natural voice tries the model again after it failed, a few times per visit at most.
+function retryModel() {
+  if (modelState === "failed" && loadAttempts < MAX_LOAD_ATTEMPTS) modelState = "idle";
 }
 
 function ensureWorker() {
-  if (worker || modelState === "failed" || !neuralAllowed()) return worker;
+  if (worker || modelState === "failed" || !modelAllowed()) return worker;
   try {
     worker = new Worker(new URL("./voice.worker.ts", import.meta.url), { type: "module" });
   } catch {
@@ -146,7 +159,7 @@ function ensureWorker() {
   return worker;
 }
 
-// A device that cannot run the model keeps using its own voice for the rest of the visit.
+// A device that cannot run the model uses its own voice until a tap tries again.
 function giveUp() {
   modelState = "failed";
   worker?.terminate();
@@ -157,10 +170,15 @@ function giveUp() {
 
 /** Starts downloading the model, about 90 MB the first time and cached by the browser after that. */
 export function warmUpVoice() {
+  if (neuralAllowed()) loadModel();
+}
+
+function loadModel() {
   if (modelState !== "idle") return;
   const w = ensureWorker();
   if (!w) return;
   modelState = "loading";
+  loadAttempts++;
   w.postMessage({ type: "load" });
 }
 
@@ -171,6 +189,7 @@ function remember(id: string, clip: Clip) {
 }
 
 function synthesize(text: string, priority: Priority, speaker: VoiceId = voice): Promise<Clip | null> {
+  if (speaker === "device") return Promise.resolve(null);
   const id = clipId(text, speaker);
   const cached = clips.get(id);
   if (cached) return Promise.resolve(cached);
@@ -192,7 +211,7 @@ function synthesize(text: string, priority: Priority, speaker: VoiceId = voice):
     }
     const w = ensureWorker();
     if (!w) return null;
-    warmUpVoice();
+    loadModel();
     const request = nextRequest++;
     entry.id = request;
     const clip = await new Promise<Clip | null>((resolve) => {
@@ -238,6 +257,11 @@ let epoch = 0;
 /** Call from a tap. iPhones only let audio start inside one, and once started it keeps working. */
 export function unlockAudio() {
   if (!neuralAllowed()) return;
+  retryModel();
+  startAudio();
+}
+
+function startAudio() {
   try {
     context ??= new AudioContext();
     void context.resume();
@@ -392,7 +416,7 @@ export function speak(line: string, { urgent = false, fallback }: { urgent?: boo
   if (urgent || !modelComing || !neuralAllowed()) {
     if (!standIn()) speakWithDevice(text);
     // Made now, so the same line is ready in the natural voice the next time it comes up.
-    if (modelComing) void synthesize(text, 1);
+    if (modelComing && neuralAllowed()) void synthesize(text, 1);
     return;
   }
 
@@ -426,12 +450,10 @@ export async function previewVoice(id: VoiceId): Promise<"played" | "unavailable
     speakWithDevice(PREVIEW_LINE);
     return "played";
   }
-  const connection = (navigator as Navigator & { connection?: { saveData?: boolean } }).connection;
-  if (typeof Worker === "undefined" || typeof AudioContext === "undefined" || connection?.saveData) return "unavailable";
-  unlockAudio();
-  if (modelState === "failed") return "unavailable";
-  if (!ensureWorker()) return "unavailable";
-  warmUpVoice();
+  // Any voice can be heard, not just the chosen one, including while the phone's own voice is chosen.
+  if (!modelAllowed()) return "unavailable";
+  startAudio();
+  retryModel();
   const clip = await synthesize(PREVIEW_LINE, 0, id);
   return clip && play(clip) ? "played" : "unavailable";
 }

@@ -91,6 +91,14 @@ const STAND_IN_LINES = [
   ...STAND_IN_STEPS.map((step) => standInHeadsUp(step, "")),
 ];
 
+/**
+ * Makes the lines every trip falls back on in the voice just picked. A new voice has nothing saved yet, so
+ * without this its first trip keeps dropping to the phone's own voice while each line is made.
+ */
+export function prepareEverydayLines() {
+  prepareSpeech([...STAND_IN_LINES, NOTICE_LINES.rerouted, WRONG_WAY_LINE], { later: true });
+}
+
 const COMMON_CAMPUS_LINES = (() => {
   const step = plainStep;
   const headsUp = spokenDistance(CUES.walk.prepare);

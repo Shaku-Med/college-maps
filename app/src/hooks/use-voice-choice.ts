@@ -4,6 +4,7 @@ import { toast } from "@heroui/react";
 import { useCallback, useEffect, useState } from "react";
 
 import type { AccountState } from "@/hooks/use-account";
+import { prepareEverydayLines } from "@/hooks/use-voice-guidance";
 import { settingsApi } from "@/lib/api";
 import {
   DEFAULT_VOICE,
@@ -50,6 +51,8 @@ export function useVoiceChoice(account: AccountState) {
     (next: VoiceId) => {
       setVoice(next);
       saveVoiceChoice(next);
+      selectVoice(next);
+      prepareEverydayLines();
       if (!signedIn) return;
       void settingsApi.save(next).then((res) => {
         if (!res.ok) toast.danger("Saved on this device, but not to your account", { description: res.message });

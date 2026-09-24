@@ -89,8 +89,13 @@ self.onmessage = (event: MessageEvent<Request>) => {
     return;
   }
   if (message?.type === "reset") {
-    // The voice changed, so nothing queued is wanted any more.
-    for (const job of jobs.splice(0)) self.postMessage({ type: "error", id: job.id });
+    // The voice changed, so lines queued for the old one are not wanted any more. Lines asked for right now,
+    // like a sample someone is waiting to hear, are kept.
+    for (let i = jobs.length - 1; i >= 0; i--) {
+      if (jobs[i].priority === 0) continue;
+      const [job] = jobs.splice(i, 1);
+      self.postMessage({ type: "error", id: job.id });
+    }
     return;
   }
   if (message?.type === "clear") {
@@ -103,13 +108,10 @@ self.onmessage = (event: MessageEvent<Request>) => {
     }
     return;
   }
-  if (
-    message?.type !== "speak" ||
-    !Number.isInteger(message.id) ||
-    typeof message.text !== "string" ||
-    !VOICES.has(message.voice) ||
-    !isPriority(message.priority)
-  ) {
+  if (message?.type !== "speak" || !Number.isInteger(message.id)) return;
+  if (typeof message.text !== "string" || !VOICES.has(message.voice) || !isPriority(message.priority)) {
+    // Answered, so the page is not left waiting on a line that will never come.
+    self.postMessage({ type: "error", id: message.id });
     return;
   }
   enqueue({ id: message.id, text: message.text.slice(0, MAX_TEXT), voice: message.voice, priority: message.priority });
