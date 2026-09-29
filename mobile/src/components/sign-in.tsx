@@ -80,15 +80,10 @@ export function SignIn() {
           inputMode="numeric"
           isInvalid={error !== null}
           textInputProps={{ textContentType: 'oneTimeCode', autoComplete: 'one-time-code', autoFocus: true }}>
-          <InputOTP.Group>
-            {Array.from({ length: CODE_LENGTH / 2 }, (_, i) => (
-              <InputOTP.Slot key={i} index={i} />
-            ))}
-          </InputOTP.Group>
-          <InputOTP.Separator />
-          <InputOTP.Group>
-            {Array.from({ length: CODE_LENGTH / 2 }, (_, i) => (
-              <InputOTP.Slot key={i} index={i + CODE_LENGTH / 2} />
+          {/* Eight fixed size boxes are wider than a phone card, so they share the row equally instead. */}
+          <InputOTP.Group style={{ width: '100%', gap: 6 }}>
+            {Array.from({ length: CODE_LENGTH }, (_, i) => (
+              <InputOTP.Slot key={i} index={i} style={{ flex: 1, width: 'auto', minWidth: 0 }} />
             ))}
           </InputOTP.Group>
         </InputOTP>

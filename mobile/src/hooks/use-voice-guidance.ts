@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { turnAngle } from '@/lib/geo';
 import { stepText } from '@/lib/instructions';
 import type { Route, RouteProgress, RouteStep, TravelMode } from '@/lib/routing';
-import { readVoicePreference, saveVoicePreference, speak, spokenDistance, stopSpeaking } from '@/lib/voice';
+import { readVoicePreference, saveVoicePreference, speak, spokenDistance, stopSpeaking, warmUpVoice } from '@/lib/voice';
 
 // The same timing as the web app. Walkers need a few steps of warning; drivers need a block or more, and
 // faster travel needs more: the heads up comes about ten seconds out and the call a few seconds before.
@@ -98,6 +98,11 @@ export function useVoiceGuidance({ route, progress, destinationName, isWrongWay,
     if (enabledRef.current) void speak(departLine(next, nameRef.current ?? 'your destination', facing), { urgent: true });
   }, []);
 
+  /** Gets the voice ready while the route is being looked at, so the first line on Start has no delay. */
+  const prepare = useCallback(() => {
+    if (enabledRef.current) void warmUpVoice();
+  }, []);
+
   const announceStep = useCallback((next: Route, index: number) => {
     if (enabledRef.current) void speak(actLine(next, index, nameRef.current ?? 'your destination'), { urgent: true });
   }, []);
@@ -168,5 +173,5 @@ export function useVoiceGuidance({ route, progress, destinationName, isWrongWay,
     if (hasArrived && enabledRef.current) void speak(`You have arrived at ${nameRef.current ?? 'your destination'}.`, { urgent: true });
   }, [hasArrived]);
 
-  return { enabled, toggle, begin, announceStep };
+  return { enabled, toggle, begin, announceStep, prepare };
 }

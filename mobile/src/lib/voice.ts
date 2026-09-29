@@ -24,20 +24,41 @@ function prepareAudio() {
 }
 let last = { text: '', at: 0 };
 
+// Apple's natural voices all have identifiers starting with this. iOS also lists novelty voices (Bad News,
+// Cellos, Wobble, Bubbles...) that warble or sound like crying, and the robotic Eloquence ones, which must never
+// be picked for directions.
+const NATURAL_VOICE = 'com.apple.voice.';
+// Voices people know from Siri and Apple Maps, as a tiebreak within the same quality.
+const FAMILIAR = /\.(ava|zoe|samantha|evan|nathan|allison|susan|joelle|noelle|tom)$/i;
+
 async function pickVoice() {
   if (chosen) return voiceId;
   chosen = true;
   try {
     const voices = await Speech.getAvailableVoicesAsync();
-    const english = voices.filter((voice) => voice.language.toLowerCase().startsWith('en'));
-    const rank = (voice: Speech.Voice) =>
-      (voice.language === 'en-US' ? 10 : 0) + (voice.quality === Speech.VoiceQuality.Enhanced ? 50 : 0) +
-      (/premium/i.test(voice.identifier) ? 40 : 0);
-    voiceId = english.sort((a, b) => rank(b) - rank(a))[0]?.identifier;
+    const rank = (voice: Speech.Voice) => {
+      const id = voice.identifier.toLowerCase();
+      const quality = id.includes('.premium.') ? 100 : id.includes('.enhanced.') || voice.quality === Speech.VoiceQuality.Enhanced ? 80 : 10;
+      return quality + (voice.language === 'en-US' ? 20 : 0) + (FAMILIAR.test(id) ? 5 : 0);
+    };
+    const natural = voices.filter(
+      (voice) => voice.identifier.startsWith(NATURAL_VOICE) && voice.language.toLowerCase().startsWith('en'),
+    );
+    // Without a natural voice, the system default for US English is still a real one.
+    voiceId = natural.sort((a, b) => rank(b) - rank(a))[0]?.identifier;
   } catch {
     voiceId = undefined;
   }
   return voiceId;
+}
+
+/**
+ * Loads the voice before the first real line, the way Apple Maps is ready the moment you tap Go: the voice is
+ * picked, the audio session set up, and a silent line spoken so iOS has the voice in memory.
+ */
+export async function warmUpVoice() {
+  const [voice] = await Promise.all([pickVoice(), prepareAudio()]);
+  Speech.speak(' ', { voice, language: voice ? undefined : 'en-US', volume: 0 });
 }
 
 export function readVoicePreference() {

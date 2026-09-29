@@ -168,6 +168,12 @@ export default function MapScreen() {
 
   useEffect(() => () => endTrip(), []);
 
+  // The voice warms up as soon as directions open, well before Start.
+  const prepareVoice = voice.prepare;
+  useEffect(() => {
+    if (planning) prepareVoice();
+  }, [planning, prepareVoice]);
+
   // The screen stays on while guiding, like any navigation app.
   useEffect(() => {
     if (!navigating) return;
