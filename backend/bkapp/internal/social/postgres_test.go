@@ -16,7 +16,9 @@ import (
 	"csimap/bkapp/internal/auth"
 	"csimap/bkapp/internal/auth/authtest"
 	"csimap/bkapp/internal/campus"
+	"csimap/bkapp/internal/config"
 	"csimap/bkapp/internal/db"
+	"csimap/bkapp/internal/push"
 	"csimap/bkapp/internal/social"
 	"csimap/bkapp/internal/ticket"
 )
@@ -489,5 +491,67 @@ func TestParallelCreatesKeepTheLimit(t *testing.T) {
 	}
 	if created != 2 {
 		t.Fatalf("created %d campus events at once, want the limit of 2", created)
+	}
+}
+
+// Phone push tokens follow the same rule as web push: only someone with a live invite relationship can reach
+// them, a phone that changes hands moves to the new account, and removing a token stops it.
+func TestAppPushTokens(t *testing.T) {
+	h, ctx := setup(t)
+	owner := h.person(t, ctx, "ophelia")
+	stranger := h.person(t, ctx, "silas")
+	friend := h.person(t, ctx, "farah")
+	pushes := push.New(h.pool, config.Config{}, nil)
+	token := "ExponentPushToken[" + randomHex(t, 11) + "]"
+
+	tokensSeenBy := func(sender, target auth.User) []string {
+		t.Helper()
+		var out []string
+		err := db.WithScope(ctx, h.pool, db.Scope{UserID: sender.ID}, func(tx pgx.Tx) error {
+			rows, err := tx.Query(ctx, `select token from csimap_app_push_tokens($1::uuid)`, target.ID)
+			if err != nil {
+				return err
+			}
+			out, err = pgx.CollectRows(rows, pgx.RowTo[string])
+			return err
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return out
+	}
+
+	for _, bad := range []string{"", "ExponentPushToken[]", "https://evil.example", "ExponentPushToken[a b]", token + "x"} {
+		if err := pushes.SaveAppToken(ctx, owner, bad); !errors.Is(err, push.ErrInvalid) {
+			t.Errorf("token %q: %v", bad, err)
+		}
+	}
+	if err := pushes.SaveAppToken(ctx, owner, token); err != nil {
+		t.Fatal(err)
+	}
+	if got := tokensSeenBy(stranger, owner); len(got) != 0 {
+		t.Fatalf("a stranger could read the token: %v", got)
+	}
+	if _, err := h.social.SendRequest(ctx, friend, owner.Username); err != nil {
+		t.Fatal(err)
+	}
+	if got := tokensSeenBy(friend, owner); len(got) != 1 || got[0] != token {
+		t.Fatalf("a pending friend request should reach the owner: %v", got)
+	}
+
+	// The phone is signed into another account without the first one signing out: the token moves.
+	if err := pushes.SaveAppToken(ctx, stranger, token); err != nil {
+		t.Fatal(err)
+	}
+	if got := tokensSeenBy(friend, owner); len(got) != 0 {
+		t.Fatalf("the old account still gets the phone's notifications: %v", got)
+	}
+
+	if err := pushes.RemoveAppToken(ctx, stranger, token, false); err != nil {
+		t.Fatal(err)
+	}
+	var left int
+	if err := h.pool.QueryRow(ctx, `select count(*) from app_push_tokens where token = $1`, token).Scan(&left); err != nil || left != 0 {
+		t.Fatalf("token still stored after removing it: %d %v", left, err)
 	}
 }

@@ -153,26 +153,36 @@ func (s *Service) Export(ctx context.Context, me auth.User) ([]Subscription, err
 	return out, err
 }
 
+// Notify reaches each person on every device they turned notifications on for: browsers through Web Push when
+// its keys are set up, and iPhones through Expo, which needs no keys on this side.
 func (s *Service) Notify(ctx context.Context, senderID string, userIDs []string, msg Message) {
-	if !s.Available() || senderID == "" || len(userIDs) == 0 {
+	if s == nil || senderID == "" || len(userIDs) == 0 {
 		return
 	}
 	payload, err := json.Marshal(msg)
 	if err != nil {
 		return
 	}
+	web := s.Available()
 	for _, userID := range userIDs {
 		if userID == "" || userID == senderID {
 			continue
 		}
-		subs, err := s.keysFor(ctx, senderID, userID)
+		if web {
+			subs, err := s.keysFor(ctx, senderID, userID)
+			if err != nil {
+				s.logger.Error("push lookup failed", "error", err)
+			}
+			for _, sub := range subs {
+				s.send(ctx, sub, payload)
+			}
+		}
+		tokens, err := s.appTokensFor(ctx, senderID, userID)
 		if err != nil {
-			s.logger.Error("push lookup failed", "error", err)
+			s.logger.Error("app push lookup failed", "error", err)
 			continue
 		}
-		for _, sub := range subs {
-			s.send(ctx, sub, payload)
-		}
+		s.sendToApps(ctx, senderID, tokens, msg)
 	}
 }
 

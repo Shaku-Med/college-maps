@@ -66,6 +66,36 @@ func (h *pushHandlers) remove(w http.ResponseWriter, r *http.Request, user auth.
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// saveApp keeps the iPhone app's push token. It works whether or not Web Push is set up.
+func (h *pushHandlers) saveApp(w http.ResponseWriter, r *http.Request, user auth.User) {
+	var body struct {
+		Token string `json:"token"`
+	}
+	if !decodeJSON(w, r, &body) {
+		return
+	}
+	if err := h.service.SaveAppToken(r.Context(), user, body.Token); err != nil {
+		h.fail(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *pushHandlers) removeApp(w http.ResponseWriter, r *http.Request, user auth.User) {
+	var body struct {
+		Token string `json:"token"`
+		All   bool   `json:"all"`
+	}
+	if !decodeJSON(w, r, &body) {
+		return
+	}
+	if err := h.service.RemoveAppToken(r.Context(), user, body.Token, body.All); err != nil {
+		h.fail(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (h *pushHandlers) fail(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, push.ErrUnavailable):

@@ -49,12 +49,14 @@ type Config struct {
 	ClientIPHeader string
 	// App Store review: one account whose sign in code is fixed, because a reviewer cannot receive a
 	// school email. Both are set or neither is.
-	ReviewEmail   string
-	ReviewCode    string
-	PushAvailable bool
-	VAPIDPublic   string
-	VAPIDPrivate  string
-	VAPIDSubject  string
+	ReviewEmail string
+	ReviewCode  string
+	// Optional. When Expo's enhanced push security is turned on, sends to the iPhone app need this token.
+	ExpoAccessToken string
+	PushAvailable   bool
+	VAPIDPublic     string
+	VAPIDPrivate    string
+	VAPIDSubject    string
 }
 
 func (c Config) IsProduction() bool {
@@ -167,6 +169,13 @@ func Load() (Config, error) {
 			add(errors.New("REVIEW_EMAIL and REVIEW_CODE go together: a school email and 8 digits using at least 5 different ones, or leave both unset"))
 		}
 		cfg.ReviewEmail, cfg.ReviewCode = reviewEmail, reviewCodeValue
+	}
+
+	if token := os.Getenv("EXPO_ACCESS_TOKEN"); token != "" {
+		if !opaqueSecret.MatchString(token) {
+			add(errors.New("EXPO_ACCESS_TOKEN must be the access token from expo.dev, or left unset"))
+		}
+		cfg.ExpoAccessToken = token
 	}
 
 	if header := os.Getenv("CLIENT_IP_HEADER"); header != "" {

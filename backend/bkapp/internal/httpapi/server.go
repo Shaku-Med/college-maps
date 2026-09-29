@@ -63,6 +63,8 @@ func New(
 	mux.HandleFunc("GET /v1/push/config", ph.config)
 	mux.Handle("POST /v1/push/subscriptions", limitRoute(accountDataIP, ip, a.requireUser(limitUser(pushUser, ph.save))))
 	mux.Handle("DELETE /v1/push/subscriptions", limitRoute(accountDataIP, ip, a.requireUser(ph.remove)))
+	mux.Handle("POST /v1/push/app-tokens", limitRoute(accountDataIP, ip, a.requireUser(limitUser(pushUser, ph.saveApp))))
+	mux.Handle("DELETE /v1/push/app-tokens", limitRoute(accountDataIP, ip, a.requireUser(ph.removeApp)))
 	if settingsService != nil {
 		st := &settingsHandlers{service: settingsService}
 		mux.Handle("GET /v1/me/settings", limitRoute(accountDataIP, ip, a.requireUser(st.get)))

@@ -220,6 +220,7 @@ Add `-find someone@school.edu` to look up one account, or `-csv > users.csv` for
 | `CRON_SECRET` | Only on serverless hosts. Turns on `/v1/maintenance` for the scheduler that runs cleanup |
 | `EMAIL_FROM` | Sender shown to students, like `CSI Map <yourapp@gmail.com>` |
 | `CLIENT_IP_HEADER` | Optional, a client IP header your host sets itself, like `Fly-Client-IP` |
+| `EXPO_ACCESS_TOKEN` | Optional. Only when Expo's enhanced push security is on for the project; the iPhone app's notifications need it then |
 | `REVIEW_EMAIL`, `REVIEW_CODE` | Optional, for App Store review, set together. A reviewer cannot receive a school email, so asking for a code for `REVIEW_EMAIL` sends nothing and stores `REVIEW_CODE` (8 digits) as the code instead. Every normal limit still applies. Remove both after approval |
 
 | Route | Purpose |
@@ -233,6 +234,7 @@ Add `-find someone@school.edu` to look up one account, or `-csv > users.csv` for
 | `POST /v1/auth/signout-all` | End every session for the user |
 | `GET /v1/me`, `PATCH /v1/me` | Read your own account, change `displayName` or `username` |
 | `GET /v1/me/settings`, `PATCH /v1/me/settings` | Your preferences, like the navigation `voice`, kept with the account. Only voices from the list in `internal/settings` are accepted |
+| `POST /v1/push/app-tokens`, `DELETE /v1/push/app-tokens` | The iPhone app's push token for this phone, sent through Expo. Only people with a pending friend request or meetup invite to you can reach it |
 | `GET /v1/friends` | Friends, requests both ways, and people you blocked |
 | `POST /v1/friends/requests` | Ask someone by username; asking back makes you friends |
 | `POST /v1/friends/requests/{username}/accept`, `DELETE /v1/friends/requests/{username}` | Accept, decline, or cancel |
