@@ -1,4 +1,5 @@
 import * as Location from 'expo-location';
+import * as TaskManager from 'expo-task-manager';
 import { useEffect, useSyncExternalStore } from 'react';
 
 import type { Coordinate } from '@/data/campus';
@@ -29,9 +30,44 @@ function set(next: Partial<Snapshot>) {
 // Everything that needs the location asks for it here, so the phone runs one GPS watch, not one per screen,
 // and only while something is using it. Navigation asks for the most accurate mode.
 const users = new Map<symbol, boolean>();
-let watch: { navigation: boolean; position: Location.LocationSubscription; heading?: Location.LocationSubscription } | null =
-  null;
+let watch: { navigation: boolean; position: { remove: () => void }; heading?: Location.LocationSubscription } | null = null;
 let starting = false;
+
+// During directions the location comes from a background task, so guidance carries on with the app in the
+// background or the phone locked. iOS shows its blue location pill, and Android an ongoing notification, for
+// as long as it runs. It uses the while in use permission: it only ever starts from a tap in the app.
+const NAVIGATION_TASK = 'csimap-navigation-location';
+
+type TaskData = { locations?: Location.LocationObject[] };
+
+TaskManager.defineTask<TaskData>(NAVIGATION_TASK, async ({ data, error }) => {
+  if (error || !data?.locations) return;
+  for (const location of data.locations) publish(location);
+});
+
+async function startNavigationUpdates() {
+  await Location.startLocationUpdatesAsync(NAVIGATION_TASK, {
+    accuracy: Location.Accuracy.BestForNavigation,
+    activityType: Location.ActivityType.OtherNavigation,
+    distanceInterval: 1,
+    timeInterval: 1000,
+    pausesUpdatesAutomatically: false,
+    showsBackgroundLocationIndicator: true,
+    foregroundService: {
+      notificationTitle: 'Directions are on',
+      notificationBody: 'CSI Map is guiding you. Open the app to see the route.',
+      notificationColor: '#1268D2',
+      killServiceOnDestroy: true,
+    },
+  });
+  return {
+    remove: () => {
+      void Location.hasStartedLocationUpdatesAsync(NAVIGATION_TASK)
+        .then((started) => (started ? Location.stopLocationUpdatesAsync(NAVIGATION_TASK) : undefined))
+        .catch(() => undefined);
+    },
+  };
+}
 
 const validNumber = (value: number | null | undefined) =>
   typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : undefined;
@@ -76,14 +112,9 @@ async function reconcile() {
     }
     watch?.position.remove();
     watch?.heading?.remove();
-    const position = await Location.watchPositionAsync(
-      {
-        accuracy: navigation ? Location.Accuracy.BestForNavigation : Location.Accuracy.High,
-        distanceInterval: navigation ? 1 : 3,
-        timeInterval: 1000,
-      },
-      publish,
-    );
+    const position = navigation
+      ? await startNavigationUpdates()
+      : await Location.watchPositionAsync({ accuracy: Location.Accuracy.High, distanceInterval: 3, timeInterval: 1000 }, publish);
     const heading = await Location.watchHeadingAsync((reading) => {
       const degrees = reading.trueHeading >= 0 ? reading.trueHeading : reading.magHeading;
       if (Number.isFinite(degrees) && reading.accuracy !== 0) set({ compass: degrees });

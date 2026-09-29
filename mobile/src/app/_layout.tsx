@@ -1,4 +1,5 @@
-// Gives the shared class schedule code the localStorage it expects. Must load before anything reads it.
+// Gives the shared web code the crypto and localStorage it expects. Must load before anything uses them.
+import '@/lib/polyfills';
 import 'expo-sqlite/localStorage/install';
 import '@/global.css';
 
@@ -10,6 +11,8 @@ import { AppState, useColorScheme } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { refreshAccount } from '@/lib/account';
+// Registers the background location task at startup, as iOS requires.
+import '@/lib/location';
 
 // iOS 26 draws sheets in Liquid Glass when they are see through. Older versions get a solid sheet.
 const GLASS_SHEETS = isLiquidGlassAvailable();

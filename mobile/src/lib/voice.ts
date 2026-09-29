@@ -1,3 +1,4 @@
+import { setAudioModeAsync } from 'expo-audio';
 import * as Speech from 'expo-speech';
 
 // Spoken directions use the iPhone's own speech engine, which starts instantly and works offline. The best
@@ -9,6 +10,18 @@ const MAX_TEXT = 300;
 
 let voiceId: string | undefined;
 let chosen = false;
+let audioReady: Promise<void> | null = null;
+
+// Directions keep talking with the screen locked or another app open, even on silent, the way navigation
+// apps do. Music playing at the time is lowered under each line rather than stopped.
+function prepareAudio() {
+  audioReady ??= setAudioModeAsync({
+    playsInSilentMode: true,
+    shouldPlayInBackground: true,
+    interruptionMode: 'duckOthers',
+  }).catch(() => undefined);
+  return audioReady;
+}
 let last = { text: '', at: 0 };
 
 async function pickVoice() {
@@ -50,7 +63,7 @@ export async function speak(line: string, { urgent = false } = {}) {
   const now = Date.now();
   if (!urgent && last.text === text && now - last.at < REPEAT_WINDOW_MS) return;
   last = { text, at: now };
-  const voice = await pickVoice();
+  const [voice] = await Promise.all([pickVoice(), prepareAudio()]);
   if (urgent) await Speech.stop();
   Speech.speak(text, { voice, language: voice ? undefined : 'en-US', rate: 1.0 });
 }

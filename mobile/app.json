@@ -3,7 +3,7 @@
     "name": "CSI Map",
     "slug": "csi-map",
     "owner": "meddi",
-    "version": "1.1.0",
+    "version": "1.2.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "csimap",
@@ -24,7 +24,37 @@
         "usesNonExemptEncryption": false
       },
       "infoPlist": {
-        "CFBundleDisplayName": "CSI Map"
+        "CFBundleDisplayName": "CSI Map",
+        "NSSupportsLiveActivities": true
+      },
+      "privacyManifests": {
+        "NSPrivacyAccessedAPITypes": [
+          {
+            "NSPrivacyAccessedAPIType": "NSPrivacyAccessedAPICategoryUserDefaults",
+            "NSPrivacyAccessedAPITypeReasons": [
+              "CA92.1"
+            ]
+          },
+          {
+            "NSPrivacyAccessedAPIType": "NSPrivacyAccessedAPICategoryFileTimestamp",
+            "NSPrivacyAccessedAPITypeReasons": [
+              "C617.1"
+            ]
+          },
+          {
+            "NSPrivacyAccessedAPIType": "NSPrivacyAccessedAPICategorySystemBootTime",
+            "NSPrivacyAccessedAPITypeReasons": [
+              "35F9.1"
+            ]
+          },
+          {
+            "NSPrivacyAccessedAPIType": "NSPrivacyAccessedAPICategoryDiskSpace",
+            "NSPrivacyAccessedAPITypeReasons": [
+              "E174.1"
+            ]
+          }
+        ],
+        "NSPrivacyTracking": false
       }
     },
     "android": {
@@ -56,13 +86,32 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "CSI Map shows where you are on campus so you can find your way to buildings and rooms."
+          "locationWhenInUsePermission": "CSI Map shows where you are on campus and guides you turn by turn to buildings and rooms, including while your screen is locked during directions.",
+          "isIosBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": true,
+          "locationAlwaysAndWhenInUsePermission": "CSI Map uses your location to guide you turn by turn to buildings and rooms, including while your screen is locked during directions."
         }
       ],
       "@maplibre/maplibre-react-native",
       "expo-updates",
       "expo-secure-store",
-      "expo-sqlite"
+      "expo-sqlite",
+      [
+        "expo-audio",
+        {
+          "microphonePermission": false,
+          "recordAudioAndroid": false,
+          "enableBackgroundPlayback": true
+        }
+      ],
+      "expo-asset",
+      [
+        "expo-widgets",
+        {
+          "groupIdentifier": "group.com.shakumed.csimap"
+        }
+      ],
+      "./plugins/with-background-modes"
     ],
     "experiments": {
       "typedRoutes": true,

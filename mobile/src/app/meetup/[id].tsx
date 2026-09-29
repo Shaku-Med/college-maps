@@ -3,11 +3,12 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { Button, Chip, CloseButton, ListGroup, Separator, Spinner, useThemeColor, useToast } from 'heroui-native';
 import { Fragment, useEffect, useState } from 'react';
-import { Alert, ScrollView, Text, View } from 'react-native';
+import { Alert, Pressable, ScrollView, Text, View } from 'react-native';
 
 import { getPlace } from '@/data/campus';
 import { useProfile } from '@/lib/account';
 import { showMeetupOnMap, useShownMeetup } from '@/lib/meetup-focus';
+import { moderateMeetup } from '@/lib/moderation';
 import { updateMeetup, useSocial } from '@/lib/social';
 import { socialApi, type Meetup, type MeetupStatus } from '@/lib/social-api';
 import { planTrip } from '@/lib/trip';
@@ -115,7 +116,19 @@ export default function MeetupSheet() {
             </Text>
           </View>
         </View>
-        <CloseButton onPress={() => router.back()} />
+        <View className="flex-row items-center gap-1">
+          {host || !profile ? null : (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Report or block"
+              hitSlop={8}
+              onPress={() => moderateMeetup(meetup, profile.username, () => router.back())}
+              className="size-9 items-center justify-center rounded-full active:opacity-60">
+              <SymbolView name="ellipsis.circle" size={22} tintColor={muted} />
+            </Pressable>
+          )}
+          <CloseButton onPress={() => router.back()} />
+        </View>
       </View>
 
       {meetup.note ? <Text className="text-base leading-6 text-foreground">{meetup.note}</Text> : null}

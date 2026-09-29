@@ -10,7 +10,7 @@ import {
 } from '@maplibre/maplibre-react-native';
 import * as Location from 'expo-location';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { useThemeColor, useToast } from 'heroui-native';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -19,6 +19,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { CategoryBar, type MapFilter } from '@/components/category-bar';
 import { DirectionsPanel } from '@/components/directions-panel';
+import { HeadingBeam } from '@/components/heading-beam';
 import { MapControls, type MapControl } from '@/components/map-controls';
 import { NavigationBanner, NavigationFooter } from '@/components/navigation-hud';
 import { PlaceMarker } from '@/components/place-marker';
@@ -30,7 +31,12 @@ import { useRoutePreview } from '@/hooks/use-route-preview';
 import { useVoiceGuidance } from '@/hooks/use-voice-guidance';
 import { useProfile } from '@/lib/account';
 import { useFocusedPlace } from '@/lib/focus';
+import { formatRouteTime } from '@/lib/directions';
+import { formatDistance } from '@/lib/geo';
+import { stepText } from '@/lib/instructions';
+import { endTrip, showTrip } from '@/lib/live-activity';
 import { currentFix, useLocation } from '@/lib/location';
+import { setMapBearing } from '@/lib/map-bearing';
 import { useShownMeetup } from '@/lib/meetup-focus';
 import { remainingPath } from '@/lib/routing';
 import { useSocial } from '@/lib/social';
@@ -89,8 +95,19 @@ export default function MapScreen() {
     social.meetups.find((m) => m.id === shownMeetupId && m.active && m.yourStatus === 'joined') ?? null;
   const planning = trip.phase === 'preview';
   const navigating = trip.phase === 'navigate';
-  const location = useLocation({ watching: trip.phase !== 'idle' || meetup !== null, navigation: navigating });
   const located = permission?.granted ?? false;
+  const [onScreen, setOnScreen] = useState(true);
+  useFocusEffect(
+    useCallback(() => {
+      setOnScreen(true);
+      return () => setOnScreen(false);
+    }, []),
+  );
+  // The location runs while the map is on screen, for the heading beam, and all through a trip or meetup.
+  const location = useLocation({
+    watching: (located && onScreen) || trip.phase !== 'idle' || meetup !== null,
+    navigation: navigating,
+  });
 
   const follow = useCallback(
     ({ point, zoom: level, bearing }: FollowTarget) => {
@@ -125,6 +142,31 @@ export default function MapScreen() {
   });
   const live = meetup ? meetup.id : null;
   const people = useMeetupLive(live, meetup ? location.fix : null);
+
+  // The Lock Screen and Dynamic Island follow the trip, including with the app in the background.
+  const destinationName = trip.destination?.name;
+  useEffect(() => {
+    const route = navigation.route;
+    if (!navigating || !route || !destinationName) return;
+    const progress = navigation.progress;
+    const index = Math.min((progress?.stepIndex ?? 0) + 1, route.steps.length - 1);
+    const step = route.steps[index];
+    const remaining = progress?.remaining ?? route.distance;
+    showTrip({
+      instruction: stepText(step, destinationName),
+      distance: formatDistance(Math.max(0, step.startDistance - (progress?.distanceAlong ?? 0))),
+      destination: destinationName,
+      remaining: formatRouteTime(route, remaining),
+      remainingSeconds:
+        route.duration !== undefined && route.distance > 0 ? route.duration * (remaining / route.distance) : remaining / 1.3,
+      progress: route.distance > 0 ? 1 - remaining / route.distance : 0,
+      step,
+      wrongWay: navigation.isWrongWay,
+      arrived: navigation.hasArrived,
+    });
+  }, [navigating, navigation.route, navigation.progress, navigation.isWrongWay, navigation.hasArrived, destinationName]);
+
+  useEffect(() => () => endTrip(), []);
 
   // The screen stays on while guiding, like any navigation app.
   useEffect(() => {
@@ -237,6 +279,7 @@ export default function MapScreen() {
 
   function end() {
     const destination = trip.destination;
+    endTrip();
     navigation.end();
     closeTrip();
     if (destination) {
@@ -318,6 +361,9 @@ export default function MapScreen() {
       ];
 
   const tabBarShown = trip.phase === 'idle';
+  // Moving, the phone's course says where someone is going; standing still, the compass says where they face.
+  const moving = (location.fix?.speed ?? 0) >= 0.7 && location.fix?.heading !== undefined;
+  const beamHeading = moving ? location.fix?.heading : location.compass;
 
   return (
     <View className="flex-1" style={{ backgroundColor: background }}>
@@ -331,7 +377,9 @@ export default function MapScreen() {
         touchPitch={navigating || buildingView}
         onRegionWillChange={(event) => {
           if (navigating && event.nativeEvent.userInteraction) navigation.pauseFollowing();
-        }}>
+        }}
+        onRegionIsChanging={(event) => setMapBearing(event.nativeEvent.bearing)}
+        onRegionDidChange={(event) => setMapBearing(event.nativeEvent.bearing)}>
         {buildingView ? (
           <Layer
             id="buildings-3d"
@@ -401,7 +449,10 @@ export default function MapScreen() {
           </GeoJSONSource>
         ) : null}
 
-        {located ? <NativeUserLocation mode={navigating ? 'course' : 'heading'} /> : null}
+        {located ? <NativeUserLocation mode={navigating ? 'course' : 'default'} /> : null}
+        {located && !navigating && location.fix && beamHeading !== undefined ? (
+          <HeadingBeam position={location.fix.position} heading={beamHeading} />
+        ) : null}
 
         {places.map((place) => (
           <PlaceMarker

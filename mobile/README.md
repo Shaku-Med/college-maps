@@ -43,3 +43,33 @@ npm run typecheck
 npm run lint
 npm run doctor
 ```
+
+## Directions in the background
+
+During directions the location comes from a background task (`src/lib/location.ts`), so guidance and speech
+carry on with the app in the background or the phone locked. iOS shows its blue location pill, Android an
+ongoing notification, and the Lock Screen and Dynamic Island show a Live Activity (`src/widgets`). It uses the
+while in use permission only: background updates start from the tap on Start, never on their own.
+
+## App Store review
+
+Before submitting:
+
+1. Set `EXPO_PUBLIC_SUPPORT_EMAIL` in each build profile's `env` in `eas.json`, so people can report other
+   students' events. Apple requires a report option and a way to reach you when users can post content.
+2. On the API host, set `REVIEW_EMAIL` (a school address you control) and `REVIEW_CODE` (8 digits), then
+   redeploy. Remove both after approval.
+3. In App Store Connect, give the privacy policy URL `https://csimap.vercel.app/privacy`, and paste this into
+   App Review notes:
+
+   > Sign in is only needed for friends and meetups; the map, search, classes, and directions work without it.
+   > Accounts are limited to College of Staten Island emails, so please use the review account: enter
+   > REVIEW_EMAIL, tap Email me a code, then enter REVIEW_CODE. Location is used while in use to show where
+   > you are and to guide turn by turn directions. During directions it continues in the background, with the
+   > blue indicator and a Live Activity, and speaks each turn, which is why the app uses the location and
+   > audio background modes. Nothing is tracked or shared outside a meetup the user joins. This is an
+   > unofficial student project and is not affiliated with the College of Staten Island.
+
+4. App Privacy answers: email address and user id (linked to the user, for app functionality), precise
+   location (not stored, used for app functionality and shared live only inside meetups), other user content
+   (event titles and notes). No tracking.

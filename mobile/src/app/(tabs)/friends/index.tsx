@@ -3,13 +3,14 @@ import { router, Stack } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { Button, Card, Chip, FieldError, Input, ListGroup, Separator, TextField, useThemeColor, useToast } from 'heroui-native';
 import { Fragment, useState } from 'react';
-import { ActionSheetIOS, Alert, RefreshControl, ScrollView, Text, View } from 'react-native';
+import { ActionSheetIOS, Alert, Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
 
 import { EmptyState, SectionTitle } from '@/components/section';
 import { getPlace } from '@/data/campus';
 import { useProfile } from '@/lib/account';
 import { MAX_USERNAME_LENGTH, normalizeUsername } from '@/lib/api';
 import { refreshSocial, updateMeetup, useSocial } from '@/lib/social';
+import { moderateMeetup } from '@/lib/moderation';
 import { socialApi, type Meetup, type Person } from '@/lib/social-api';
 
 function timeLeft(expiresAt: string) {
@@ -195,9 +196,21 @@ export default function FriendsScreen() {
               {social.campus.map((meetup) => (
                 <Card key={meetup.id} className="gap-3 rounded-3xl p-4">
                   <View className="gap-1">
-                    <Text className="text-lg font-semibold text-foreground" numberOfLines={1}>
-                      {meetup.title}
-                    </Text>
+                    <View className="flex-row items-start gap-2">
+                      <Text className="flex-1 text-lg font-semibold text-foreground" numberOfLines={1}>
+                        {meetup.title}
+                      </Text>
+                      {meetup.yourRole === 'host' ? null : (
+                        <Pressable
+                          accessibilityRole="button"
+                          accessibilityLabel="Report or block"
+                          hitSlop={10}
+                          onPress={() => moderateMeetup(meetup, me)}
+                          className="active:opacity-60">
+                          <SymbolView name="ellipsis" size={18} tintColor={muted} />
+                        </Pressable>
+                      )}
+                    </View>
                     <Text className="text-sm text-muted" numberOfLines={1}>
                       {startsText(meetup.startsAt)} · {whereText(meetup)} · {meetup.going} going
                     </Text>
