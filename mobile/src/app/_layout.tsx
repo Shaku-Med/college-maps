@@ -11,6 +11,7 @@ import { AppState, useColorScheme } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { refreshAccount } from '@/lib/account';
+import { useNotificationTaps } from '@/lib/notifications';
 // Registers the background location task at startup, as iOS requires.
 import '@/lib/location';
 
@@ -31,6 +32,8 @@ function Navigation() {
     sheetGrabberVisible: true,
     contentStyle: sheetBackground,
   } as const;
+
+  useNotificationTaps();
 
   useEffect(() => {
     void refreshAccount();

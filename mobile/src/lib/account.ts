@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from 'react';
 
-import { accountApi, type AccountUser } from '@/lib/api';
+import { accountApi, apiCall, type AccountUser } from '@/lib/api';
+import { disableNotifications, syncNotifications } from '@/lib/notifications';
 import { clearToken, readToken, saveToken } from '@/lib/session';
 
 export type AccountState =
@@ -26,6 +27,7 @@ export async function refreshAccount() {
   const res = await accountApi.me();
   if (res.ok) {
     set({ status: 'signed-in', user: res.data });
+    void syncNotifications();
   } else if (res.status === 401) {
     await clearToken();
     set({ status: 'signed-out' });
@@ -38,6 +40,7 @@ export async function refreshAccount() {
 export async function completeSignIn(token: string, user: AccountUser) {
   await saveToken(token);
   set({ status: 'signed-in', user });
+  void syncNotifications();
 }
 
 export function setAccountUser(user: AccountUser) {
@@ -46,6 +49,9 @@ export function setAccountUser(user: AccountUser) {
 
 /** Signs out on the server when it can, and always on this phone. */
 export async function signOut({ everywhere = false } = {}) {
+  // Notifications stop before the session does: this phone's, or on every phone when signing out everywhere.
+  if (everywhere) await apiCall<void>('/v1/push/app-tokens', 'DELETE', { all: true });
+  else await disableNotifications().catch(() => undefined);
   const res = everywhere ? await accountApi.signOutEverywhere() : await accountApi.signOut();
   if (everywhere && !res.ok && res.status !== 401) return res;
   await clearToken();

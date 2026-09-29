@@ -111,6 +111,12 @@
           "groupIdentifier": "group.com.shakumed.csimap"
         }
       ],
+      [
+        "expo-notifications",
+        {
+          "color": "#1268D2"
+        }
+      ],
       "./plugins/with-background-modes"
     ],
     "experiments": {
