@@ -61,6 +61,7 @@ function Navigation() {
         <Stack.Screen name="class/[id]" options={{ ...formSheet, sheetAllowedDetents: [0.92] }} />
         <Stack.Screen name="class-import" options={{ ...formSheet, sheetAllowedDetents: [0.92] }} />
         <Stack.Screen name="profile" options={{ ...formSheet, sheetAllowedDetents: [0.6, 0.92] }} />
+        <Stack.Screen name="delete-account" options={{ ...formSheet, sheetAllowedDetents: [0.92] }} />
         <Stack.Screen name="meetup/[id]" options={{ ...formSheet, sheetAllowedDetents: [0.6, 0.95] }} />
         <Stack.Screen name="meetup/new" options={{ ...formSheet, sheetAllowedDetents: [0.95] }} />
       </Stack>

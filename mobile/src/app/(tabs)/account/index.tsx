@@ -10,7 +10,7 @@ import { SectionTitle } from '@/components/section';
 import { SignIn } from '@/components/sign-in';
 import { UpdatesSection } from '@/components/updates-section';
 import { CAMPUS } from '@/data/campus';
-import { deleteAccount, signOut, useAccount } from '@/lib/account';
+import { signOut, useAccount } from '@/lib/account';
 import { openWeb } from '@/lib/links';
 import { disableNotifications, enableNotifications, useNotificationsEnabled } from '@/lib/notifications';
 
@@ -121,22 +121,12 @@ export default function AccountScreen() {
     ]);
   }
 
-  function confirmDelete() {
-    Alert.alert(
-      'Delete your account?',
-      'Your profile, friends, and meetups are erased for good. Classes saved on this phone stay here.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete account',
-          style: 'destructive',
-          onPress: async () => {
-            const res = await deleteAccount();
-            if (!res.ok) toast.show({ variant: 'danger', label: res.message });
-          },
-        },
-      ],
-    );
+  // A stray tap on Sign out should not end the session, so it asks first.
+  function confirmSignOut() {
+    Alert.alert('Sign out?', 'You can sign back in any time with your school email.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Sign out', style: 'destructive', onPress: () => void signOut() },
+    ]);
   }
 
   return (
@@ -186,11 +176,11 @@ export default function AccountScreen() {
             <View>
               <SectionTitle>Sign in</SectionTitle>
               <ListGroup>
-                <Row symbol="rectangle.portrait.and.arrow.right" title="Sign out" onPress={() => void signOut()} />
+                <Row symbol="rectangle.portrait.and.arrow.right" title="Sign out" onPress={confirmSignOut} />
                 <Separator className="mx-4" />
                 <Row symbol="iphone.slash" title="Sign out everywhere" onPress={confirmSignOutEverywhere} />
                 <Separator className="mx-4" />
-                <Row symbol="trash" title="Delete account" onPress={confirmDelete} danger />
+                <Row symbol="trash" title="Delete account" onPress={() => router.push('/delete-account')} danger />
               </ListGroup>
             </View>
           </>
