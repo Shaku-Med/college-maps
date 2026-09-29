@@ -1,11 +1,12 @@
 import * as Haptics from 'expo-haptics';
 import type { SFSymbol } from 'expo-symbols';
-import { Button, CloseButton, Spinner, Switch, cn, useThemeColor } from 'heroui-native';
+import { CloseButton, Spinner, Switch, cn, useThemeColor } from 'heroui-native';
 import { useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 
 import { Icon } from '@/components/icon';
 import { Glass } from '@/components/glass';
+import { MapButton } from '@/components/map-button';
 import { StepIcon } from '@/components/step-icon';
 import { getPlace } from '@/data/campus';
 import { useNow } from '@/hooks/use-now';
@@ -143,10 +144,16 @@ export function DirectionsPanel({ trip, route, issue, isOffCampus, live, onStart
           </ScrollView>
         ) : null}
 
-        <Button size="lg" isDisabled={!route} onPress={onStart}>
-          <Icon name={live ? 'location.north.fill' : 'list.number'} size={16} tintColor={accentForeground} />
-          <Button.Label>{live ? 'Start' : 'Follow steps'}</Button.Label>
-        </Button>
+        <MapButton
+          size="lg"
+          isDisabled={!route}
+          symbol={live ? 'location.north.fill' : 'list.number'}
+          label={live ? 'Start' : 'Follow steps'}
+          onPress={() => {
+            void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            onStart();
+          }}
+        />
       </View>
     </Glass>
   );

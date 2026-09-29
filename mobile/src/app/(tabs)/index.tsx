@@ -399,9 +399,6 @@ export default function MapScreen() {
   // Inside a tab, Android can report no bottom inset because the tab bar takes it, even though the map runs
   // under both the bar and the system navigation. The window's own inset is the real one.
   const bottomInset = Math.max(insets.bottom, Platform.OS === 'android' ? (initialWindowMetrics?.insets.bottom ?? 0) : 0);
-  // Moving, the phone's course says where someone is going; standing still, the compass says where they face.
-  const moving = (location.fix?.speed ?? 0) >= 0.7 && location.fix?.heading !== undefined;
-  const beamHeading = moving ? location.fix?.heading : location.compass;
 
   return (
     <View className="flex-1" style={{ backgroundColor: background }}>
@@ -488,9 +485,7 @@ export default function MapScreen() {
         ) : null}
 
         {located ? <NativeUserLocation mode={navigating ? 'course' : 'default'} /> : null}
-        {located && !navigating && location.fix && beamHeading !== undefined ? (
-          <HeadingBeam position={location.fix.position} heading={beamHeading} />
-        ) : null}
+        {located && !navigating && location.fix ? <HeadingBeam fix={location.fix} /> : null}
 
         {places.map((place) => (
           <PlaceMarker

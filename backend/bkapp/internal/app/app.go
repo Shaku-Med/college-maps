@@ -74,7 +74,14 @@ func Build(ctx context.Context, logger *slog.Logger, migrate bool) (*App, error)
 		return nil, fmt.Errorf("email: %w", err)
 	}
 
-	authService, err := auth.NewService(auth.NewPostgresStore(pool), mailer, cfg.AuthSecret, site.EmailDomains)
+	var authOptions []auth.Option
+	if cfg.ReviewEmail != "" {
+		authOptions = append(authOptions, auth.WithReviewAccount(cfg.ReviewEmail, cfg.ReviewCode, cfg.ReviewUntil))
+		if time.Now().Before(cfg.ReviewUntil) {
+			logger.Info("review account sign in is on", "until", cfg.ReviewUntil.Format(time.DateOnly))
+		}
+	}
+	authService, err := auth.NewService(auth.NewPostgresStore(pool), mailer, cfg.AuthSecret, site.EmailDomains, authOptions...)
 	if err != nil {
 		pool.Close()
 		return nil, fmt.Errorf("auth: %w", err)

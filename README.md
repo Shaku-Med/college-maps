@@ -221,7 +221,7 @@ Add `-find someone@school.edu` to look up one account, or `-csv > users.csv` for
 | `EMAIL_FROM` | Sender shown to students, like `CSI Map <yourapp@gmail.com>` |
 | `CLIENT_IP_HEADER` | Optional, a client IP header your host sets itself, like `Fly-Client-IP` |
 | `EXPO_ACCESS_TOKEN` | Optional. Only when Expo's enhanced push security is on for the project; the iPhone app's notifications need it then |
-| `REVIEW_EMAIL`, `REVIEW_CODE` | Optional, for App Store review, set together. A reviewer cannot receive a school email, so asking for a code for `REVIEW_EMAIL` sends nothing and stores `REVIEW_CODE` (8 digits) as the code instead. Every normal limit still applies. Remove both after approval |
+| `REVIEW_EMAIL`, `REVIEW_CODE`, `REVIEW_UNTIL` | Optional, for App Store and Play review, set together. A reviewer cannot receive a school email, so asking for a code for `REVIEW_EMAIL` sends nothing and stores `REVIEW_CODE` (8 digits) as the code instead. Every normal limit still applies. `REVIEW_UNTIL` (a date at most 60 days out) is the last day it works, so a leaked code dies on its own |
 
 | Route | Purpose |
 | --- | --- |

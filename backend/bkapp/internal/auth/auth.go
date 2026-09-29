@@ -172,6 +172,7 @@ type Service struct {
 
 	reviewEmail string
 	reviewCode  string
+	reviewUntil time.Time
 }
 
 type Option func(*Service)
@@ -183,10 +184,13 @@ func WithClock(now func() time.Time) Option {
 
 // WithReviewAccount lets one school address sign in with a fixed code instead of an emailed one, for App
 // Store review. The code still goes through every normal limit: tries per code, cooldowns, and daily caps.
-func WithReviewAccount(address, code string) Option {
+// It stops working at until, so a code that leaks from review notes is not a way in forever: after that the
+// address gets a random emailed code like anyone, to an inbox nobody reads.
+func WithReviewAccount(address, code string, until time.Time) Option {
 	return func(s *Service) {
 		s.reviewEmail = strings.ToLower(strings.TrimSpace(address))
 		s.reviewCode = code
+		s.reviewUntil = until
 	}
 }
 
@@ -205,8 +209,8 @@ func NewService(store Store, mailer email.Sender, secret []byte, domains []strin
 	}
 	if s.reviewEmail != "" || s.reviewCode != "" {
 		addr, err := s.NormalizeEmail(s.reviewEmail)
-		if err != nil || addr != s.reviewEmail || !codePattern.MatchString(s.reviewCode) {
-			return nil, errors.New("the review account needs an allowed school email and an 8 digit code")
+		if err != nil || addr != s.reviewEmail || !codePattern.MatchString(s.reviewCode) || s.reviewUntil.IsZero() {
+			return nil, errors.New("the review account needs an allowed school email, an 8 digit code, and an end date")
 		}
 	}
 	return s, nil
@@ -258,11 +262,11 @@ func (s *Service) RequestCode(ctx context.Context, rawEmail string) error {
 	if err != nil {
 		return err
 	}
-	review := s.reviewEmail != "" && addr == s.reviewEmail
+	now := s.now()
+	review := s.reviewEmail != "" && addr == s.reviewEmail && now.Before(s.reviewUntil)
 	if review {
 		code = s.reviewCode
 	}
-	now := s.now()
 	wait, err := s.store.IssueCode(ctx, index, s.keys.codeHash(index, code), now, now.Add(CodeTTL), CodeLimits{
 		Cooldown:  codeCooldown,
 		Window:    codeWindow,

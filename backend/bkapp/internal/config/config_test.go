@@ -3,6 +3,7 @@ package config
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 func setValid(t *testing.T) {
@@ -222,17 +223,22 @@ func TestLocalNetworkOriginsOnlyInDevelopment(t *testing.T) {
 }
 
 func TestReviewAccountSettings(t *testing.T) {
-	for name, env := range map[string][2]string{
-		"email without code":  {"review@stu-mail.csi.cuny.edu", ""},
-		"code without email":  {"", "48213957"},
-		"short code":          {"review@stu-mail.csi.cuny.edu", "4821395"},
-		"letters in code":     {"review@stu-mail.csi.cuny.edu", "4821395a"},
-		"easily guessed code": {"review@stu-mail.csi.cuny.edu", "11112222"},
+	soon := time.Now().Add(7 * 24 * time.Hour).Format(time.DateOnly)
+	for name, env := range map[string][3]string{
+		"email without code":  {"review@stu-mail.csi.cuny.edu", "", soon},
+		"code without email":  {"", "48213957", soon},
+		"short code":          {"review@stu-mail.csi.cuny.edu", "4821395", soon},
+		"letters in code":     {"review@stu-mail.csi.cuny.edu", "4821395a", soon},
+		"easily guessed code": {"review@stu-mail.csi.cuny.edu", "11112222", soon},
+		"no end date":         {"review@stu-mail.csi.cuny.edu", "48213957", ""},
+		"end date too far":    {"review@stu-mail.csi.cuny.edu", "48213957", time.Now().Add(200 * 24 * time.Hour).Format(time.DateOnly)},
+		"bad end date":        {"review@stu-mail.csi.cuny.edu", "48213957", "next month"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			setValid(t)
 			t.Setenv("REVIEW_EMAIL", env[0])
 			t.Setenv("REVIEW_CODE", env[1])
+			t.Setenv("REVIEW_UNTIL", env[2])
 			if _, err := Load(); err == nil {
 				t.Fatal("expected the review settings to be refused")
 			}
@@ -242,8 +248,15 @@ func TestReviewAccountSettings(t *testing.T) {
 	setValid(t)
 	t.Setenv("REVIEW_EMAIL", " Review@stu-mail.csi.cuny.edu ")
 	t.Setenv("REVIEW_CODE", "48213957")
+	t.Setenv("REVIEW_UNTIL", soon)
 	cfg, err := Load()
-	if err != nil || cfg.ReviewEmail != "review@stu-mail.csi.cuny.edu" || cfg.ReviewCode != "48213957" {
+	if err != nil || cfg.ReviewEmail != "review@stu-mail.csi.cuny.edu" || cfg.ReviewCode != "48213957" || !cfg.ReviewUntil.After(time.Now()) {
 		t.Fatalf("valid review settings: %+v %v", cfg.ReviewEmail, err)
+	}
+
+	// Once review is over the server still starts; the date only turns the fixed code off.
+	t.Setenv("REVIEW_UNTIL", "2020-01-01")
+	if cfg, err := Load(); err != nil || cfg.ReviewUntil.After(time.Now()) {
+		t.Fatalf("a past end date should load and be over: %v", err)
 	}
 }

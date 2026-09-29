@@ -1,6 +1,7 @@
 import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
 import { useEffect, useSyncExternalStore } from 'react';
+import { Platform } from 'react-native';
 
 import type { Coordinate } from '@/data/campus';
 
@@ -16,15 +17,48 @@ export type Fix = {
 
 export type LocationStatus = 'idle' | 'asking' | 'denied' | 'active' | 'error';
 
-type Snapshot = { status: LocationStatus; fix: Fix | null; compass: number | undefined };
+type Snapshot = { status: LocationStatus; fix: Fix | null };
 
-let snapshot: Snapshot = { status: 'idle', fix: null, compass: undefined };
+let snapshot: Snapshot = { status: 'idle', fix: null };
 const listeners = new Set<() => void>();
 const fixListeners = new Set<(fix: Fix) => void>();
 
 function set(next: Partial<Snapshot>) {
   snapshot = { ...snapshot, ...next };
   for (const listener of listeners) listener();
+}
+
+// The compass is kept apart from the location: Android reports it many times a second, and if every reading
+// re-rendered the map screen the JS thread would have no time left to answer taps.
+const COMPASS_STEP = 3;
+// iOS hands over a fused, steady heading. Android's comes straight from the magnetometer and shakes, so it is
+// averaged as a direction (sine and cosine, so 359 and 1 average to 0, not 180).
+const COMPASS_SMOOTHING = Platform.OS === 'android' ? 0.15 : 1;
+let compass: number | undefined;
+let pointing: { x: number; y: number } | null = null;
+const compassListeners = new Set<() => void>();
+
+function setCompass(reading: number) {
+  const radians = (reading * Math.PI) / 180;
+  const x = Math.cos(radians);
+  const y = Math.sin(radians);
+  pointing = pointing
+    ? { x: pointing.x + (x - pointing.x) * COMPASS_SMOOTHING, y: pointing.y + (y - pointing.y) * COMPASS_SMOOTHING }
+    : { x, y };
+  const degrees = ((Math.atan2(pointing.y, pointing.x) * 180) / Math.PI + 360) % 360;
+  if (compass !== undefined && Math.abs(((degrees - compass + 540) % 360) - 180) < COMPASS_STEP) return;
+  compass = degrees;
+  for (const listener of compassListeners) listener();
+}
+
+function subscribeCompass(listener: () => void) {
+  compassListeners.add(listener);
+  return () => void compassListeners.delete(listener);
+}
+
+/** Which way the phone points, in degrees from north, redrawn only when it turns a few degrees. */
+export function useCompass() {
+  return useSyncExternalStore(subscribeCompass, () => compass, () => compass);
 }
 
 // Everything that needs the location asks for it here, so the phone runs one GPS watch, not one per screen,
@@ -154,7 +188,7 @@ async function reconcile() {
       previous?.heading ??
       (await Location.watchHeadingAsync((reading) => {
         const degrees = reading.trueHeading >= 0 ? reading.trueHeading : reading.magHeading;
-        if (Number.isFinite(degrees) && reading.accuracy !== 0) set({ compass: degrees });
+        if (Number.isFinite(degrees) && reading.accuracy !== 0) setCompass(degrees);
       }).catch(() => undefined));
     watch = { navigation, position, heading };
     if (snapshot.status !== 'active') set({ status: snapshot.fix ? 'active' : 'asking' });
@@ -174,7 +208,7 @@ function subscribe(listener: () => void) {
   return () => void listeners.delete(listener);
 }
 
-/** The latest location and compass. Pass `watching` to keep the GPS running while the caller is on screen. */
+/** The latest location. Pass `watching` to keep the GPS running while the caller is on screen. */
 export function useLocation({ watching = false, navigation = false }: { watching?: boolean; navigation?: boolean } = {}) {
   const current = useSyncExternalStore(subscribe, () => snapshot, () => snapshot);
   useEffect(() => {
@@ -197,4 +231,4 @@ export function onFix(listener: (fix: Fix) => void) {
 }
 
 export const currentFix = () => snapshot.fix;
-export const currentCompass = () => snapshot.compass;
+export const currentCompass = () => compass;

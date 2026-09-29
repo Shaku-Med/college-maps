@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 )
 
 const (
@@ -26,6 +27,8 @@ var (
 	googleClientID = regexp.MustCompile(`^[A-Za-z0-9-]{1,128}\.apps\.googleusercontent\.com$`)
 	opaqueSecret   = regexp.MustCompile(`^[A-Za-z0-9._~+/=-]{20,512}$`)
 	reviewCode     = regexp.MustCompile(`^[0-9]{8}$`)
+	// The fixed review code is for one store review at a time, so it cannot be left on for good.
+	maxReviewWindow = 60 * 24 * time.Hour
 )
 
 type Config struct {
@@ -51,6 +54,7 @@ type Config struct {
 	// school email. Both are set or neither is.
 	ReviewEmail string
 	ReviewCode  string
+	ReviewUntil time.Time
 	// Optional. When Expo's enhanced push security is turned on, sends to the iPhone app need this token.
 	ExpoAccessToken string
 	PushAvailable   bool
@@ -164,11 +168,17 @@ func Load() (Config, error) {
 	}
 
 	reviewEmail, reviewCodeValue := strings.ToLower(strings.TrimSpace(os.Getenv("REVIEW_EMAIL"))), os.Getenv("REVIEW_CODE")
-	if reviewEmail != "" || reviewCodeValue != "" {
+	reviewUntilValue := strings.TrimSpace(os.Getenv("REVIEW_UNTIL"))
+	if reviewEmail != "" || reviewCodeValue != "" || reviewUntilValue != "" {
 		if reviewEmail == "" || !reviewCode.MatchString(reviewCodeValue) || distinctBytes(reviewCodeValue) < 5 {
-			add(errors.New("REVIEW_EMAIL and REVIEW_CODE go together: a school email and 8 digits using at least 5 different ones, or leave both unset"))
+			add(errors.New("REVIEW_EMAIL, REVIEW_CODE and REVIEW_UNTIL go together: a school email, 8 digits using at least 5 different ones, and an end date, or leave all three unset"))
 		}
-		cfg.ReviewEmail, cfg.ReviewCode = reviewEmail, reviewCodeValue
+		// A past date is allowed, so a server still starts after review ends; the fixed code just stops working.
+		until, err := time.Parse(time.DateOnly, reviewUntilValue)
+		if err != nil || until.After(time.Now().Add(maxReviewWindow)) {
+			add(errors.New("REVIEW_UNTIL must be a date like 2026-10-31, no more than 60 days away"))
+		}
+		cfg.ReviewEmail, cfg.ReviewCode, cfg.ReviewUntil = reviewEmail, reviewCodeValue, until.Add(24*time.Hour)
 	}
 
 	if token := os.Getenv("EXPO_ACCESS_TOKEN"); token != "" {

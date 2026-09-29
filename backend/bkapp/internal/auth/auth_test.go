@@ -446,17 +446,22 @@ func TestSendFailureDoesNotSpendATry(t *testing.T) {
 func TestReviewAccount(t *testing.T) {
 	const reviewer = "review@stu-mail.csi.cuny.edu"
 	const code = "48213957"
-	for _, bad := range [][2]string{{"review@example.com", code}, {reviewer, "1234"}, {"", code}} {
+	start := time.Date(2026, 9, 14, 12, 0, 0, 0, time.UTC)
+	until := start.Add(7 * 24 * time.Hour)
+	for _, bad := range []struct {
+		email, code string
+		until       time.Time
+	}{{"review@example.com", code, until}, {reviewer, "1234", until}, {"", code, until}, {reviewer, code, time.Time{}}} {
 		if _, err := NewService(authtest.NewMemoryStore(time.Now), &authtest.CapturedMail{}, testSecret,
-			[]string{"stu-mail.csi.cuny.edu"}, WithReviewAccount(bad[0], bad[1])); err == nil {
-			t.Errorf("review account %v should be refused", bad)
+			[]string{"stu-mail.csi.cuny.edu"}, WithReviewAccount(bad.email, bad.code, bad.until)); err == nil {
+			t.Errorf("review account %+v should be refused", bad)
 		}
 	}
 
-	c := &clock{t: time.Date(2026, 9, 14, 12, 0, 0, 0, time.UTC)}
+	c := &clock{t: start}
 	mail := &authtest.CapturedMail{}
 	svc, err := NewService(authtest.NewMemoryStore(c.now), mail, testSecret, []string{"stu-mail.csi.cuny.edu"},
-		WithClock(c.now), WithReviewAccount(reviewer, code))
+		WithClock(c.now), WithReviewAccount(reviewer, code, until))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -500,5 +505,17 @@ func TestReviewAccount(t *testing.T) {
 	}
 	if got := mail.Last(student); got == "" || got == code {
 		t.Fatalf("a student got %q instead of a random emailed code", got)
+	}
+
+	// After the end date the fixed code is dead: the address gets a random emailed code like anyone.
+	c.advance(8 * 24 * time.Hour)
+	if err := svc.RequestCode(ctx, reviewer); err != nil {
+		t.Fatal(err)
+	}
+	if got := mail.Last(reviewer); got == "" || got == code {
+		t.Fatalf("after review ended the address got %q instead of a random emailed code", got)
+	}
+	if _, _, err := svc.VerifyCode(ctx, reviewer, code); err == nil {
+		t.Fatal("the fixed code must not work after the review ends")
 	}
 }

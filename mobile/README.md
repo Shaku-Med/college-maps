@@ -57,8 +57,9 @@ Before submitting:
 
 1. Set `EXPO_PUBLIC_SUPPORT_EMAIL` in each build profile's `env` in `eas.json`, so people can report other
    students' events. Apple requires a report option and a way to reach you when users can post content.
-2. On the API host, set `REVIEW_EMAIL` (a school address you control) and `REVIEW_CODE` (8 digits), then
-   redeploy. Remove both after approval.
+2. On the API host, set `REVIEW_EMAIL` (a school address that is nobody's real inbox), `REVIEW_CODE`
+   (8 digits, new for every submission) and `REVIEW_UNTIL` (a date a few weeks out), then redeploy. The code
+   stops working on its own after that date. Use the same account details in Play Console under App access.
 3. In App Store Connect, give the privacy policy URL `https://csimap.vercel.app/privacy`, and paste this into
    App Review notes:
 

@@ -1,10 +1,11 @@
 import type { SFSymbol } from 'expo-symbols';
-import { Button, useThemeColor } from 'heroui-native';
+import { useThemeColor } from 'heroui-native';
 import { Pressable, Text, View } from 'react-native';
 import Animated, { FadeInUp, FadeOutUp } from 'react-native-reanimated';
 
 import { Icon } from '@/components/icon';
 import { Glass } from '@/components/glass';
+import { MapButton } from '@/components/map-button';
 import { StepIcon } from '@/components/step-icon';
 import { useNow } from '@/hooks/use-now';
 import type { RouteNotice } from '@/hooks/use-voice-guidance';
@@ -123,7 +124,7 @@ type BottomProps = {
 
 /** Time and distance left, the voice switch, and End. */
 export function NavigationFooter({ route, progress, hasArrived, voiceOn, manualStep, onToggleVoice, onStep, onEnd }: BottomProps) {
-  const [foreground, dangerForeground] = useThemeColor(['foreground', 'danger-foreground']);
+  const foreground = useThemeColor('foreground');
   const now = useNow();
   const remaining = progress?.remaining ?? route.distance;
   const seconds = route.duration !== undefined && route.distance > 0 ? route.duration * (remaining / route.distance) : remaining / 1.3;
@@ -134,12 +135,8 @@ export function NavigationFooter({ route, progress, hasArrived, voiceOn, manualS
       <View className="gap-3 p-4">
         {manualStep !== null && !hasArrived ? (
           <View className="flex-row gap-2">
-            <Button className="flex-1" variant="secondary" isDisabled={manualStep === 0} onPress={() => onStep(manualStep - 1)}>
-              <Button.Label>Back</Button.Label>
-            </Button>
-            <Button className="flex-1" onPress={() => onStep(manualStep + 1)}>
-              <Button.Label>Next step</Button.Label>
-            </Button>
+            <MapButton style={{ flex: 1 }} variant="secondary" label="Back" isDisabled={manualStep === 0} onPress={() => onStep(manualStep - 1)} />
+            <MapButton style={{ flex: 1 }} label="Next step" onPress={() => onStep(manualStep + 1)} />
           </View>
         ) : null}
         <View className="flex-row items-center gap-3">
@@ -157,10 +154,7 @@ export function NavigationFooter({ route, progress, hasArrived, voiceOn, manualS
             className="size-12 items-center justify-center rounded-full bg-default active:opacity-70">
             <Icon name={voiceOn ? 'speaker.wave.2.fill' : 'speaker.slash.fill'} size={18} tintColor={foreground} />
           </Pressable>
-          <Button variant="danger" onPress={onEnd}>
-            <Icon name="xmark" size={13} weight="bold" tintColor={dangerForeground} />
-            <Button.Label>{hasArrived ? 'Done' : 'End'}</Button.Label>
-          </Button>
+          <MapButton variant="danger" symbol="xmark" label={hasArrived ? 'Done' : 'End'} onPress={onEnd} />
         </View>
       </View>
     </Glass>

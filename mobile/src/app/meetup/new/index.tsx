@@ -13,15 +13,15 @@ import {
   useThemeColor,
   useToast,
 } from 'heroui-native';
-import { Fragment, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 
 import { useSheetInsets } from '@/hooks/use-sheet-insets';
 import { Icon } from '@/components/icon';
 import { ChoiceChips } from '@/components/choice-chips';
-import { PlacePicker } from '@/components/place-picker';
 import { getPlace } from '@/data/campus';
 import { useProfile } from '@/lib/account';
+import { choosePlace, useChosenPlace } from '@/lib/place-choice';
 import { updateMeetup, useSocial } from '@/lib/social';
 import { MAX_GUESTS, socialApi, type MeetupDestination } from '@/lib/social-api';
 
@@ -57,45 +57,18 @@ export default function NewMeetupSheet() {
   const [picked, setPicked] = useState<string[]>(invited);
   const [where, setWhere] = useState<Where>(isPublic ? 'place' : 'me');
   const [target, setTarget] = useState<string>();
-  const [placeId, setPlaceId] = useState<string>();
-  const [choosingPlace, setChoosingPlace] = useState(false);
+  const placeId = useChosenPlace();
   const [minutes, setMinutes] = useState<(typeof DURATIONS)[number]['id']>('120');
   const [startsIn, setStartsIn] = useState<(typeof START_OPTIONS)[number]['id']>('60');
   const [title, setTitle] = useState('');
   const [note, setNote] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Each new form starts without a place, whatever an earlier one picked.
+  useEffect(() => () => choosePlace(undefined), []);
 
   if (!profile) return null;
   const place = getPlace(placeId);
-
-  if (choosingPlace) {
-    return (
-      <View className="flex-1 gap-3 px-4" style={{ paddingTop: sheet.paddingTop }}>
-        <View className="flex-row items-center gap-2 px-1">
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Back to the meetup"
-            hitSlop={10}
-            onPress={() => setChoosingPlace(false)}
-            className="flex-row items-center gap-1 active:opacity-60">
-            <Icon name="chevron.left" size={16} weight="semibold" tintColor={accent} />
-            <Text className="text-base font-medium text-accent">Back</Text>
-          </Pressable>
-          <Text className="flex-1 text-center text-lg font-bold text-foreground">Where</Text>
-          <View style={{ width: 56 }} />
-        </View>
-        <PlacePicker
-          selectedId={placeId}
-          onPick={(picked) => {
-            setPlaceId(picked.id);
-            setWhere('place');
-            setChoosingPlace(false);
-          }}
-        />
-      </View>
-    );
-  }
 
   async function create() {
     setError(null);
@@ -208,7 +181,11 @@ export default function NewMeetupSheet() {
           />
         ) : null}
         {where === 'place' ? (
-          <Pressable onPress={() => setChoosingPlace(true)} className="flex-row items-center gap-3 rounded-2xl bg-default px-4 py-3.5 active:opacity-70">
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={place ? `Meeting at ${place.name}. Change` : 'Choose a place'}
+            onPress={() => router.push('/meetup/new/place')}
+            className="flex-row items-center gap-3 rounded-2xl bg-default px-4 py-3.5 active:opacity-70">
             <Icon name="mappin.and.ellipse" size={16} tintColor={place ? accent : muted} />
             <Text className={place ? 'flex-1 text-base text-foreground' : 'flex-1 text-base text-muted'} numberOfLines={1}>
               {place?.name ?? 'Choose a place'}

@@ -45,16 +45,33 @@ async function phoneToken() {
   return TOKEN_PATTERN.test(data) ? data : null;
 }
 
-export type EnableResult = 'on' | 'denied' | 'failed';
+// Android 13 and later only show the permission prompt once the app has a channel to post to. Expo's push
+// service sends to the channel named default when a message names none.
+async function ensureChannel() {
+  if (Platform.OS !== 'android') return;
+  await Notifications.setNotificationChannelAsync('default', {
+    name: 'Friends and meetups',
+    importance: Notifications.AndroidImportance.HIGH,
+  });
+}
 
-/** Asks iOS for permission and registers this phone. Call it from the switch the student flips. */
+export type EnableResult = 'on' | 'denied' | 'unavailable' | 'failed';
+
+/** Asks for permission and registers this phone. Call it from the switch the student flips. */
 export async function enableNotifications(): Promise<EnableResult> {
+  await ensureChannel().catch(() => undefined);
   const current = await Notifications.getPermissionsAsync();
   const granted = current.granted || (current.canAskAgain && (await Notifications.requestPermissionsAsync()).granted);
   if (!granted) return 'denied';
+  let token: string | null;
   try {
-    const token = await phoneToken();
-    if (!token) return 'failed';
+    token = await phoneToken();
+  } catch {
+    // On Android this means the build has no Firebase set up, so the phone cannot get a push token at all.
+    return 'unavailable';
+  }
+  if (!token) return 'unavailable';
+  try {
     const res = await apiCall<void>('/v1/push/app-tokens', 'POST', { token });
     if (!res.ok) return 'failed';
     registered = token;

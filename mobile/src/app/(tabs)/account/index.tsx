@@ -85,6 +85,12 @@ function NotificationsRow() {
           void Linking.openSettings();
         },
       });
+    } else if (result === 'unavailable') {
+      toast.show({
+        variant: 'warning',
+        label: "Notifications aren't available on this build",
+        description: 'This version of the app cannot receive notifications yet. An update will turn them on.',
+      });
     } else {
       toast.show({ variant: 'danger', label: "Couldn't turn on notifications", description: 'Try again in a moment.' });
     }
