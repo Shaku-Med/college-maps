@@ -27,6 +27,9 @@ function Navigation() {
     colors: { ...base.colors, background, card: background, text: foreground, primary: accent, border },
   };
   const sheetBackground = { backgroundColor: GLASS_SHEETS ? 'transparent' : background };
+  // Forms open as the standard iOS page sheet: full width over most of the screen, with the page behind pushed
+  // back. The adjustable sheets float with side margins on iOS 26 and squeeze layouts that fill their height.
+  const pageSheet = { presentation: 'modal', contentStyle: { backgroundColor: background } } as const;
   const formSheet = {
     presentation: 'formSheet',
     sheetGrabberVisible: true,
@@ -57,13 +60,13 @@ function Navigation() {
             sheetLargestUndimmedDetentIndex: 0,
           }}
         />
-        <Stack.Screen name="origin" options={{ ...formSheet, sheetAllowedDetents: [0.6, 0.95] }} />
-        <Stack.Screen name="class/[id]" options={{ ...formSheet, sheetAllowedDetents: [0.92] }} />
-        <Stack.Screen name="class-import" options={{ ...formSheet, sheetAllowedDetents: [0.92] }} />
-        <Stack.Screen name="profile" options={{ ...formSheet, sheetAllowedDetents: [0.6, 0.92] }} />
-        <Stack.Screen name="delete-account" options={{ ...formSheet, sheetAllowedDetents: [0.92] }} />
+        <Stack.Screen name="origin" options={pageSheet} />
+        <Stack.Screen name="class/[id]" options={pageSheet} />
+        <Stack.Screen name="class-import" options={pageSheet} />
+        <Stack.Screen name="profile" options={pageSheet} />
+        <Stack.Screen name="delete-account" options={pageSheet} />
         <Stack.Screen name="meetup/[id]" options={{ ...formSheet, sheetAllowedDetents: [0.6, 0.95] }} />
-        <Stack.Screen name="meetup/new" options={{ ...formSheet, sheetAllowedDetents: [0.95] }} />
+        <Stack.Screen name="meetup/new" options={pageSheet} />
       </Stack>
     </ThemeProvider>
   );

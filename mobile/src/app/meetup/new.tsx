@@ -70,9 +70,18 @@ export default function NewMeetupSheet() {
   if (choosingPlace) {
     return (
       <View className="flex-1 gap-3 px-4 pt-5">
-        <View className="flex-row items-center justify-between px-1">
-          <Text className="text-xl font-bold text-foreground">Where</Text>
-          <CloseButton onPress={() => setChoosingPlace(false)} />
+        <View className="flex-row items-center gap-2 px-1">
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Back to the meetup"
+            hitSlop={10}
+            onPress={() => setChoosingPlace(false)}
+            className="flex-row items-center gap-1 active:opacity-60">
+            <SymbolView name="chevron.left" size={16} weight="semibold" tintColor={accent} />
+            <Text className="text-base font-medium text-accent">Back</Text>
+          </Pressable>
+          <Text className="flex-1 text-center text-lg font-bold text-foreground">Where</Text>
+          <View style={{ width: 56 }} />
         </View>
         <PlacePicker
           selectedId={placeId}
