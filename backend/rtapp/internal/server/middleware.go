@@ -58,11 +58,24 @@ func cors(allowed map[string]struct{}) func(http.Handler) http.Handler {
 	}
 }
 
-// Everything except the health check comes from the web app, so a missing or foreign Origin is refused.
+// The CSI Map phone app has no origin and marks its requests with this header instead. A browser always
+// sends Origin here, and a page on another site cannot add the header without a preflight, which only listed
+// origins pass.
+const (
+	appClientHeader = "X-CSIMap-Client"
+	appClientValue  = "app"
+)
+
+func fromApp(r *http.Request) bool {
+	return r.Header.Get("Origin") == "" && r.Header.Get(appClientHeader) == appClientValue
+}
+
+// Everything except the health check comes from the web app or the phone app, so a missing or foreign
+// Origin is refused.
 func requireOrigin(allowed map[string]struct{}) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if r.URL.Path != "/healthz" {
+			if r.URL.Path != "/healthz" && !fromApp(r) {
 				if _, ok := allowed[r.Header.Get("Origin")]; !ok {
 					writeError(w, http.StatusForbidden, "origin not allowed")
 					return

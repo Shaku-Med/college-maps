@@ -53,6 +53,7 @@ func New(
 	mux.HandleFunc("GET /v1/places", handlePlaces(site.Places))
 	mux.Handle("POST /v1/auth/code", limitRoute(codeRequests, ip, http.HandlerFunc(a.requestCode)))
 	mux.Handle("POST /v1/auth/verify", limitRoute(codeChecks, ip, http.HandlerFunc(a.verifyCode)))
+	mux.Handle("POST /v1/app/auth/verify", limitRoute(codeChecks, ip, http.HandlerFunc(a.verifyCodeForApp)))
 	mux.HandleFunc("POST /v1/auth/signout", a.signOut)
 	mux.HandleFunc("POST /v1/auth/signout-all", a.requireUser(a.signOutEverywhere))
 	mux.HandleFunc("GET /v1/me", a.requireUser(a.me))

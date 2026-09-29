@@ -68,12 +68,25 @@ func cors(allowed map[string]struct{}) func(http.Handler) http.Handler {
 	}
 }
 
+// The CSI Map phone app marks its requests with this header. Browsers send Origin on every write, and a
+// page on another site cannot add a custom header without a CORS preflight, which only listed origins pass.
+// So a write with no Origin and this header cannot be a request forged by a browser.
+const (
+	appClientHeader = "X-CSIMap-Client"
+	appClientValue  = "app"
+)
+
+func fromApp(r *http.Request) bool {
+	return r.Header.Get("Origin") == "" && r.Header.Get(appClientHeader) == appClientValue
+}
+
 // Writes authenticate with a cookie, so they must come from a listed origin. Requiring the Origin
-// header blocks cross-site request forgery even from browsers that skip SameSite rules.
+// header blocks cross-site request forgery even from browsers that skip SameSite rules. The phone app
+// has no origin and proves itself with its header instead.
 func sameOriginWrites(allowed map[string]struct{}) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if isSafeMethod(r.Method) {
+			if isSafeMethod(r.Method) || fromApp(r) {
 				next.ServeHTTP(w, r)
 				return
 			}

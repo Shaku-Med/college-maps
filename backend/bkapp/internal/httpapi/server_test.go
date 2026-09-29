@@ -458,3 +458,82 @@ func TestClientIPUsesLastProxyEntry(t *testing.T) {
 		t.Fatalf("got %s, want the proxy-written entry", got)
 	}
 }
+
+// The phone app signs in without cookies: it gets its token once from the app verify route and sends it as a
+// bearer token, marking every request with its client header.
+func TestPhoneAppSignIn(t *testing.T) {
+	env := newTestEnv(t)
+	srv := httptest.NewServer(env.handler)
+	defer srv.Close()
+
+	call := func(method, path, body string, headers map[string]string) (*http.Response, map[string]any) {
+		t.Helper()
+		req, _ := http.NewRequest(method, srv.URL+path, strings.NewReader(body))
+		if body != "" {
+			req.Header.Set("Content-Type", "application/json")
+		}
+		for k, v := range headers {
+			req.Header.Set(k, v)
+		}
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer res.Body.Close()
+		var payload map[string]any
+		_ = json.NewDecoder(res.Body).Decode(&payload)
+		return res, payload
+	}
+	app := map[string]string{"X-CSIMap-Client": "app"}
+
+	if res, _ := call(http.MethodPost, "/v1/auth/code", `{"email":"`+student+`"}`, app); res.StatusCode != http.StatusAccepted {
+		t.Fatalf("app code request = %d", res.StatusCode)
+	}
+	code := env.mail.Last(student)
+
+	// A web page always sends Origin, so it can never read a session token from this route.
+	if res, _ := call(http.MethodPost, "/v1/app/auth/verify", `{"email":"`+student+`","code":"`+code+`"}`,
+		map[string]string{"X-CSIMap-Client": "app", "Origin": appOrigin}); res.StatusCode != http.StatusForbidden {
+		t.Fatalf("app verify from a browser = %d", res.StatusCode)
+	}
+	if res, _ := call(http.MethodPost, "/v1/app/auth/verify", `{"email":"`+student+`","code":"`+code+`"}`, nil); res.StatusCode != http.StatusForbidden {
+		t.Fatalf("app verify without the header = %d", res.StatusCode)
+	}
+
+	res, body := call(http.MethodPost, "/v1/app/auth/verify", `{"email":"`+student+`","code":"`+code+`"}`, app)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("app verify = %d %v", res.StatusCode, body)
+	}
+	if len(res.Cookies()) != 0 {
+		t.Fatal("the app route must not set a cookie")
+	}
+	token, _ := body["token"].(string)
+	user, _ := body["user"].(map[string]any)
+	if token == "" || user["email"] != student || len(user) != 4 {
+		t.Fatalf("unexpected app verify payload: %v", body)
+	}
+
+	bearer := map[string]string{"X-CSIMap-Client": "app", "Authorization": "Bearer " + token}
+	if res, _ := call(http.MethodGet, "/v1/me", "", bearer); res.StatusCode != http.StatusOK {
+		t.Fatalf("me with bearer = %d", res.StatusCode)
+	}
+	if res, body := call(http.MethodPatch, "/v1/me", `{"displayName":"Jane D","username":"jane_on_phone"}`, bearer); res.StatusCode != http.StatusOK {
+		t.Fatalf("profile from app = %d %v", res.StatusCode, body)
+	}
+	foreign := map[string]string{"X-CSIMap-Client": "app", "Authorization": "Bearer " + token, "Origin": "https://evil.example"}
+	if res, _ := call(http.MethodPatch, "/v1/me", `{"displayName":"Mallory"}`, foreign); res.StatusCode != http.StatusForbidden {
+		t.Fatalf("write from a foreign page with the header = %d", res.StatusCode)
+	}
+	for _, header := range []string{"Bearer", "Bearer ", "Basic " + token, "Bearer not-a-token"} {
+		if res, _ := call(http.MethodGet, "/v1/me", "", map[string]string{"Authorization": header}); res.StatusCode != http.StatusUnauthorized {
+			t.Errorf("Authorization %q = %d", header, res.StatusCode)
+		}
+	}
+
+	if res, _ := call(http.MethodPost, "/v1/auth/signout", "", bearer); res.StatusCode != http.StatusNoContent {
+		t.Fatalf("app sign out = %d", res.StatusCode)
+	}
+	if res, _ := call(http.MethodGet, "/v1/me", "", bearer); res.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("token after sign out = %d", res.StatusCode)
+	}
+}

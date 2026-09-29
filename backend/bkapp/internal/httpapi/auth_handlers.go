@@ -110,6 +110,26 @@ func (a *authHandlers) requestCode(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *authHandlers) verifyCode(w http.ResponseWriter, r *http.Request) {
+	a.verify(w, r, func(user auth.User, token string) {
+		a.setSession(w, token)
+		writeJSON(w, http.StatusOK, toResponse(user))
+	})
+}
+
+// The phone app keeps its session in the device keychain rather than a cookie, so it gets the token once,
+// here, and sends it back as a bearer token. Browsers always send Origin on this request, so a web page can
+// never use it to read a session token from script.
+func (a *authHandlers) verifyCodeForApp(w http.ResponseWriter, r *http.Request) {
+	if !fromApp(r) {
+		writeError(w, http.StatusForbidden, "only the CSI Map app can use this")
+		return
+	}
+	a.verify(w, r, func(user auth.User, token string) {
+		writeJSON(w, http.StatusOK, map[string]any{"user": toResponse(user)["user"], "token": token})
+	})
+}
+
+func (a *authHandlers) verify(w http.ResponseWriter, r *http.Request, signedIn func(auth.User, string)) {
 	var body struct {
 		Email string `json:"email"`
 		Code  string `json:"code"`
@@ -122,8 +142,7 @@ func (a *authHandlers) verifyCode(w http.ResponseWriter, r *http.Request) {
 	var wrong *auth.WrongCodeError
 	switch {
 	case err == nil:
-		a.setSession(w, token)
-		writeJSON(w, http.StatusOK, toResponse(user))
+		signedIn(user, token)
 	case errors.As(err, &wrong):
 		tries := "tries"
 		if wrong.AttemptsLeft == 1 {
@@ -139,9 +158,22 @@ func (a *authHandlers) verifyCode(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// sessionToken reads the session from the phone app's bearer header or the browser's cookie.
+func (a *authHandlers) sessionToken(r *http.Request) (string, bool) {
+	if header := r.Header.Get("Authorization"); header != "" {
+		token, found := strings.CutPrefix(header, "Bearer ")
+		return token, found && token != ""
+	}
+	cookie, err := r.Cookie(a.cookie.name)
+	if err != nil {
+		return "", false
+	}
+	return cookie.Value, true
+}
+
 func (a *authHandlers) signOut(w http.ResponseWriter, r *http.Request) {
-	if cookie, err := r.Cookie(a.cookie.name); err == nil {
-		if err := a.service.SignOut(r.Context(), cookie.Value); err != nil {
+	if token, ok := a.sessionToken(r); ok {
+		if err := a.service.SignOut(r.Context(), token); err != nil {
 			a.fail(w, r, err)
 			return
 		}
@@ -161,12 +193,12 @@ func (a *authHandlers) signOutEverywhere(w http.ResponseWriter, r *http.Request,
 
 func (a *authHandlers) requireUser(next func(http.ResponseWriter, *http.Request, auth.User)) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		cookie, err := r.Cookie(a.cookie.name)
-		if err != nil {
+		token, ok := a.sessionToken(r)
+		if !ok {
 			writeError(w, http.StatusUnauthorized, "not signed in")
 			return
 		}
-		user, err := a.service.Authenticate(r.Context(), cookie.Value)
+		user, err := a.service.Authenticate(r.Context(), token)
 		if errors.Is(err, auth.ErrUnauthorized) {
 			a.clearSession(w)
 			writeError(w, http.StatusUnauthorized, "not signed in")

@@ -226,3 +226,53 @@ func TestSharedIPAllowsAClassOfStreams(t *testing.T) {
 		closers = append(closers, closeStream)
 	}
 }
+
+// The phone app has no origin and sends its client header instead. A browser request always carries Origin,
+// so a foreign page with the header is still refused.
+func TestPhoneAppNeedsItsHeader(t *testing.T) {
+	srv := newTestServer(t)
+	token := sign(t, "meetup_room01", "member_alice1", "Alice")
+	good := `{"lat":40.6,"lng":-74.15,"accuracy":8}`
+
+	send := func(origin, client string) int {
+		req, _ := http.NewRequest(http.MethodPost, srv.URL+"/v1/position", strings.NewReader(good))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer "+token)
+		if origin != "" {
+			req.Header.Set("Origin", origin)
+		}
+		if client != "" {
+			req.Header.Set("X-CSIMap-Client", client)
+		}
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		res.Body.Close()
+		return res.StatusCode
+	}
+
+	if code := send("", "app"); code != http.StatusNoContent && code != http.StatusOK {
+		t.Errorf("phone app position %d", code)
+	}
+	if code := send("", ""); code != http.StatusForbidden {
+		t.Errorf("no origin and no header %d", code)
+	}
+	if code := send("", "browser"); code != http.StatusForbidden {
+		t.Errorf("wrong header value %d", code)
+	}
+	if code := send("https://evil.example", "app"); code != http.StatusForbidden {
+		t.Errorf("foreign page with the header %d", code)
+	}
+
+	streamReq, _ := http.NewRequest(http.MethodGet, srv.URL+"/v1/stream?ticket="+url.QueryEscape(token), nil)
+	streamReq.Header.Set("X-CSIMap-Client", "app")
+	res, err := http.DefaultClient.Do(streamReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		t.Errorf("phone app stream %d", res.StatusCode)
+	}
+}
