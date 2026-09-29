@@ -4,6 +4,7 @@ import { Button, CloseButton, FieldError, Input, Label, TextField, useThemeColor
 import { useState } from 'react';
 import { ScrollView, Text, View } from 'react-native';
 
+import { useSheetInsets } from '@/hooks/use-sheet-insets';
 import { Icon } from '@/components/icon';
 import { deleteAccount, useAccount } from '@/lib/account';
 import { setClasses } from '@/lib/classes';
@@ -12,6 +13,7 @@ import { disableNotifications } from '@/lib/notifications';
 // The same confirmation as the web app: say what goes, then ask for the username typed out, so a stray tap
 // can never erase an account.
 export default function DeleteAccountScreen() {
+  const sheet = useSheetInsets();
   const account = useAccount();
   const { toast } = useToast();
   const danger = useThemeColor('danger');
@@ -46,7 +48,7 @@ export default function DeleteAccountScreen() {
   }
 
   return (
-    <ScrollView keyboardShouldPersistTaps="handled" contentContainerClassName="gap-5 px-5 pb-12 pt-5">
+    <ScrollView keyboardShouldPersistTaps="handled" contentContainerClassName="gap-5 px-5" contentContainerStyle={sheet}>
       <View className="flex-row items-start justify-between gap-3">
         <View className="size-12 items-center justify-center rounded-2xl bg-danger-soft">
           <Icon name="trash" size={20} tintColor={danger} />

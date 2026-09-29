@@ -2,11 +2,13 @@ import { router } from 'expo-router';
 import { CloseButton, ListGroup, useThemeColor } from 'heroui-native';
 import { Text, View } from 'react-native';
 
+import { useSheetInsets } from '@/hooks/use-sheet-insets';
 import { Icon } from '@/components/icon';
 import { PlacePicker } from '@/components/place-picker';
 import { MY_LOCATION, setTripOrigin, useTrip } from '@/lib/trip';
 
 export default function OriginSheet() {
+  const sheet = useSheetInsets();
   const trip = useTrip();
   const accent = useThemeColor('accent');
   const pick = (origin: string) => {
@@ -15,7 +17,7 @@ export default function OriginSheet() {
   };
 
   return (
-    <View className="flex-1 gap-3 px-4 pt-5">
+    <View className="flex-1 gap-3 px-4" style={{ paddingTop: sheet.paddingTop }}>
       <View className="flex-row items-center justify-between px-1">
         <Text className="text-xl font-bold text-foreground">Start from</Text>
         <CloseButton onPress={() => router.back()} />

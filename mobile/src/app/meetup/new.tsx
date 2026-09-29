@@ -16,6 +16,7 @@ import {
 import { Fragment, useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 
+import { useSheetInsets } from '@/hooks/use-sheet-insets';
 import { Icon } from '@/components/icon';
 import { ChoiceChips } from '@/components/choice-chips';
 import { PlacePicker } from '@/components/place-picker';
@@ -44,6 +45,7 @@ const MAX_TITLE = 60;
 type Where = 'me' | 'friend' | 'place';
 
 export default function NewMeetupSheet() {
+  const sheet = useSheetInsets();
   const params = useLocalSearchParams<{ kind?: string; friend?: string }>();
   const isPublic = params.kind === 'public';
   const profile = useProfile();
@@ -69,7 +71,7 @@ export default function NewMeetupSheet() {
 
   if (choosingPlace) {
     return (
-      <View className="flex-1 gap-3 px-4 pt-5">
+      <View className="flex-1 gap-3 px-4" style={{ paddingTop: sheet.paddingTop }}>
         <View className="flex-row items-center gap-2 px-1">
           <Pressable
             accessibilityRole="button"
@@ -131,7 +133,7 @@ export default function NewMeetupSheet() {
   const friends = social.friends.friends;
 
   return (
-    <ScrollView keyboardShouldPersistTaps="handled" contentContainerClassName="gap-5 px-5 pb-12 pt-5">
+    <ScrollView keyboardShouldPersistTaps="handled" contentContainerClassName="gap-5 px-5" contentContainerStyle={sheet}>
       <View className="flex-row items-center justify-between">
         <Text className="text-xl font-bold text-foreground">{isPublic ? 'Campus event' : 'New meetup'}</Text>
         <CloseButton onPress={() => router.back()} />

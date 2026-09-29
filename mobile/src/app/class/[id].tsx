@@ -4,6 +4,7 @@ import { Button, CloseButton, Description, FieldError, Input, Label, TextField, 
 import { useMemo, useState } from 'react';
 import { Alert, Pressable, ScrollView, Text, View } from 'react-native';
 
+import { useSheetInsets } from '@/hooks/use-sheet-insets';
 import { TimeField } from '@/components/time-field';
 import { CAMPUS } from '@/data/campus';
 import { getClasses, setClasses } from '@/lib/classes';
@@ -23,6 +24,7 @@ const DEFAULT_END = 10 * 60 + 15;
 
 
 export default function ClassSheet() {
+  const sheet = useSheetInsets();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { toast } = useToast();
   const existing = id === 'new' ? undefined : getClasses().find((entry) => entry.id === id);
@@ -73,7 +75,7 @@ export default function ClassSheet() {
   }
 
   return (
-    <ScrollView keyboardShouldPersistTaps="handled" contentContainerClassName="gap-5 px-5 pb-12 pt-5">
+    <ScrollView keyboardShouldPersistTaps="handled" contentContainerClassName="gap-5 px-5" contentContainerStyle={sheet}>
       <View className="flex-row items-center justify-between">
         <Text className="text-xl font-bold text-foreground">{existing ? 'Edit class' : 'Add a class'}</Text>
         <CloseButton onPress={() => router.back()} />

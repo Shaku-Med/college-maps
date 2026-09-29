@@ -5,6 +5,7 @@ import { Button, CloseButton, ListGroup, Separator, TextArea, useToast } from 'h
 import { Fragment, useMemo, useState } from 'react';
 import { ScrollView, Text, View } from 'react-native';
 
+import { useSheetInsets } from '@/hooks/use-sheet-insets';
 import { CAMPUS, getPlace } from '@/data/campus';
 import { getClasses, setClasses } from '@/lib/classes';
 import { MAX_CLASSES, formatClock, formatDays, newClassId, parseScheduleText } from '@/lib/schedule';
@@ -13,6 +14,7 @@ import { MAX_CLASSES, formatClock, formatDays, newClassId, parseScheduleText } f
 const MAX_PASTE = 20_000;
 
 export default function ImportSheet() {
+  const sheet = useSheetInsets();
   const { toast } = useToast();
   const [text, setText] = useState('');
   const found = useMemo(() => parseScheduleText(text), [text]);
@@ -42,7 +44,7 @@ export default function ImportSheet() {
   }
 
   return (
-    <ScrollView keyboardShouldPersistTaps="handled" contentContainerClassName="gap-5 px-5 pb-12 pt-5">
+    <ScrollView keyboardShouldPersistTaps="handled" contentContainerClassName="gap-5 px-5" contentContainerStyle={sheet}>
       <View className="flex-row items-center justify-between">
         <Text className="text-xl font-bold text-foreground">Paste your schedule</Text>
         <CloseButton onPress={() => router.back()} />
