@@ -61,6 +61,7 @@ export default function FriendsScreen() {
   const [username, setUsername] = useState('');
   const [addError, setAddError] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
+  const [pulling, setPulling] = useState(false);
 
   if (!profile) {
     return (
@@ -79,7 +80,12 @@ export default function FriendsScreen() {
     );
   }
   const me = profile.username;
-  const reload = () => void refreshSocial(me);
+  // The spinner is only for a pull by hand. The list refreshes itself quietly in the background.
+  const reload = async () => {
+    setPulling(true);
+    await refreshSocial(me);
+    setPulling(false);
+  };
 
   async function run(action: Promise<{ ok: boolean; message?: string }>, success?: string) {
     const res = await action;
@@ -148,7 +154,7 @@ export default function FriendsScreen() {
       <ScrollView
         contentInsetAdjustmentBehavior="automatic"
         keyboardShouldPersistTaps="handled"
-        refreshControl={<RefreshControl refreshing={social.loading} onRefresh={reload} />}
+        refreshControl={<RefreshControl refreshing={pulling} onRefresh={() => void reload()} />}
         contentContainerClassName="gap-6 px-4 pb-16 pt-2">
         <View className="flex-row gap-3">
           <Button className="flex-1" onPress={() => router.push({ pathname: '/meetup/new', params: { kind: 'private' } })}>

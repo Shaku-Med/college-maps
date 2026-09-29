@@ -5,12 +5,13 @@ import { Fragment, useEffect, useState } from 'react';
 import { Alert, Pressable, ScrollView, Text, View } from 'react-native';
 
 import { Icon } from '@/components/icon';
+import { showActionSheet } from '@/lib/action-sheet';
 import { getPlace } from '@/data/campus';
 import { useProfile } from '@/lib/account';
 import { showMeetupOnMap, useShownMeetup } from '@/lib/meetup-focus';
 import { moderateMeetup } from '@/lib/moderation';
 import { updateMeetup, useSocial } from '@/lib/social';
-import { socialApi, type Meetup, type MeetupStatus } from '@/lib/social-api';
+import { MAX_GUESTS, socialApi, type Meetup, type MeetupMember, type MeetupStatus } from '@/lib/social-api';
 import { planTrip } from '@/lib/trip';
 
 const STATUS_TEXT: Record<MeetupStatus, string> = {
@@ -83,21 +84,59 @@ export default function MeetupSheet() {
     router.navigate('/');
   }
 
+  const closeAfter = () => {
+    if (shown === meetup!.id) showMeetupOnMap(null);
+    router.back();
+  };
+
   function leave() {
-    const ending = host;
-    Alert.alert(ending ? 'End this meetup?' : 'Leave this meetup?', ending ? 'Everyone stops sharing their location.' : undefined, [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: ending ? 'End meetup' : 'Leave',
-        style: 'destructive',
-        onPress: () =>
-          void act(ending ? socialApi.endMeetup(meetup!.id) : socialApi.leaveMeetup(meetup!.id), () => {
-            if (shown === meetup!.id) showMeetupOnMap(null);
-            router.back();
-          }),
-      },
-    ]);
+    if (host) {
+      Alert.alert('End this meetup?', 'Everyone stops sharing their location.', [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'End meetup', style: 'destructive', onPress: () => void act(socialApi.endMeetup(meetup!.id), closeAfter) },
+      ]);
+      return;
+    }
+    // A public event can be joined again any time, so only a private meetup needs the "for good" choice.
+    if (meetup!.visibility === 'public') {
+      void act(socialApi.leaveMeetup(meetup!.id), closeAfter);
+      return;
+    }
+    showActionSheet({
+      title: 'Leave this meetup?',
+      message: 'You stop sharing your location. The host can invite you back if you left by mistake.',
+      actions: [
+        { label: 'Leave', destructive: true, onPress: () => void act(socialApi.leaveMeetup(meetup!.id), closeAfter) },
+        {
+          label: "Leave, don't invite me back",
+          destructive: true,
+          onPress: () => void act(socialApi.leaveMeetup(meetup!.id, true), closeAfter),
+        },
+      ],
+    });
   }
+
+  function decline() {
+    showActionSheet({
+      title: 'Decline this meetup?',
+      actions: [
+        { label: 'Not this time', onPress: () => void act(socialApi.respond(meetup!.id, false), () => router.back()) },
+        {
+          label: "Don't invite me again",
+          destructive: true,
+          onPress: () => void act(socialApi.respond(meetup!.id, false, true), () => router.back()),
+        },
+      ],
+    });
+  }
+
+  const canInvite = host && meetup.visibility === 'private' && meetup.active;
+  const inMeetup = new Set(meetup.members.map((m) => m.username));
+  const guests = meetup.members.filter((m) => m.role === 'guest' && (m.status === 'invited' || m.status === 'joined')).length;
+  const moreFriends = canInvite ? social.friends.friends.filter((f) => !inMeetup.has(f.username)) : [];
+  const invite = (username: string) => void act(socialApi.inviteToMeetup(meetup.id, [username]));
+  const canBeInvitedBack = (member: MeetupMember) =>
+    canInvite && member.role === 'guest' && (member.status === 'left' || member.status === 'declined') && !member.staysOut;
 
   return (
     <ScrollView contentContainerClassName="gap-5 px-5 pb-12 pt-5">
@@ -135,7 +174,7 @@ export default function MeetupSheet() {
 
       {meetup.yourStatus === 'invited' ? (
         <View className="flex-row gap-3">
-          <Button className="flex-1" variant="secondary" isDisabled={busy} onPress={() => void act(socialApi.respond(meetup.id, false), () => router.back())}>
+          <Button className="flex-1" variant="secondary" isDisabled={busy} onPress={decline}>
             <Button.Label>Decline</Button.Label>
           </Button>
           <Button className="flex-1" isDisabled={busy} onPress={() => void act(socialApi.respond(meetup.id, true))}>
@@ -189,14 +228,42 @@ export default function MeetupSheet() {
                     {member.role === 'host' ? ' · Host' : ''}
                   </ListGroup.ItemDescription>
                 </ListGroup.ItemContent>
-                <Chip size="sm" variant={member.status === 'joined' ? 'primary' : 'secondary'} color={member.status === 'joined' ? 'accent' : 'default'}>
-                  <Chip.Label>{STATUS_TEXT[member.status]}</Chip.Label>
-                </Chip>
+                {canBeInvitedBack(member) ? (
+                  <Button size="sm" variant="secondary" isDisabled={busy || guests >= MAX_GUESTS} onPress={() => invite(member.username)}>
+                    <Button.Label>Invite back</Button.Label>
+                  </Button>
+                ) : (
+                  <Chip size="sm" variant={member.status === 'joined' ? 'primary' : 'secondary'} color={member.status === 'joined' ? 'accent' : 'default'}>
+                    <Chip.Label>{member.staysOut ? 'Stays out' : STATUS_TEXT[member.status]}</Chip.Label>
+                  </Chip>
+                )}
               </ListGroup.Item>
             </Fragment>
           ))}
         </ListGroup>
       </View>
+
+      {moreFriends.length > 0 && guests < MAX_GUESTS ? (
+        <View className="gap-2">
+          <Text className="px-1 text-sm font-semibold text-muted">Invite more friends</Text>
+          <ListGroup>
+            {moreFriends.map((friend, index) => (
+              <Fragment key={friend.username}>
+                {index > 0 ? <Separator className="mx-4" /> : null}
+                <ListGroup.Item disabled>
+                  <ListGroup.ItemContent>
+                    <ListGroup.ItemTitle numberOfLines={1}>{friend.displayName}</ListGroup.ItemTitle>
+                    <ListGroup.ItemDescription>@{friend.username}</ListGroup.ItemDescription>
+                  </ListGroup.ItemContent>
+                  <Button size="sm" variant="secondary" isDisabled={busy} onPress={() => invite(friend.username)}>
+                    <Button.Label>Invite</Button.Label>
+                  </Button>
+                </ListGroup.Item>
+              </Fragment>
+            ))}
+          </ListGroup>
+        </View>
+      ) : null}
 
       {joined ? (
         <Button variant="danger-soft" isDisabled={busy} onPress={leave}>

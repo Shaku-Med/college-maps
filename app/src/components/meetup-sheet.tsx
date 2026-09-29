@@ -1,7 +1,7 @@
 "use client";
 
 import { Button, CloseButton, Separator, Surface, toast } from "@heroui/react";
-import { LogOut, MapPin, Navigation, Radio, Square } from "lucide-react";
+import { LogOut, MapPin, Navigation, Radio, Square, UserPlus } from "lucide-react";
 import { useState } from "react";
 
 import { Avatar, meetupWhere } from "@/components/people-panel";
@@ -70,6 +70,20 @@ export function MeetupSheet({
     onClose();
   }
 
+  async function inviteBack(username: string, name: string) {
+    setIsBusy(true);
+    const res = await socialApi.inviteToMeetup(meetup.id, [username]);
+    setIsBusy(false);
+    if (!res.ok) {
+      toast.danger(res.message);
+      return;
+    }
+    toast.success(`${name} is invited again`);
+    onMeetupChange(res.data);
+  }
+
+  const canInvite = meetup.yourRole === "host" && meetup.visibility === "private" && meetup.active;
+
   return (
     <Surface
       role="region"
@@ -126,9 +140,13 @@ export function MeetupSheet({
                 : "joined, not sharing yet"
               : member.status === "invited"
                 ? "invited"
-                : member.status === "declined"
-                  ? "can't make it"
-                  : "left";
+                : member.staysOut
+                  ? "left and asked not to be invited back"
+                  : member.status === "declined"
+                    ? "can't make it"
+                    : "left";
+          const invitable =
+            canInvite && member.role === "guest" && (member.status === "left" || member.status === "declined") && !member.staysOut;
           return (
             <div key={member.username} className="flex items-center gap-3 py-2">
               <Avatar name={member.displayName} username={member.username} />
@@ -142,6 +160,11 @@ export function MeetupSheet({
               {live ? (
                 <Button size="sm" variant="ghost" onPress={() => onShowOnMap(live.coordinate, live.member)}>
                   Find
+                </Button>
+              ) : invitable ? (
+                <Button size="sm" variant="secondary" isDisabled={isBusy} onPress={() => void inviteBack(member.username, member.displayName)}>
+                  <UserPlus aria-hidden />
+                  Invite back
                 </Button>
               ) : null}
             </div>
@@ -163,14 +186,28 @@ export function MeetupSheet({
             End for everyone
           </Button>
         ) : (
-          <Button
-            variant="secondary"
-            isPending={isBusy}
-            onPress={() => void run(() => socialApi.leaveMeetup(meetup.id), "You left the meetup")}
-            fullWidth>
-            <LogOut aria-hidden />
-            Leave
-          </Button>
+          <div className="flex flex-col gap-2">
+            <Button
+              variant="secondary"
+              isPending={isBusy}
+              onPress={() => void run(() => socialApi.leaveMeetup(meetup.id), "You left the meetup")}
+              fullWidth>
+              <LogOut aria-hidden />
+              Leave
+            </Button>
+            {meetup.visibility === "private" ? (
+              <Button
+                variant="ghost"
+                isDisabled={isBusy}
+                onPress={() => void run(() => socialApi.leaveMeetup(meetup.id, true), "You left for good")}
+                fullWidth>
+                Leave and don&apos;t invite me back
+              </Button>
+            ) : null}
+            {meetup.visibility === "private" ? (
+              <p className="px-1 text-xs text-muted">If you leave by mistake, the host can invite you back.</p>
+            ) : null}
+          </div>
         )}
       </div>
     </Surface>

@@ -177,12 +177,12 @@ func (s *Service) Notify(ctx context.Context, senderID string, userIDs []string,
 				s.send(ctx, sub, payload)
 			}
 		}
-		tokens, err := s.appTokensFor(ctx, senderID, userID)
+		tokens, badge, err := s.appTokensFor(ctx, senderID, userID)
 		if err != nil {
 			s.logger.Error("app push lookup failed", "error", err)
 			continue
 		}
-		s.sendToApps(ctx, senderID, tokens, msg)
+		s.sendToApps(ctx, senderID, tokens, badge, msg)
 	}
 }
 

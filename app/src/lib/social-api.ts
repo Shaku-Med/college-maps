@@ -19,6 +19,8 @@ export type MeetupMember = Person & {
   role: "host" | "guest";
   status: MeetupStatus;
   liveId?: string;
+  /** Left or said no and asked not to be invited back. */
+  staysOut?: boolean;
 };
 
 export type MeetupDestination = {
@@ -98,9 +100,13 @@ export const socialApi = {
   },
   createMeetup: async (meetup: NewMeetup) => unwrapMeetup(await apiCall<{ meetup: Meetup }>("/v1/meetups", "POST", meetup)),
   meetup: async (id: string) => unwrapMeetup(await apiCall<{ meetup: Meetup }>(`/v1/meetups/${meetupPath(id)}`, "GET")),
-  respond: async (id: string, accept: boolean) =>
-    unwrapMeetup(await apiCall<{ meetup: Meetup }>(`/v1/meetups/${meetupPath(id)}/respond`, "POST", { accept })),
-  leaveMeetup: async (id: string) => unwrapMeetup(await apiCall<{ meetup: Meetup }>(`/v1/meetups/${meetupPath(id)}/leave`, "POST")),
+  respond: async (id: string, accept: boolean, stayOut = false) =>
+    unwrapMeetup(await apiCall<{ meetup: Meetup }>(`/v1/meetups/${meetupPath(id)}/respond`, "POST", { accept, stayOut })),
+  leaveMeetup: async (id: string, stayOut = false) =>
+    unwrapMeetup(await apiCall<{ meetup: Meetup }>(`/v1/meetups/${meetupPath(id)}/leave`, "POST", { stayOut })),
+  /** The host adds friends to a live private meetup, including anyone who left by mistake. */
+  inviteToMeetup: async (id: string, friends: string[]) =>
+    unwrapMeetup(await apiCall<{ meetup: Meetup }>(`/v1/meetups/${meetupPath(id)}/invite`, "POST", { friends })),
   endMeetup: async (id: string) => unwrapMeetup(await apiCall<{ meetup: Meetup }>(`/v1/meetups/${meetupPath(id)}/end`, "POST")),
   publicMeetups: async (): Promise<ApiResult<Meetup[]>> => {
     const res = await apiCall<{ meetups: Meetup[] }>("/v1/meetups/public", "GET");

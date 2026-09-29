@@ -108,7 +108,19 @@
       [
         "expo-widgets",
         {
-          "groupIdentifier": "group.com.shakumed.csimap"
+          "groupIdentifier": "group.com.shakumed.csimap",
+          "widgets": [
+            {
+              "name": "UpNext",
+              "displayName": "Up Next",
+              "description": "Your next class or the meetup you're in.",
+              "supportedFamilies": [
+                "systemSmall",
+                "systemMedium"
+              ],
+              "contentMarginsDisabled": false
+            }
+          ]
         }
       ],
       [

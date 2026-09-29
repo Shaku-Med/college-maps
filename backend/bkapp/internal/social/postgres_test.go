@@ -199,7 +199,7 @@ func TestFriendsAndMeetups(t *testing.T) {
 		t.Fatalf("outsider saw the meetup: %v", err)
 	}
 
-	joined, err := s.RespondToMeetup(ctx, bob, created.ID, true)
+	joined, err := s.RespondToMeetup(ctx, bob, created.ID, true, false)
 	if err != nil || joined.Destination == nil || joined.YourLiveID == "" {
 		t.Fatalf("join: %+v %v", joined, err)
 	}
@@ -219,7 +219,7 @@ func TestFriendsAndMeetups(t *testing.T) {
 	if err != nil || len(lists) != 1 || lists[0].ID != created.ID {
 		t.Fatalf("carol list: %+v %v", lists, err)
 	}
-	if _, err := s.RespondToMeetup(ctx, carol, created.ID, false); err != nil {
+	if _, err := s.RespondToMeetup(ctx, carol, created.ID, false, false); err != nil {
 		t.Fatal(err)
 	}
 	if lists, _ := s.ListMeetups(ctx, carol); len(lists) != 0 {
@@ -472,8 +472,9 @@ func TestParallelCreatesKeepTheLimit(t *testing.T) {
 			_, err := h.social.CreatePublicMeetup(ctx, host, social.NewPublicMeetup{
 				Title:       "Study group",
 				Destination: social.DestinationInput{Kind: social.DestinationPlace, PlaceID: placeID},
-				StartsIn:    30,
-				Minutes:     60,
+				// Spread out in time, so only the limit on active events can stop them, not being busy.
+				StartsIn: 30 + i*120,
+				Minutes:  60,
 			})
 			results <- err
 		}()
@@ -537,6 +538,22 @@ func TestAppPushTokens(t *testing.T) {
 	}
 	if got := tokensSeenBy(friend, owner); len(got) != 1 || got[0] != token {
 		t.Fatalf("a pending friend request should reach the owner: %v", got)
+	}
+	badgeFor := func(sender, target auth.User) int {
+		t.Helper()
+		var n int
+		if err := db.WithScope(ctx, h.pool, db.Scope{UserID: sender.ID}, func(tx pgx.Tx) error {
+			return tx.QueryRow(ctx, `select csimap_app_push_badge($1::uuid)`, target.ID).Scan(&n)
+		}); err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+	if got := badgeFor(friend, owner); got != 1 {
+		t.Fatalf("badge should count the waiting request, got %d", got)
+	}
+	if got := badgeFor(stranger, owner); got != 0 {
+		t.Fatalf("a stranger must not learn the count, got %d", got)
 	}
 
 	// The phone is signed into another account without the first one signing out: the token moves.

@@ -119,6 +119,9 @@ func (s *Service) CreatePublicMeetup(ctx context.Context, me auth.User, in NewPu
 		if today >= maxPublicPerDay || active >= maxActivePublic {
 			return ErrTooMany
 		}
+		if err := s.busyElsewhere(ctx, tx, me.ID, "", startsAt, startsAt.Add(time.Duration(minutes)*time.Minute)); err != nil {
+			return err
+		}
 
 		var notePtr *string
 		if note != "" {
@@ -184,7 +187,11 @@ func (s *Service) JoinPublicMeetup(ctx context.Context, me auth.User, publicID s
 	}
 
 	var m Meetup
+	var tell []string
 	err := db.WithScope(ctx, s.pool, db.Scope{UserID: me.ID}, func(tx pgx.Tx) error {
+		if err := lockUser(ctx, tx, me.ID); err != nil {
+			return err
+		}
 		current, err := s.load(ctx, tx, me, publicID)
 		if err != nil {
 			return err
@@ -199,6 +206,9 @@ func (s *Service) JoinPublicMeetup(ctx context.Context, me auth.User, publicID s
 			if current.Going >= maxPublicAttendees {
 				return ErrTooMany
 			}
+			if err := s.busyElsewhere(ctx, tx, me.ID, publicID, meetupStart(current), current.ExpiresAt); err != nil {
+				return err
+			}
 			if _, err := tx.Exec(ctx,
 				`insert into meetup_members (meetup_id, user_id, role, status)
 				 values ((select id from meetups where public_id = $1), $2::uuid, 'guest', 'joined')
@@ -206,9 +216,15 @@ func (s *Service) JoinPublicMeetup(ctx context.Context, me auth.User, publicID s
 				publicID, me.ID); err != nil {
 				return err
 			}
+			if tell, err = s.othersInMeetup(ctx, tx, me.ID, publicID); err != nil {
+				return err
+			}
 		}
 		m, err = s.load(ctx, tx, me, publicID)
 		return err
 	})
+	if err == nil {
+		s.pingJoined(me, tell, m)
+	}
 	return m, err
 }

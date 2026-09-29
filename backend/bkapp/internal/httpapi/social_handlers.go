@@ -41,6 +41,8 @@ func (h *socialHandlers) fail(w http.ResponseWriter, r *http.Request, err error)
 		writeError(w, http.StatusGone, "This meetup is over.")
 	case errors.Is(err, social.ErrNotHost):
 		writeError(w, http.StatusForbidden, "Only the host can do that.")
+	case errors.Is(err, social.ErrBusy):
+		writeError(w, http.StatusConflict, "You're already in a meetup at that time. Leave it first to join this one.")
 	case errors.Is(err, social.ErrNotJoined):
 		writeError(w, http.StatusForbidden, "Join the meetup to see where everyone is.")
 	default:
@@ -183,7 +185,8 @@ func (h *socialHandlers) getMeetup(w http.ResponseWriter, r *http.Request, me au
 
 func (h *socialHandlers) respond(w http.ResponseWriter, r *http.Request, me auth.User) {
 	var body struct {
-		Accept *bool `json:"accept"`
+		Accept  *bool `json:"accept"`
+		StayOut bool  `json:"stayOut"`
 	}
 	if !decodeJSON(w, r, &body) {
 		return
@@ -192,7 +195,7 @@ func (h *socialHandlers) respond(w http.ResponseWriter, r *http.Request, me auth
 		writeError(w, http.StatusBadRequest, "Say whether you're joining.")
 		return
 	}
-	m, err := h.service.RespondToMeetup(r.Context(), me, r.PathValue("id"), *body.Accept)
+	m, err := h.service.RespondToMeetup(r.Context(), me, r.PathValue("id"), *body.Accept, body.StayOut)
 	if err != nil {
 		h.fail(w, r, err)
 		return
@@ -201,7 +204,29 @@ func (h *socialHandlers) respond(w http.ResponseWriter, r *http.Request, me auth
 }
 
 func (h *socialHandlers) leave(w http.ResponseWriter, r *http.Request, me auth.User) {
-	m, err := h.service.LeaveMeetup(r.Context(), me, r.PathValue("id"))
+	// The body is optional, so older clients that send none still leave the usual way.
+	var body struct {
+		StayOut bool `json:"stayOut"`
+	}
+	if r.ContentLength != 0 && !decodeJSON(w, r, &body) {
+		return
+	}
+	m, err := h.service.LeaveMeetup(r.Context(), me, r.PathValue("id"), body.StayOut)
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"meetup": m})
+}
+
+func (h *socialHandlers) invite(w http.ResponseWriter, r *http.Request, me auth.User) {
+	var body struct {
+		Friends []string `json:"friends"`
+	}
+	if !decodeJSON(w, r, &body) {
+		return
+	}
+	m, err := h.service.InviteToMeetup(r.Context(), me, r.PathValue("id"), body.Friends)
 	if err != nil {
 		h.fail(w, r, err)
 		return

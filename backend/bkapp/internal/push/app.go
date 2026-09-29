@@ -83,17 +83,21 @@ func (s *Service) RemoveAppToken(ctx context.Context, me auth.User, token string
 	})
 }
 
-func (s *Service) appTokensFor(ctx context.Context, senderID, targetID string) ([]string, error) {
+// appTokensFor returns the phones to notify and the count for their app icon badge.
+func (s *Service) appTokensFor(ctx context.Context, senderID, targetID string) ([]string, int, error) {
 	var out []string
+	var badge int
 	err := db.WithScope(ctx, s.pool, db.Scope{UserID: senderID}, func(tx pgx.Tx) error {
 		rows, err := tx.Query(ctx, `select token from csimap_app_push_tokens($1::uuid)`, targetID)
 		if err != nil {
 			return err
 		}
-		out, err = pgx.CollectRows(rows, pgx.RowTo[string])
-		return err
+		if out, err = pgx.CollectRows(rows, pgx.RowTo[string]); err != nil || len(out) == 0 {
+			return err
+		}
+		return tx.QueryRow(ctx, `select csimap_app_push_badge($1::uuid)`, targetID).Scan(&badge)
 	})
-	return out, err
+	return out, badge, err
 }
 
 type expoMessage struct {
@@ -101,6 +105,7 @@ type expoMessage struct {
 	Title string            `json:"title"`
 	Body  string            `json:"body"`
 	Sound string            `json:"sound"`
+	Badge int               `json:"badge"`
 	Data  map[string]string `json:"data"`
 }
 
@@ -113,13 +118,13 @@ type expoTicket struct {
 
 // sendToApps delivers one notification to a person's phones, and forgets any phone Expo says has uninstalled
 // the app or turned notifications off for good.
-func (s *Service) sendToApps(ctx context.Context, senderID string, tokens []string, msg Message) {
+func (s *Service) sendToApps(ctx context.Context, senderID string, tokens []string, badge int, msg Message) {
 	if len(tokens) == 0 {
 		return
 	}
 	messages := make([]expoMessage, 0, len(tokens))
 	for _, token := range tokens {
-		messages = append(messages, expoMessage{To: token, Title: msg.Title, Body: msg.Body, Sound: "default", Data: map[string]string{"url": msg.URL}})
+		messages = append(messages, expoMessage{To: token, Title: msg.Title, Body: msg.Body, Sound: "default", Badge: badge, Data: map[string]string{"url": msg.URL}})
 	}
 	body, err := json.Marshal(messages)
 	if err != nil {

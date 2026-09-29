@@ -37,6 +37,7 @@ func New(
 	exportUser := newRateLimiter(40, 15*time.Minute)
 	pushUser := newRateLimiter(40, 15*time.Minute)
 	settingsUser := newRateLimiter(60, 15*time.Minute)
+	inviteUser := newRateLimiter(30, 15*time.Minute)
 
 	a := &authHandlers{
 		service:  authService,
@@ -87,6 +88,7 @@ func New(
 		mux.HandleFunc("POST /v1/meetups/{id}/join", a.requireUser(sh.joinPublicMeetup))
 		mux.HandleFunc("POST /v1/meetups/{id}/respond", a.requireUser(sh.respond))
 		mux.HandleFunc("POST /v1/meetups/{id}/leave", a.requireUser(sh.leave))
+		mux.Handle("POST /v1/meetups/{id}/invite", a.requireUser(limitUser(inviteUser, sh.invite)))
 		mux.HandleFunc("POST /v1/meetups/{id}/end", a.requireUser(sh.end))
 		mux.HandleFunc("POST /v1/meetups/{id}/ticket", a.requireUser(sh.liveTicket))
 	}
@@ -103,7 +105,7 @@ func New(
 		sameOriginWrites(cfg.AllowedOrigins),
 		limitBody,
 	)
-	return &Server{handler: handler, limiters: []*rateLimiter{general, codeRequests, codeChecks, accountDataIP, wipeUser, exportUser, pushUser, settingsUser}}
+	return &Server{handler: handler, limiters: []*rateLimiter{general, codeRequests, codeChecks, accountDataIP, wipeUser, exportUser, pushUser, settingsUser, inviteUser}}
 }
 
 func (s *Server) Handler() http.Handler {

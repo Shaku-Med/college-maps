@@ -32,6 +32,7 @@ var (
 	ErrMeetupOver        = errors.New("meetup is over")
 	ErrNotHost           = errors.New("only the host can do that")
 	ErrNotJoined         = errors.New("join the meetup first")
+	ErrBusy              = errors.New("already in another meetup then")
 )
 
 // InvalidError explains which part of a request was rejected, in words safe to show the user.

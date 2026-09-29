@@ -85,6 +85,7 @@ export async function enableNotifications(): Promise<EnableResult> {
 /** Stops notifications on this phone. Also runs before signing out, so they never reach a phone after that. */
 export async function disableNotifications() {
   savePreference(false);
+  void Notifications.setBadgeCountAsync(0).catch(() => undefined);
   const token = registered ?? (await phoneToken().catch(() => null));
   registered = null;
   if (token) await apiCall<void>('/v1/push/app-tokens', 'DELETE', { token });

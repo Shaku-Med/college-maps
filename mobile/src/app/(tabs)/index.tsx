@@ -20,6 +20,7 @@ import { Icon } from '@/components/icon';
 import { CategoryBar, type MapFilter } from '@/components/category-bar';
 import { DirectionsPanel } from '@/components/directions-panel';
 import { HeadingBeam } from '@/components/heading-beam';
+import { MeetupBar } from '@/components/meetup-bar';
 import { MapControls, type MapControl } from '@/components/map-controls';
 import { NavigationBanner, NavigationFooter } from '@/components/navigation-hud';
 import { PlaceMarker } from '@/components/place-marker';
@@ -37,10 +38,10 @@ import { stepText } from '@/lib/instructions';
 import { endTrip, showTrip } from '@/lib/live-activity';
 import { currentFix, useLocation } from '@/lib/location';
 import { setMapBearing } from '@/lib/map-bearing';
-import { useShownMeetup } from '@/lib/meetup-focus';
+import { showMeetupOnMap, useShownMeetup } from '@/lib/meetup-focus';
 import { remainingPath } from '@/lib/routing';
 import { useSocial } from '@/lib/social';
-import { MY_LOCATION, closeTrip, startNavigating, useTrip } from '@/lib/trip';
+import { MY_LOCATION, closeTrip, planTrip, startNavigating, useTrip } from '@/lib/trip';
 
 const { center, zoom, bounds, styles } = CAMPUS.map;
 const CAMPUS_CENTER: [number, number] = [center.longitude, center.latitude];
@@ -359,10 +360,52 @@ export default function MapScreen() {
         return !member || member.username !== profile?.username;
       })
     : [];
+  const meetupPlace = meetup?.destination?.kind === 'place' ? getPlace(meetup.destination.placeId) : undefined;
   const meetupPin =
     meetup?.destination?.kind === 'pin' && meetup.destination.lat !== undefined && meetup.destination.lng !== undefined
       ? { latitude: meetup.destination.lat, longitude: meetup.destination.lng }
       : undefined;
+  const meetupHost =
+    meetup?.destination?.kind === 'member' ? meetup.members.find((m) => m.username === meetup.destination?.username) : undefined;
+  const meetupSpot = meetupPlace?.coordinate ?? meetupPin;
+  const meetupWhere = meetupPlace?.name ?? (meetupHost ? `Wherever ${meetupHost.displayName} is` : 'A pin on the map');
+
+  // Inside a tab, Android can report no bottom inset because the tab bar takes it, even though the map runs
+  // under both the bar and the system navigation. The window's own inset is the real one.
+  const bottomInset = Math.max(insets.bottom, Platform.OS === 'android' ? (initialWindowMetrics?.insets.bottom ?? 0) : 0);
+
+  // Showing a meetup frames everyone in it and the place you meet, and frames again as more people appear,
+  // but not on every move, so the map is still free to pan.
+  const framed = useRef<{ id: string; count: number } | null>(null);
+  const framePoints = meetup
+    ? [
+        ...(location.fix ? [location.fix.position] : []),
+        ...(meetupSpot ? [meetupSpot] : []),
+        ...others.map((position) => position.coordinate),
+      ]
+    : [];
+  useEffect(() => {
+    if (!meetup || trip.phase !== 'idle' || framePoints.length === 0) {
+      if (!meetup) framed.current = null;
+      return;
+    }
+    const last = framed.current;
+    if (last && last.id === meetup.id && last.count >= framePoints.length) return;
+    framed.current = { id: meetup.id, count: framePoints.length };
+    const padding = { top: insets.top + 130, bottom: bottomInset + TAB_BAR_HEIGHT + 120, left: 56, right: 56 };
+    if (framePoints.length === 1) {
+      camera.current?.flyTo({ center: toLngLat(framePoints[0]), zoom: PLACE_ZOOM, duration: 700, padding });
+      return;
+    }
+    const lngs = framePoints.map((p) => p.longitude);
+    const lats = framePoints.map((p) => p.latitude);
+    camera.current?.fitBounds([Math.min(...lngs), Math.min(...lats), Math.max(...lngs), Math.max(...lats)], {
+      padding,
+      bearing: 0,
+      pitch: 0,
+      duration: 700,
+    });
+  });
 
   const controls: MapControl[] = navigating
     ? [
@@ -396,9 +439,6 @@ export default function MapScreen() {
       ];
 
   const tabBarShown = trip.phase === 'idle';
-  // Inside a tab, Android can report no bottom inset because the tab bar takes it, even though the map runs
-  // under both the bar and the system navigation. The window's own inset is the real one.
-  const bottomInset = Math.max(insets.bottom, Platform.OS === 'android' ? (initialWindowMetrics?.insets.bottom ?? 0) : 0);
 
   return (
     <View className="flex-1" style={{ backgroundColor: background }}>
@@ -485,7 +525,7 @@ export default function MapScreen() {
         ) : null}
 
         {located ? <NativeUserLocation mode={navigating ? 'course' : 'default'} /> : null}
-        {located && !navigating && location.fix ? <HeadingBeam fix={location.fix} /> : null}
+        {located && location.fix ? <HeadingBeam fix={location.fix} /> : null}
 
         {places.map((place) => (
           <PlaceMarker
@@ -497,8 +537,8 @@ export default function MapScreen() {
           />
         ))}
 
-        {meetupPin ? (
-          <Marker id="meetup-pin" lngLat={toLngLat(meetupPin)} anchor="bottom">
+        {meetupSpot ? (
+          <Marker id="meetup-pin" lngLat={toLngLat(meetupSpot)} anchor="bottom">
             <View className="items-center">
               <Icon name="mappin.circle.fill" size={34} tintColor={accent} />
             </View>
@@ -541,6 +581,16 @@ export default function MapScreen() {
             onUseAlternate={() => {
               if (!navigation.switchToPrevious()) toast.show({ variant: 'danger', label: 'Could not find a way to that route' });
             }}
+          />
+        ) : trip.phase === 'idle' && meetup ? (
+          <MeetupBar
+            meetup={meetup}
+            where={meetupWhere}
+            sharing={others.length}
+            state={people.state}
+            onOpen={() => router.push({ pathname: '/meetup/[id]', params: { id: meetup.id } })}
+            onDirections={meetupPlace ? () => planTrip(meetupPlace.id) : undefined}
+            onStop={() => showMeetupOnMap(null)}
           />
         ) : trip.phase === 'idle' ? (
           <CategoryBar value={filter} onChange={setFilter} />

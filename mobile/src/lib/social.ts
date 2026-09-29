@@ -1,5 +1,6 @@
+import * as Notifications from 'expo-notifications';
 import { useEffect, useSyncExternalStore } from 'react';
-import { AppState } from 'react-native';
+import { AppState, Platform } from 'react-native';
 
 import { socialApi, type FriendsOverview, type Meetup } from '@/lib/social-api';
 
@@ -48,26 +49,70 @@ function subscribe(listener: () => void) {
   return () => void listeners.delete(listener);
 }
 
-/**
- * Keeps friends and meetups fresh on a slow timer while the app is open, and right away when it comes back
- * to the front. Nothing is fetched while the phone is in a pocket.
- */
+function waitingCount(social: Social) {
+  return social.friends.incoming.length + social.meetups.filter((m) => m.yourStatus === 'invited').length;
+}
+
+// The icon badge is what still needs an answer: friend requests and meetup invites.
+function syncBadge(count: number) {
+  if (Platform.OS === 'web') return;
+  void Notifications.setBadgeCountAsync(count).catch(() => undefined);
+}
+
+// Every screen that shows friends or meetups shares one refresher, so opening a screen never starts another
+// timer or another fetch. It runs while the app is open, again when it comes back to the front, and as soon
+// as a notification arrives, since that means something changed.
+let polling: { owner: string; users: number; stop: () => void } | null = null;
+
+function startPolling(owner: string) {
+  if (polling?.owner === owner) {
+    polling.users++;
+    return;
+  }
+  polling?.stop();
+  void refreshSocial(owner);
+  const timer = setInterval(() => {
+    if (AppState.currentState === 'active') void refreshSocial(owner);
+  }, REFRESH_MS);
+  const appState = AppState.addEventListener('change', (next) => {
+    if (next === 'active') void refreshSocial(owner);
+  });
+  const received = Notifications.addNotificationReceivedListener(() => void refreshSocial(owner));
+  const stopBadge = (() => {
+    const listener = () => {
+      if (data.owner === owner && !data.loading) syncBadge(waitingCount(data));
+    };
+    listeners.add(listener);
+    return () => void listeners.delete(listener);
+  })();
+  polling = {
+    owner,
+    users: 1,
+    stop: () => {
+      clearInterval(timer);
+      appState.remove();
+      received.remove();
+      stopBadge();
+    },
+  };
+}
+
+function stopPolling(owner: string) {
+  if (polling?.owner !== owner) return;
+  polling.users--;
+  if (polling.users > 0) return;
+  polling.stop();
+  polling = null;
+}
+
+/** Friends and meetups for the signed in user, kept fresh quietly in the background. */
 export function useSocial(owner: string | null) {
   const current = useSyncExternalStore(subscribe, () => data, () => data);
 
   useEffect(() => {
     if (!owner) return;
-    void refreshSocial(owner);
-    const timer = setInterval(() => {
-      if (AppState.currentState === 'active') void refreshSocial(owner);
-    }, REFRESH_MS);
-    const sub = AppState.addEventListener('change', (next) => {
-      if (next === 'active') void refreshSocial(owner);
-    });
-    return () => {
-      clearInterval(timer);
-      sub.remove();
-    };
+    startPolling(owner);
+    return () => stopPolling(owner);
   }, [owner]);
 
   const mine = !!owner && current.owner === owner;

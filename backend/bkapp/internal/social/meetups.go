@@ -73,6 +73,8 @@ type Member struct {
 	Role   string `json:"role"`
 	Status string `json:"status"`
 	LiveID string `json:"liveId,omitempty"`
+	// StaysOut is set when someone left and asked not to be invited back.
+	StaysOut bool `json:"staysOut,omitempty"`
 }
 
 type Meetup struct {
@@ -217,6 +219,10 @@ func (s *Service) CreateMeetup(ctx context.Context, me auth.User, in CreateMeetu
 			invited = append(invited, id)
 		}
 
+		if err := s.busyElsewhere(ctx, tx, me.ID, "", now, now.Add(time.Duration(minutes)*time.Minute)); err != nil {
+			return err
+		}
+
 		var destUser, destPlace *string
 		var lat, lng *float64
 		switch in.Destination.Kind {
@@ -302,7 +308,7 @@ func (s *Service) load(ctx context.Context, tx pgx.Tx, me auth.User, publicID st
 	m.Active = endedAt == nil && m.ExpiresAt.After(s.now())
 
 	rows, err := tx.Query(ctx,
-		`select mm.user_id::text, d.username, coalesce(d.display_name, ''), mm.role, mm.status
+		`select mm.user_id::text, d.username, coalesce(d.display_name, ''), mm.role, mm.status, mm.invites_off
 		 from meetup_members mm join user_directory d on d.id = mm.user_id
 		 where mm.meetup_id = $1::uuid
 		 order by mm.role desc, lower(coalesce(d.display_name, d.username))
@@ -318,7 +324,7 @@ func (s *Service) load(ctx context.Context, tx pgx.Tx, me auth.User, publicID st
 	var all []row
 	for rows.Next() {
 		var r row
-		if err := rows.Scan(&r.userID, &r.member.Username, &r.member.DisplayName, &r.member.Role, &r.member.Status); err != nil {
+		if err := rows.Scan(&r.userID, &r.member.Username, &r.member.DisplayName, &r.member.Role, &r.member.Status, &r.member.StaysOut); err != nil {
 			return Meetup{}, err
 		}
 		if r.userID == me.ID {
@@ -418,13 +424,18 @@ func (s *Service) GetMeetup(ctx context.Context, me auth.User, publicID string) 
 	return m, err
 }
 
-// setStatus changes the signed in member's own status in an active meetup and returns the new view.
-func (s *Service) setStatus(ctx context.Context, me auth.User, publicID, status string) (Meetup, error) {
+// setStatus changes the signed in member's own status in an active meetup and returns the new view. stayOut,
+// when leaving or saying no, means the host cannot invite them back into this meetup.
+func (s *Service) setStatus(ctx context.Context, me auth.User, publicID, status string, stayOut bool) (Meetup, error) {
 	if !validPublicID(publicID) {
 		return Meetup{}, ErrMeetupNotFound
 	}
 	var m Meetup
+	var tell []string
 	err := db.WithScope(ctx, s.pool, db.Scope{UserID: me.ID}, func(tx pgx.Tx) error {
+		if err := lockUser(ctx, tx, me.ID); err != nil {
+			return err
+		}
 		current, err := s.load(ctx, tx, me, publicID)
 		if err != nil {
 			return err
@@ -439,29 +450,46 @@ func (s *Service) setStatus(ctx context.Context, me auth.User, publicID, status 
 			if _, err := tx.Exec(ctx, `update meetups set ended_at = $2 where public_id = $1`, publicID, s.now()); err != nil {
 				return err
 			}
-		} else if _, err := tx.Exec(ctx,
-			`update meetup_members set status = $3, updated_at = $4
-			 where meetup_id = (select id from meetups where public_id = $1) and user_id = $2::uuid`,
-			publicID, me.ID, status, s.now()); err != nil {
+			m, err = s.load(ctx, tx, me, publicID)
 			return err
+		}
+		joining := status == StatusJoined && current.YourStatus != StatusJoined
+		if joining {
+			if err := s.busyElsewhere(ctx, tx, me.ID, publicID, meetupStart(current), current.ExpiresAt); err != nil {
+				return err
+			}
+		}
+		if _, err := tx.Exec(ctx,
+			`update meetup_members set status = $3, invites_off = $5, updated_at = $4
+			 where meetup_id = (select id from meetups where public_id = $1) and user_id = $2::uuid`,
+			publicID, me.ID, status, s.now(), stayOut && status != StatusJoined); err != nil {
+			return err
+		}
+		if joining {
+			if tell, err = s.othersInMeetup(ctx, tx, me.ID, publicID); err != nil {
+				return err
+			}
 		}
 		m, err = s.load(ctx, tx, me, publicID)
 		return err
 	})
+	if err == nil {
+		s.pingJoined(me, tell, m)
+	}
 	return m, err
 }
 
-func (s *Service) RespondToMeetup(ctx context.Context, me auth.User, publicID string, accept bool) (Meetup, error) {
+func (s *Service) RespondToMeetup(ctx context.Context, me auth.User, publicID string, accept, stayOut bool) (Meetup, error) {
 	status := StatusDeclined
 	if accept {
 		status = StatusJoined
 	}
-	return s.setStatus(ctx, me, publicID, status)
+	return s.setStatus(ctx, me, publicID, status, stayOut)
 }
 
 // LeaveMeetup stops sharing and removes you from it. When the host leaves, the meetup ends for everyone.
-func (s *Service) LeaveMeetup(ctx context.Context, me auth.User, publicID string) (Meetup, error) {
-	return s.setStatus(ctx, me, publicID, StatusLeft)
+func (s *Service) LeaveMeetup(ctx context.Context, me auth.User, publicID string, stayOut bool) (Meetup, error) {
+	return s.setStatus(ctx, me, publicID, StatusLeft, stayOut)
 }
 
 func (s *Service) EndMeetup(ctx context.Context, me auth.User, publicID string) (Meetup, error) {

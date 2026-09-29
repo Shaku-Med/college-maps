@@ -1,10 +1,13 @@
 import { NativeTabs } from 'expo-router/unstable-native-tabs';
 import { useThemeColor } from 'heroui-native';
+import { useEffect } from 'react';
 import { DynamicColorIOS, Platform } from 'react-native';
 
 import { useProfile } from '@/lib/account';
+import { useClasses } from '@/lib/classes';
 import { useSocial } from '@/lib/social';
 import { useTrip } from '@/lib/trip';
+import { updateUpNextWidget } from '@/lib/up-next-widget';
 
 // The campus accent in both themes. On iOS the tab bar is native glass and takes a native dynamic color, which
 // only exists there; Android takes the theme's accent directly.
@@ -16,6 +19,14 @@ export default function TabLayout() {
   const social = useSocial(profile?.username ?? null);
   const themeAccent = useThemeColor('accent');
   const accent = iosAccent ?? themeAccent;
+  const classes = useClasses();
+
+  // The home screen widget follows the same classes and meetups the app shows.
+  useEffect(() => {
+    const seen = new Set<string>();
+    const meetups = [...social.meetups, ...social.campus].filter((m) => !seen.has(m.id) && seen.add(m.id));
+    updateUpNextWidget(classes, meetups);
+  }, [classes, social.meetups, social.campus]);
 
   return (
     // Directions and navigation take the whole screen, so the tab bar steps aside for them.

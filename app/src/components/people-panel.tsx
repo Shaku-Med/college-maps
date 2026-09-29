@@ -326,9 +326,9 @@ function MeetupsTab({
 }) {
   const [isBusy, setIsBusy] = useState(false);
 
-  async function respond(meetup: Meetup, accept: boolean) {
+  async function respond(meetup: Meetup, accept: boolean, stayOut = false) {
     setIsBusy(true);
-    const res = await socialApi.respond(meetup.id, accept);
+    const res = await socialApi.respond(meetup.id, accept, stayOut);
     setIsBusy(false);
     if (!res.ok) {
       toast.danger(res.message);
@@ -377,6 +377,14 @@ function MeetupsTab({
                     </Button>
                     <Button size="sm" variant="secondary" isDisabled={isBusy} onPress={() => void respond(meetup, false)} className="flex-1">
                       No thanks
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      isDisabled={isBusy}
+                      aria-label="Decline and don't invite me again"
+                      onPress={() => void respond(meetup, false, true)}>
+                      Don&apos;t ask again
                     </Button>
                   </>
                 ) : (
