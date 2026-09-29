@@ -1,7 +1,8 @@
-import { SymbolView } from 'expo-symbols';
 import * as Updates from 'expo-updates';
 import { Button, ListGroup, Separator, Spinner, useThemeColor, useToast } from 'heroui-native';
 import { View } from 'react-native';
+
+import { Icon } from '@/components/icon';
 
 function formatUpdateDate(date: Date) {
   return date.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
@@ -19,7 +20,7 @@ export function UpdatesSection() {
       <ListGroup>
         <ListGroup.Item disabled>
           <ListGroup.ItemPrefix>
-            <SymbolView name="hammer" size={20} tintColor={muted} />
+            <Icon name="hammer" size={20} tintColor={muted} />
           </ListGroup.ItemPrefix>
           <ListGroup.ItemContent>
             <ListGroup.ItemTitle>Development build</ListGroup.ItemTitle>
@@ -60,7 +61,7 @@ export function UpdatesSection() {
       <ListGroup>
         <ListGroup.Item disabled>
           <ListGroup.ItemPrefix>
-            <SymbolView name="arrow.triangle.2.circlepath" size={20} tintColor={muted} />
+            <Icon name="arrow.triangle.2.circlepath" size={20} tintColor={muted} />
           </ListGroup.ItemPrefix>
           <ListGroup.ItemContent>
             <ListGroup.ItemTitle>Running</ListGroup.ItemTitle>
@@ -70,7 +71,7 @@ export function UpdatesSection() {
         <Separator className="mx-4" />
         <ListGroup.Item disabled>
           <ListGroup.ItemPrefix>
-            <SymbolView name="point.3.connected.trianglepath.dotted" size={20} tintColor={muted} />
+            <Icon name="point.3.connected.trianglepath.dotted" size={20} tintColor={muted} />
           </ListGroup.ItemPrefix>
           <ListGroup.ItemContent>
             <ListGroup.ItemTitle>Channel</ListGroup.ItemTitle>

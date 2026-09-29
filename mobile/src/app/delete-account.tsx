@@ -1,10 +1,10 @@
 import * as Haptics from 'expo-haptics';
 import { router } from 'expo-router';
-import { SymbolView } from 'expo-symbols';
 import { Button, CloseButton, FieldError, Input, Label, TextField, useThemeColor, useToast } from 'heroui-native';
 import { useState } from 'react';
 import { ScrollView, Text, View } from 'react-native';
 
+import { Icon } from '@/components/icon';
 import { deleteAccount, useAccount } from '@/lib/account';
 import { setClasses } from '@/lib/classes';
 import { disableNotifications } from '@/lib/notifications';
@@ -49,7 +49,7 @@ export default function DeleteAccountScreen() {
     <ScrollView keyboardShouldPersistTaps="handled" contentContainerClassName="gap-5 px-5 pb-12 pt-5">
       <View className="flex-row items-start justify-between gap-3">
         <View className="size-12 items-center justify-center rounded-2xl bg-danger-soft">
-          <SymbolView name="trash" size={20} tintColor={danger} />
+          <Icon name="trash" size={20} tintColor={danger} />
         </View>
         <CloseButton onPress={() => router.back()} />
       </View>

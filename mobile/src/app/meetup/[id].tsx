@@ -1,10 +1,10 @@
 import * as Haptics from 'expo-haptics';
 import { router, useLocalSearchParams } from 'expo-router';
-import { SymbolView } from 'expo-symbols';
 import { Button, Chip, CloseButton, ListGroup, Separator, Spinner, useThemeColor, useToast } from 'heroui-native';
 import { Fragment, useEffect, useState } from 'react';
 import { Alert, Pressable, ScrollView, Text, View } from 'react-native';
 
+import { Icon } from '@/components/icon';
 import { getPlace } from '@/data/campus';
 import { useProfile } from '@/lib/account';
 import { showMeetupOnMap, useShownMeetup } from '@/lib/meetup-focus';
@@ -110,7 +110,7 @@ export default function MeetupSheet() {
             {meetup.title ?? (host ? 'Your meetup' : `${meetup.host.displayName}'s meetup`)}
           </Text>
           <View className="flex-row items-center gap-1.5">
-            <SymbolView name="mappin.and.ellipse" size={13} tintColor={muted} />
+            <Icon name="mappin.and.ellipse" size={13} tintColor={muted} />
             <Text className="text-sm text-muted" numberOfLines={1}>
               {where}
             </Text>
@@ -124,7 +124,7 @@ export default function MeetupSheet() {
               hitSlop={8}
               onPress={() => moderateMeetup(meetup, profile.username, () => router.back())}
               className="size-9 items-center justify-center rounded-full active:opacity-60">
-              <SymbolView name="ellipsis.circle" size={22} tintColor={muted} />
+              <Icon name="ellipsis.circle" size={22} tintColor={muted} />
             </Pressable>
           )}
           <CloseButton onPress={() => router.back()} />
@@ -146,7 +146,7 @@ export default function MeetupSheet() {
         <View className="gap-3">
           <View className="flex-row gap-3">
             <Button className="flex-1" onPress={showOnMap}>
-              <SymbolView name="map.fill" size={15} tintColor={accentForeground} />
+              <Icon name="map.fill" size={15} tintColor={accentForeground} />
               <Button.Label>{shown === meetup.id ? 'On the map' : 'Show on map'}</Button.Label>
             </Button>
             {place ? (
@@ -159,7 +159,7 @@ export default function MeetupSheet() {
                   router.dismissAll();
                   router.navigate('/');
                 }}>
-                <SymbolView name="figure.walk" size={15} tintColor={muted} />
+                <Icon name="figure.walk" size={15} tintColor={muted} />
                 <Button.Label>Directions</Button.Label>
               </Button>
             ) : null}

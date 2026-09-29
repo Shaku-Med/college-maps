@@ -1,17 +1,21 @@
 import { NativeTabs } from 'expo-router/unstable-native-tabs';
-import { DynamicColorIOS } from 'react-native';
+import { useThemeColor } from 'heroui-native';
+import { DynamicColorIOS, Platform } from 'react-native';
 
 import { useProfile } from '@/lib/account';
 import { useSocial } from '@/lib/social';
 import { useTrip } from '@/lib/trip';
 
-// The campus accent in both themes. The tab bar is native, so it takes a native dynamic color.
-const accent = DynamicColorIOS({ light: '#1268D2', dark: '#83C8EF' });
+// The campus accent in both themes. On iOS the tab bar is native glass and takes a native dynamic color, which
+// only exists there; Android takes the theme's accent directly.
+const iosAccent = Platform.OS === 'ios' ? DynamicColorIOS({ light: '#1268D2', dark: '#83C8EF' }) : undefined;
 
 export default function TabLayout() {
   const trip = useTrip();
   const profile = useProfile();
   const social = useSocial(profile?.username ?? null);
+  const themeAccent = useThemeColor('accent');
+  const accent = iosAccent ?? themeAccent;
 
   return (
     // Directions and navigation take the whole screen, so the tab bar steps aside for them.

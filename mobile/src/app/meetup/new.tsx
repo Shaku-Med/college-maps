@@ -1,6 +1,5 @@
 import * as Haptics from 'expo-haptics';
 import { router, useLocalSearchParams } from 'expo-router';
-import { SymbolView } from 'expo-symbols';
 import {
   Button,
   Checkbox,
@@ -17,6 +16,7 @@ import {
 import { Fragment, useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 
+import { Icon } from '@/components/icon';
 import { ChoiceChips } from '@/components/choice-chips';
 import { PlacePicker } from '@/components/place-picker';
 import { getPlace } from '@/data/campus';
@@ -77,7 +77,7 @@ export default function NewMeetupSheet() {
             hitSlop={10}
             onPress={() => setChoosingPlace(false)}
             className="flex-row items-center gap-1 active:opacity-60">
-            <SymbolView name="chevron.left" size={16} weight="semibold" tintColor={accent} />
+            <Icon name="chevron.left" size={16} weight="semibold" tintColor={accent} />
             <Text className="text-base font-medium text-accent">Back</Text>
           </Pressable>
           <Text className="flex-1 text-center text-lg font-bold text-foreground">Where</Text>
@@ -207,11 +207,11 @@ export default function NewMeetupSheet() {
         ) : null}
         {where === 'place' ? (
           <Pressable onPress={() => setChoosingPlace(true)} className="flex-row items-center gap-3 rounded-2xl bg-default px-4 py-3.5 active:opacity-70">
-            <SymbolView name="mappin.and.ellipse" size={16} tintColor={place ? accent : muted} />
+            <Icon name="mappin.and.ellipse" size={16} tintColor={place ? accent : muted} />
             <Text className={place ? 'flex-1 text-base text-foreground' : 'flex-1 text-base text-muted'} numberOfLines={1}>
               {place?.name ?? 'Choose a place'}
             </Text>
-            <SymbolView name="chevron.right" size={13} tintColor={muted} />
+            <Icon name="chevron.right" size={13} tintColor={muted} />
           </Pressable>
         ) : null}
       </View>

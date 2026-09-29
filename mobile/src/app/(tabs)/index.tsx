@@ -11,12 +11,12 @@ import {
 import * as Location from 'expo-location';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { router, useFocusEffect } from 'expo-router';
-import { SymbolView } from 'expo-symbols';
 import { useThemeColor, useToast } from 'heroui-native';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Linking, Text, useColorScheme, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { Icon } from '@/components/icon';
 import { CategoryBar, type MapFilter } from '@/components/category-bar';
 import { DirectionsPanel } from '@/components/directions-panel';
 import { HeadingBeam } from '@/components/heading-beam';
@@ -473,7 +473,7 @@ export default function MapScreen() {
         {meetupPin ? (
           <Marker id="meetup-pin" lngLat={toLngLat(meetupPin)} anchor="bottom">
             <View className="items-center">
-              <SymbolView name="mappin.circle.fill" size={34} tintColor={accent} />
+              <Icon name="mappin.circle.fill" size={34} tintColor={accent} />
             </View>
           </Marker>
         ) : null}

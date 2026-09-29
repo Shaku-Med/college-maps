@@ -1,10 +1,10 @@
 import * as Haptics from 'expo-haptics';
 import { router, useLocalSearchParams } from 'expo-router';
-import { SymbolView } from 'expo-symbols';
 import { Button, CloseButton, ListGroup, Separator, useThemeColor } from 'heroui-native';
 import { useEffect } from 'react';
 import { ScrollView, Text, View } from 'react-native';
 
+import { Icon } from '@/components/icon';
 import { getPlace } from '@/data/campus';
 import { CATEGORY_SYMBOLS, categoryLabel } from '@/lib/categories';
 import { focusPlace } from '@/lib/focus';
@@ -48,7 +48,7 @@ export default function PlaceSheet() {
             {room ? `Room ${room}` : place.name}
           </Text>
           <View className="flex-row items-center gap-1.5">
-            <SymbolView name={CATEGORY_SYMBOLS[place.category]} size={13} tintColor={muted} />
+            <Icon name={CATEGORY_SYMBOLS[place.category]} size={13} tintColor={muted} />
             <Text className="text-sm text-muted" numberOfLines={1}>
               {room ? [place.name, floor].filter(Boolean).join(' · ') : categoryLabel(place.category)}
             </Text>
@@ -65,11 +65,11 @@ export default function PlaceSheet() {
             planTrip(place.id, room);
             router.back();
           }}>
-          <SymbolView name="figure.walk" size={16} weight="semibold" tintColor={accentForeground} />
+          <Icon name="figure.walk" size={16} weight="semibold" tintColor={accentForeground} />
           <Button.Label>Directions</Button.Label>
         </Button>
         <Button className="flex-1" variant="secondary" onPress={() => void sharePlace(place, room)}>
-          <SymbolView name="square.and.arrow.up" size={16} weight="semibold" tintColor={muted} />
+          <Icon name="square.and.arrow.up" size={16} weight="semibold" tintColor={muted} />
           <Button.Label>Share</Button.Label>
         </Button>
       </View>
@@ -79,7 +79,7 @@ export default function PlaceSheet() {
       <ListGroup>
         <ListGroup.Item onPress={() => void openWeb(`/?place=${encodeURIComponent(place.id)}`)}>
           <ListGroup.ItemPrefix>
-            <SymbolView name="safari" size={20} tintColor={muted} />
+            <Icon name="safari" size={20} tintColor={muted} />
           </ListGroup.ItemPrefix>
           <ListGroup.ItemContent>
             <ListGroup.ItemTitle>Open on the web</ListGroup.ItemTitle>
@@ -92,7 +92,7 @@ export default function PlaceSheet() {
             <Separator className="mx-4" />
             <ListGroup.Item disabled>
               <ListGroup.ItemPrefix>
-                <SymbolView name="number" size={20} tintColor={muted} />
+                <Icon name="number" size={20} tintColor={muted} />
               </ListGroup.ItemPrefix>
               <ListGroup.ItemContent>
                 <ListGroup.ItemTitle>Building code</ListGroup.ItemTitle>

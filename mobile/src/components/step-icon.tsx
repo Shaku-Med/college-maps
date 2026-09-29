@@ -1,6 +1,7 @@
-import { SymbolView, type SFSymbol } from 'expo-symbols';
+import type { SFSymbol } from 'expo-symbols';
 import type { ColorValue } from 'react-native';
 
+import { Icon } from '@/components/icon';
 import type { RouteStep } from '@/lib/routing';
 
 function symbolFor(step: RouteStep): SFSymbol {
@@ -24,5 +25,5 @@ function symbolFor(step: RouteStep): SFSymbol {
 }
 
 export function StepIcon({ step, size = 22, color }: { step: RouteStep; size?: number; color: ColorValue }) {
-  return <SymbolView name={symbolFor(step)} size={size} weight="semibold" tintColor={color} />;
+  return <Icon name={symbolFor(step)} size={size} weight="semibold" tintColor={color} />;
 }

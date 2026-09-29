@@ -1,8 +1,8 @@
 import { router } from 'expo-router';
-import { SymbolView } from 'expo-symbols';
 import { CloseButton, ListGroup, useThemeColor } from 'heroui-native';
 import { Text, View } from 'react-native';
 
+import { Icon } from '@/components/icon';
 import { PlacePicker } from '@/components/place-picker';
 import { MY_LOCATION, setTripOrigin, useTrip } from '@/lib/trip';
 
@@ -27,7 +27,7 @@ export default function OriginSheet() {
           <ListGroup>
             <ListGroup.Item onPress={() => pick(MY_LOCATION)}>
               <ListGroup.ItemPrefix>
-                <SymbolView name="location.fill" size={18} tintColor={accent} />
+                <Icon name="location.fill" size={18} tintColor={accent} />
               </ListGroup.ItemPrefix>
               <ListGroup.ItemContent>
                 <ListGroup.ItemTitle>My location</ListGroup.ItemTitle>
@@ -35,7 +35,7 @@ export default function OriginSheet() {
               </ListGroup.ItemContent>
               {trip.origin === MY_LOCATION ? (
                 <ListGroup.ItemSuffix>
-                  <SymbolView name="checkmark" size={15} weight="semibold" tintColor={accent} />
+                  <Icon name="checkmark" size={15} weight="semibold" tintColor={accent} />
                 </ListGroup.ItemSuffix>
               ) : null}
             </ListGroup.Item>

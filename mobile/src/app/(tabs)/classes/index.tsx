@@ -1,10 +1,10 @@
 import * as Haptics from 'expo-haptics';
 import { router, Stack } from 'expo-router';
-import { SymbolView } from 'expo-symbols';
 import { Button, Card, ListGroup, Separator, useThemeColor } from 'heroui-native';
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { ScrollView, Text, View } from 'react-native';
 
+import { Icon } from '@/components/icon';
 import { EmptyState, SectionTitle } from '@/components/section';
 import { CAMPUS, getPlace } from '@/data/campus';
 import { useClasses } from '@/lib/classes';
@@ -59,7 +59,7 @@ export default function ClassesScreen() {
         {upcoming ? (
           <Card className="gap-4 rounded-3xl bg-accent p-5">
             <View className="flex-row items-center gap-2">
-              <SymbolView name="clock.fill" size={13} tintColor={accentForeground} />
+              <Icon name="clock.fill" size={13} tintColor={accentForeground} />
               <Text className="text-xs font-semibold uppercase tracking-wide text-accent-foreground opacity-80">
                 Next class
               </Text>
@@ -75,7 +75,7 @@ export default function ClassesScreen() {
             <Button
               variant="secondary"
               onPress={() => goTo(upcoming.entry, upcoming.daysAhead === 0 ? upcoming.previous?.placeId : undefined)}>
-              <SymbolView name="figure.walk" size={15} weight="semibold" tintColor={muted} />
+              <Icon name="figure.walk" size={15} weight="semibold" tintColor={muted} />
               <Button.Label>Directions</Button.Label>
             </Button>
           </Card>
@@ -83,11 +83,11 @@ export default function ClassesScreen() {
 
         <View className="flex-row gap-3">
           <Button className="flex-1" onPress={() => router.push({ pathname: '/class/[id]', params: { id: 'new' } })}>
-            <SymbolView name="plus" size={14} weight="bold" tintColor={accentForeground} />
+            <Icon name="plus" size={14} weight="bold" tintColor={accentForeground} />
             <Button.Label>Add a class</Button.Label>
           </Button>
           <Button className="flex-1" variant="secondary" onPress={() => router.push('/class-import')}>
-            <SymbolView name="doc.on.clipboard" size={14} tintColor={muted} />
+            <Icon name="doc.on.clipboard" size={14} tintColor={muted} />
             <Button.Label>Paste schedule</Button.Label>
           </Button>
         </View>

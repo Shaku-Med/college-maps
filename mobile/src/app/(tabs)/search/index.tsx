@@ -1,10 +1,10 @@
 import * as Haptics from 'expo-haptics';
 import { Stack } from 'expo-router';
-import { SymbolView } from 'expo-symbols';
 import { ListGroup, Separator, useThemeColor } from 'heroui-native';
 import { Fragment, useMemo, useState } from 'react';
 import { ScrollView, Text, View } from 'react-native';
 
+import { Icon } from '@/components/icon';
 import { CAMPUS, PLACES, type Place } from '@/data/campus';
 import { CATEGORY_SYMBOLS, USED_CATEGORIES, categoryLabel } from '@/lib/categories';
 import { showPlace } from '@/lib/links';
@@ -26,7 +26,7 @@ function PlaceRow({ place }: { place: Place }) {
     <ListGroup.Item onPress={() => open(place)}>
       <ListGroup.ItemPrefix>
         <View className="size-9 items-center justify-center rounded-xl bg-default">
-          <SymbolView name={CATEGORY_SYMBOLS[place.category]} size={16} tintColor={muted} />
+          <Icon name={CATEGORY_SYMBOLS[place.category]} size={16} tintColor={muted} />
         </View>
       </ListGroup.ItemPrefix>
       <ListGroup.ItemContent>
@@ -84,7 +84,7 @@ export default function SearchScreen() {
               <ListGroup.Item onPress={() => open(room.place, room.room)}>
                 <ListGroup.ItemPrefix>
                   <View className="size-9 items-center justify-center rounded-xl bg-accent">
-                    <SymbolView name="door.left.hand.open" size={16} tintColor={accentForeground} />
+                    <Icon name="door.left.hand.open" size={16} tintColor={accentForeground} />
                   </View>
                 </ListGroup.ItemPrefix>
                 <ListGroup.ItemContent>

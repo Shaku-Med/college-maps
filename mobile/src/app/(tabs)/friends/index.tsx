@@ -1,15 +1,16 @@
 import * as Haptics from 'expo-haptics';
 import { router, Stack } from 'expo-router';
-import { SymbolView } from 'expo-symbols';
 import { Button, Card, Chip, FieldError, Input, ListGroup, Separator, TextField, useThemeColor, useToast } from 'heroui-native';
 import { Fragment, useState } from 'react';
-import { ActionSheetIOS, Alert, Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
+import { Alert, Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
 
+import { Icon } from '@/components/icon';
 import { EmptyState, SectionTitle } from '@/components/section';
 import { getPlace } from '@/data/campus';
 import { useProfile } from '@/lib/account';
 import { MAX_USERNAME_LENGTH, normalizeUsername } from '@/lib/api';
 import { refreshSocial, updateMeetup, useSocial } from '@/lib/social';
+import { showActionSheet } from '@/lib/action-sheet';
 import { moderateMeetup } from '@/lib/moderation';
 import { socialApi, type Meetup, type Person } from '@/lib/social-api';
 
@@ -107,25 +108,26 @@ export default function FriendsScreen() {
   }
 
   function friendActions(person: Person) {
-    ActionSheetIOS.showActionSheetWithOptions(
-      {
-        title: person.displayName,
-        message: `@${person.username}`,
-        options: ['Invite to a meetup', 'Remove friend', 'Block', 'Cancel'],
-        destructiveButtonIndex: [1, 2],
-        cancelButtonIndex: 3,
-      },
-      (index) => {
-        if (index === 0) router.push({ pathname: '/meetup/new', params: { kind: 'private', friend: person.username } });
-        if (index === 1) void run(socialApi.unfriend(person.username), 'Removed');
-        if (index === 2) {
-          Alert.alert(`Block @${person.username}?`, 'They will not be able to find you, add you, or invite you.', [
-            { text: 'Cancel', style: 'cancel' },
-            { text: 'Block', style: 'destructive', onPress: () => void run(socialApi.block(person.username), 'Blocked') },
-          ]);
-        }
-      },
-    );
+    showActionSheet({
+      title: person.displayName,
+      message: `@${person.username}`,
+      actions: [
+        {
+          label: 'Invite to a meetup',
+          onPress: () => router.push({ pathname: '/meetup/new', params: { kind: 'private', friend: person.username } }),
+        },
+        { label: 'Remove friend', destructive: true, onPress: () => void run(socialApi.unfriend(person.username), 'Removed') },
+        {
+          label: 'Block',
+          destructive: true,
+          onPress: () =>
+            Alert.alert(`Block @${person.username}?`, 'They will not be able to find you, add you, or invite you.', [
+              { text: 'Cancel', style: 'cancel' },
+              { text: 'Block', style: 'destructive', onPress: () => void run(socialApi.block(person.username), 'Blocked') },
+            ]),
+        },
+      ],
+    });
   }
 
   async function join(meetup: Meetup) {
@@ -150,11 +152,11 @@ export default function FriendsScreen() {
         contentContainerClassName="gap-6 px-4 pb-16 pt-2">
         <View className="flex-row gap-3">
           <Button className="flex-1" onPress={() => router.push({ pathname: '/meetup/new', params: { kind: 'private' } })}>
-            <SymbolView name="person.2.fill" size={14} tintColor={accentForeground} />
+            <Icon name="person.2.fill" size={14} tintColor={accentForeground} />
             <Button.Label>New meetup</Button.Label>
           </Button>
           <Button className="flex-1" variant="secondary" onPress={() => router.push({ pathname: '/meetup/new', params: { kind: 'public' } })}>
-            <SymbolView name="megaphone" size={14} tintColor={muted} />
+            <Icon name="megaphone" size={14} tintColor={muted} />
             <Button.Label>Campus event</Button.Label>
           </Button>
         </View>
@@ -207,7 +209,7 @@ export default function FriendsScreen() {
                           hitSlop={10}
                           onPress={() => moderateMeetup(meetup, me)}
                           className="active:opacity-60">
-                          <SymbolView name="ellipsis" size={18} tintColor={muted} />
+                          <Icon name="ellipsis" size={18} tintColor={muted} />
                         </Pressable>
                       )}
                     </View>
@@ -307,7 +309,7 @@ export default function FriendsScreen() {
                       <ListGroup.ItemDescription>@{person.username}</ListGroup.ItemDescription>
                     </ListGroup.ItemContent>
                     <ListGroup.ItemSuffix>
-                      <SymbolView name="ellipsis" size={16} tintColor={muted} />
+                      <Icon name="ellipsis" size={16} tintColor={muted} />
                     </ListGroup.ItemSuffix>
                   </ListGroup.Item>
                 </Fragment>

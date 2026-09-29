@@ -1,9 +1,10 @@
 import * as Haptics from 'expo-haptics';
-import { SymbolView, type SFSymbol } from 'expo-symbols';
+import type { SFSymbol } from 'expo-symbols';
 import { useThemeColor } from 'heroui-native';
 import { Fragment } from 'react';
 import { Alert, Linking, Pressable, View } from 'react-native';
 
+import { Icon } from '@/components/icon';
 import { Glass } from '@/components/glass';
 
 export type MapControl = {
@@ -45,7 +46,7 @@ export function MapControls({ controls }: { controls: MapControl[] }) {
               onPress={() => tap(control.onPress)}
               style={{ width: 48, height: 48 }}
               className="items-center justify-center active:opacity-60">
-              <SymbolView
+              <Icon
                 name={control.symbol}
                 size={19}
                 weight="medium"
@@ -62,7 +63,7 @@ export function MapControls({ controls }: { controls: MapControl[] }) {
         onPress={() => tap(showAttribution)}
         className="active:opacity-60">
         <Glass radius={15} style={{ width: 30, height: 30 }} className="items-center justify-center">
-          <SymbolView name="info" size={13} weight="semibold" tintColor={muted} />
+          <Icon name="info" size={13} weight="semibold" tintColor={muted} />
         </Glass>
       </Pressable>
     </View>

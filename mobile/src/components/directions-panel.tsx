@@ -1,9 +1,10 @@
 import * as Haptics from 'expo-haptics';
-import { SymbolView, type SFSymbol } from 'expo-symbols';
+import type { SFSymbol } from 'expo-symbols';
 import { Button, CloseButton, Spinner, Switch, cn, useThemeColor } from 'heroui-native';
 import { useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 
+import { Icon } from '@/components/icon';
 import { Glass } from '@/components/glass';
 import { StepIcon } from '@/components/step-icon';
 import { getPlace } from '@/data/campus';
@@ -64,12 +65,12 @@ export function DirectionsPanel({ trip, route, issue, isOffCampus, live, onStart
           accessibilityLabel={`Starting from ${originName}. Change`}
           onPress={onPickOrigin}
           className="flex-row items-center gap-3 rounded-2xl bg-default px-3.5 py-3 active:opacity-70">
-          <SymbolView name={trip.origin === MY_LOCATION ? 'location.fill' : 'building.2'} size={15} tintColor={accent} />
+          <Icon name={trip.origin === MY_LOCATION ? 'location.fill' : 'building.2'} size={15} tintColor={accent} />
           <Text className="flex-1 text-sm text-foreground" numberOfLines={1}>
             <Text className="text-muted">From </Text>
             {originName}
           </Text>
-          <SymbolView name="chevron.up.chevron.down" size={12} tintColor={muted} />
+          <Icon name="chevron.up.chevron.down" size={12} tintColor={muted} />
         </Pressable>
 
         {isOffCampus ? (
@@ -89,7 +90,7 @@ export function DirectionsPanel({ trip, route, issue, isOffCampus, live, onStart
                     'flex-1 flex-row items-center justify-center gap-1.5 rounded-2xl py-2.5',
                     selected ? 'bg-accent' : 'bg-default',
                   )}>
-                  <SymbolView name={mode.symbol} size={14} tintColor={selected ? accentForeground : foreground} />
+                  <Icon name={mode.symbol} size={14} tintColor={selected ? accentForeground : foreground} />
                   <Text className={cn('text-sm font-semibold', selected ? 'text-accent-foreground' : 'text-foreground')}>
                     {mode.label}
                   </Text>
@@ -143,7 +144,7 @@ export function DirectionsPanel({ trip, route, issue, isOffCampus, live, onStart
         ) : null}
 
         <Button size="lg" isDisabled={!route} onPress={onStart}>
-          <SymbolView name={live ? 'location.north.fill' : 'list.number'} size={16} tintColor={accentForeground} />
+          <Icon name={live ? 'location.north.fill' : 'list.number'} size={16} tintColor={accentForeground} />
           <Button.Label>{live ? 'Start' : 'Follow steps'}</Button.Label>
         </Button>
       </View>

@@ -1,8 +1,8 @@
 import * as Haptics from 'expo-haptics';
-import { SymbolView } from 'expo-symbols';
 import { Chip, useThemeColor } from 'heroui-native';
 import { ScrollView } from 'react-native';
 
+import { Icon } from '@/components/icon';
 import { Glass } from '@/components/glass';
 import type { PlaceCategory } from '@/data/campus';
 import { CATEGORY_SYMBOLS, USED_CATEGORIES, categoryLabel } from '@/lib/categories';
@@ -46,7 +46,7 @@ export function CategoryBar({ value, onChange }: CategoryBarProps) {
               </Chip.Background>
             )}
             {filter === 'all' ? null : (
-              <SymbolView
+              <Icon
                 name={CATEGORY_SYMBOLS[filter]}
                 size={14}
                 weight="semibold"

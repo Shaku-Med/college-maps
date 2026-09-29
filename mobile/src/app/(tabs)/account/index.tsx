@@ -1,10 +1,11 @@
 import Constants from 'expo-constants';
 import { router, Stack } from 'expo-router';
-import { SymbolView, type SFSymbol } from 'expo-symbols';
+import type { SFSymbol } from 'expo-symbols';
 import { Card, ListGroup, Separator, Spinner, Switch, useThemeColor, useToast } from 'heroui-native';
 import { useState } from 'react';
 import { Alert, Linking, ScrollView, Text, View } from 'react-native';
 
+import { Icon } from '@/components/icon';
 import { ProfileForm } from '@/components/profile-form';
 import { SectionTitle } from '@/components/section';
 import { SignIn } from '@/components/sign-in';
@@ -33,7 +34,7 @@ function Row({
   return (
     <ListGroup.Item onPress={onPress} disabled={!onPress}>
       <ListGroup.ItemPrefix>
-        <SymbolView name={symbol} size={20} tintColor={danger ? dangerColor : muted} />
+        <Icon name={symbol} size={20} tintColor={danger ? dangerColor : muted} />
       </ListGroup.ItemPrefix>
       <ListGroup.ItemContent>
         <ListGroup.ItemTitle className={danger ? 'text-danger' : undefined}>{title}</ListGroup.ItemTitle>
@@ -92,7 +93,7 @@ function NotificationsRow() {
   return (
     <ListGroup.Item disabled>
       <ListGroup.ItemPrefix>
-        <SymbolView name="bell" size={20} tintColor={muted} />
+        <Icon name="bell" size={20} tintColor={muted} />
       </ListGroup.ItemPrefix>
       <ListGroup.ItemContent>
         <ListGroup.ItemTitle>Notifications</ListGroup.ItemTitle>

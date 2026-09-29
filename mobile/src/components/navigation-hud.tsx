@@ -1,8 +1,9 @@
-import { SymbolView, type SFSymbol } from 'expo-symbols';
+import type { SFSymbol } from 'expo-symbols';
 import { Button, useThemeColor } from 'heroui-native';
 import { Pressable, Text, View } from 'react-native';
 import Animated, { FadeInUp, FadeOutUp } from 'react-native-reanimated';
 
+import { Icon } from '@/components/icon';
 import { Glass } from '@/components/glass';
 import { StepIcon } from '@/components/step-icon';
 import { useNow } from '@/hooks/use-now';
@@ -23,7 +24,7 @@ function Pill({ symbol, text, tone = 'default' }: { symbol: SFSymbol; text: stri
   return (
     <Animated.View entering={FadeInUp.duration(200)} exiting={FadeOutUp.duration(160)} className="items-center">
       <Glass className="flex-row items-center gap-2 rounded-full px-3.5 py-2">
-        <SymbolView name={symbol} size={13} weight="semibold" tintColor={tone === 'danger' ? danger : foreground} />
+        <Icon name={symbol} size={13} weight="semibold" tintColor={tone === 'danger' ? danger : foreground} />
         <Text className={tone === 'danger' ? 'text-sm font-semibold text-danger' : 'text-sm font-medium text-foreground'}>
           {text}
         </Text>
@@ -67,7 +68,7 @@ export function NavigationBanner({
       <View className={wrong ? 'rounded-[28px] bg-danger p-4' : 'rounded-[28px] bg-accent p-4'}>
         {hasArrived ? (
           <View className="flex-row items-center gap-3.5">
-            <SymbolView name="flag.checkered" size={30} weight="semibold" tintColor={accentForeground} />
+            <Icon name="flag.checkered" size={30} weight="semibold" tintColor={accentForeground} />
             <View className="min-w-0 flex-1">
               <Text className="text-2xl font-bold text-accent-foreground">You have arrived</Text>
               <Text className="text-base text-accent-foreground opacity-80" numberOfLines={1}>
@@ -77,7 +78,7 @@ export function NavigationBanner({
           </View>
         ) : wrong ? (
           <View className="flex-row items-center gap-3.5">
-            <SymbolView name="arrow.uturn.down" size={30} weight="semibold" tintColor={dangerForeground} />
+            <Icon name="arrow.uturn.down" size={30} weight="semibold" tintColor={dangerForeground} />
             <View className="min-w-0 flex-1">
               <Text className="text-2xl font-bold text-danger-foreground">Wrong way</Text>
               <Text className="text-base text-danger-foreground opacity-80">Turn around when it is safe</Text>
@@ -154,10 +155,10 @@ export function NavigationFooter({ route, progress, hasArrived, voiceOn, manualS
             accessibilityState={{ checked: voiceOn }}
             onPress={onToggleVoice}
             className="size-12 items-center justify-center rounded-full bg-default active:opacity-70">
-            <SymbolView name={voiceOn ? 'speaker.wave.2.fill' : 'speaker.slash.fill'} size={18} tintColor={foreground} />
+            <Icon name={voiceOn ? 'speaker.wave.2.fill' : 'speaker.slash.fill'} size={18} tintColor={foreground} />
           </Pressable>
           <Button variant="danger" onPress={onEnd}>
-            <SymbolView name="xmark" size={13} weight="bold" tintColor={dangerForeground} />
+            <Icon name="xmark" size={13} weight="bold" tintColor={dangerForeground} />
             <Button.Label>{hasArrived ? 'Done' : 'End'}</Button.Label>
           </Button>
         </View>

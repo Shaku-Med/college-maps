@@ -1,9 +1,9 @@
 import * as Haptics from 'expo-haptics';
-import { SymbolView } from 'expo-symbols';
 import { ListGroup, SearchField, Separator, useThemeColor } from 'heroui-native';
 import { Fragment, useMemo, useState, type ReactNode } from 'react';
 import { ScrollView, View } from 'react-native';
 
+import { Icon } from '@/components/icon';
 import { PLACES, type Place } from '@/data/campus';
 import { CATEGORY_SYMBOLS, categoryLabel } from '@/lib/categories';
 import { MAX_QUERY_LENGTH, searchPlaces } from '@/lib/search';
@@ -49,7 +49,7 @@ export function PlacePicker({ onPick, selectedId, buildingsOnly = false, header 
                   onPick(place);
                 }}>
                 <ListGroup.ItemPrefix>
-                  <SymbolView name={CATEGORY_SYMBOLS[place.category]} size={18} tintColor={muted} />
+                  <Icon name={CATEGORY_SYMBOLS[place.category]} size={18} tintColor={muted} />
                 </ListGroup.ItemPrefix>
                 <ListGroup.ItemContent>
                   <ListGroup.ItemTitle numberOfLines={1}>{place.name}</ListGroup.ItemTitle>
@@ -59,7 +59,7 @@ export function PlacePicker({ onPick, selectedId, buildingsOnly = false, header 
                 </ListGroup.ItemContent>
                 {place.id === selectedId ? (
                   <ListGroup.ItemSuffix>
-                    <SymbolView name="checkmark" size={15} weight="semibold" tintColor={accent} />
+                    <Icon name="checkmark" size={15} weight="semibold" tintColor={accent} />
                   </ListGroup.ItemSuffix>
                 ) : null}
               </ListGroup.Item>
