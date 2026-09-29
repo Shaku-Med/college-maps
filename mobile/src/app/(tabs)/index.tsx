@@ -14,7 +14,7 @@ import { router, useFocusEffect } from 'expo-router';
 import { useThemeColor, useToast } from 'heroui-native';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Linking, Platform, Text, useColorScheme, useWindowDimensions, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { initialWindowMetrics, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Icon } from '@/components/icon';
 import { CategoryBar, type MapFilter } from '@/components/category-bar';
@@ -370,6 +370,9 @@ export default function MapScreen() {
       ];
 
   const tabBarShown = trip.phase === 'idle';
+  // Inside a tab, Android can report no bottom inset because the tab bar takes it, even though the map runs
+  // under both the bar and the system navigation. The window's own inset is the real one.
+  const bottomInset = Math.max(insets.bottom, Platform.OS === 'android' ? (initialWindowMetrics?.insets.bottom ?? 0) : 0);
   // Moving, the phone's course says where someone is going; standing still, the compass says where they face.
   const moving = (location.fix?.speed ?? 0) >= 0.7 && location.fix?.heading !== undefined;
   const beamHeading = moving ? location.fix?.heading : location.compass;
@@ -500,7 +503,7 @@ export default function MapScreen() {
       {/* Android's tab bar is a solid Material bar rather than glass, so a fade above it keeps the map labels
           from crowding the buttons and the bar's edge. */}
       {Platform.OS === 'android' && tabBarShown ? (
-        <EdgeScrim edge="bottom" height={insets.bottom + TAB_BAR_HEIGHT + 90} dark={scheme === 'dark'} />
+        <EdgeScrim edge="bottom" height={bottomInset + TAB_BAR_HEIGHT + 90} dark={scheme === 'dark'} />
       ) : null}
 
       <View pointerEvents="box-none" className="absolute inset-x-0" style={{ top: insets.top + 8 }}>
@@ -526,7 +529,7 @@ export default function MapScreen() {
       <View
         pointerEvents="box-none"
         className="absolute inset-x-0 gap-3"
-        style={{ bottom: tabBarShown ? insets.bottom + TAB_BAR_HEIGHT + 10 : insets.bottom + 6 }}>
+        style={{ bottom: tabBarShown ? bottomInset + TAB_BAR_HEIGHT + 10 : bottomInset + 6 }}>
         <View pointerEvents="box-none" className="items-end px-4">
           <MapControls controls={controls} />
         </View>

@@ -2,6 +2,8 @@ export type TimeFieldProps = {
   /** Minutes since midnight. */
   minutes: number;
   onChange: (minutes: number) => void;
+  /** What the time is for, like "Starts". */
+  label?: string;
 };
 
 export function fromMinutes(minutes: number) {

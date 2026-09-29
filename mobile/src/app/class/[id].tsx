@@ -139,7 +139,7 @@ export default function ClassSheet() {
         ).map(([label, value, set]) => (
           <View key={label} className="flex-1 gap-2 rounded-2xl bg-default px-4 py-3">
             <Text className="text-sm font-medium text-muted">{label}</Text>
-            <TimeField minutes={value} onChange={set} />
+            <TimeField minutes={value} onChange={set} label={label} />
           </View>
         ))}
       </View>
