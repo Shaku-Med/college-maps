@@ -182,6 +182,9 @@ func (s *Service) SendRequest(ctx context.Context, me auth.User, rawUsername str
 			return nil
 		}
 
+		if err := lockUser(ctx, tx, me.ID); err != nil {
+			return err
+		}
 		var outgoing, today, friends int
 		if err := tx.QueryRow(ctx,
 			`select
@@ -341,4 +344,11 @@ func (s *Service) Unblock(ctx context.Context, me auth.User, rawUsername string)
 		_, err = tx.Exec(ctx, `delete from blocks where blocker = $1::uuid and blocked = $2::uuid`, me.ID, other)
 		return err
 	})
+}
+
+// lockUser makes one user's writes that count against a daily or active limit take turns, so a burst of parallel
+// requests cannot all pass the count before any of them has written. The lock ends with the transaction.
+func lockUser(ctx context.Context, tx pgx.Tx, userID string) error {
+	_, err := tx.Exec(ctx, `select pg_advisory_xact_lock(hashtextextended($1::text, 7244))`, userID)
+	return err
 }

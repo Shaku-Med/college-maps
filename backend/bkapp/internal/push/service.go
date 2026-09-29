@@ -70,7 +70,7 @@ func (s *Service) Save(ctx context.Context, me auth.User, endpoint, p256dh, auth
 	if me.ID == "" {
 		return auth.ErrUnauthorized
 	}
-	endpoint, p256dh, authKey, err := normalizeSubscription(endpoint, p256dh, authKey)
+	endpoint, p256dh, authKey, err := normalizeSubscription(endpoint, p256dh, authKey, !s.cfg.IsProduction())
 	if err != nil {
 		return err
 	}
@@ -203,6 +203,10 @@ func (s *Service) keysFor(ctx context.Context, senderID, targetID string) ([]web
 }
 
 func (s *Service) send(ctx context.Context, sub webSub, payload []byte) {
+	// Checked again at send time, so a row saved before the allowlist existed is never contacted.
+	if !pushEndpointAllowed(sub.Endpoint, !s.cfg.IsProduction()) {
+		return
+	}
 	resp, err := webpush.SendNotificationWithContext(ctx, payload, &webpush.Subscription{
 		Endpoint: sub.Endpoint,
 		Keys:     webpush.Keys{P256dh: sub.P256dh, Auth: sub.Auth},
@@ -225,15 +229,41 @@ func (s *Service) send(ctx context.Context, sub webSub, payload []byte) {
 	}
 }
 
-func normalizeSubscription(endpoint, p256dh, authKey string) (string, string, string, error) {
+// The push services browsers hand out subscriptions for. The server posts to a subscription's endpoint whenever
+// it notifies someone, so any other address would let a signed in user make the server call a host of their
+// choosing, including ones only reachable from inside its network.
+var pushHosts = map[string]bool{
+	"fcm.googleapis.com":                true, // Chrome, Android, and other Chromium browsers
+	"updates.push.services.mozilla.com": true, // Firefox
+	"web.push.apple.com":                true, // Safari and installed iPhone web apps
+}
+
+// Edge and other Windows browsers get an endpoint on a numbered Windows push host.
+const windowsPushSuffix = ".notify.windows.com"
+
+func pushEndpointAllowed(endpoint string, allowLocal bool) bool {
+	parsed, err := url.Parse(endpoint)
+	if err != nil || parsed.User != nil || parsed.Port() != "" && parsed.Scheme == "https" {
+		return false
+	}
+	host := strings.ToLower(parsed.Hostname())
+	switch parsed.Scheme {
+	case "https":
+		return pushHosts[host] || (strings.HasSuffix(host, windowsPushSuffix) && len(host) > len(windowsPushSuffix))
+	case "http":
+		return allowLocal && isLocalPushHost(host)
+	}
+	return false
+}
+
+func normalizeSubscription(endpoint, p256dh, authKey string, allowLocal bool) (string, string, string, error) {
 	endpoint = strings.TrimSpace(endpoint)
 	p256dh = strings.TrimSpace(p256dh)
 	authKey = strings.TrimSpace(authKey)
 	if utf8.RuneCountInString(endpoint) < 12 || utf8.RuneCountInString(endpoint) > 2048 {
 		return "", "", "", ErrInvalid
 	}
-	parsed, err := url.Parse(endpoint)
-	if err != nil || parsed.Host == "" || parsed.User != nil || (parsed.Scheme != "https" && !(parsed.Scheme == "http" && isLocalPushHost(parsed.Hostname()))) {
+	if !pushEndpointAllowed(endpoint, allowLocal) {
 		return "", "", "", ErrInvalid
 	}
 	if utf8.RuneCountInString(p256dh) < 20 || utf8.RuneCountInString(p256dh) > 256 {

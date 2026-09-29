@@ -104,6 +104,9 @@ func (s *Service) CreatePublicMeetup(ctx context.Context, me auth.User, in NewPu
 
 	var created Meetup
 	err = db.WithScope(ctx, s.pool, db.Scope{UserID: me.ID}, func(tx pgx.Tx) error {
+		if err := lockUser(ctx, tx, me.ID); err != nil {
+			return err
+		}
 		var today, active int
 		if err := tx.QueryRow(ctx,
 			`select

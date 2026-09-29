@@ -74,16 +74,37 @@ func (m *MemoryStore) CodeStats(_ context.Context, index []byte, since time.Time
 	return count, latest, nil
 }
 
-func (m *MemoryStore) ReplaceCode(_ context.Context, index, hash []byte, expiresAt time.Time) error {
+func (m *MemoryStore) IssueCode(_ context.Context, index, hash []byte, now, expiresAt time.Time, limits auth.CodeLimits) (time.Duration, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	inWindow, inDay, latest := 0, 0, time.Time{}
+	for _, c := range m.codes {
+		if !bytes.Equal(c.index, index) || c.createdAt.Before(now.Add(-24*time.Hour)) {
+			continue
+		}
+		inDay++
+		if !c.createdAt.Before(now.Add(-limits.Window)) {
+			inWindow++
+		}
+		if c.createdAt.After(latest) {
+			latest = c.createdAt
+		}
+	}
+	switch {
+	case !latest.IsZero() && now.Sub(latest) < limits.Cooldown:
+		return limits.Cooldown - now.Sub(latest), nil
+	case inWindow >= limits.PerWindow:
+		return limits.Window, nil
+	case inDay >= limits.PerDay:
+		return time.Hour, nil
+	}
 	for _, c := range m.codes {
 		if bytes.Equal(c.index, index) {
 			c.consumed = true
 		}
 	}
-	m.codes = append(m.codes, &memCode{index: index, hash: hash, expiresAt: expiresAt, createdAt: m.now()})
-	return nil
+	m.codes = append(m.codes, &memCode{index: index, hash: hash, expiresAt: expiresAt, createdAt: now})
+	return 0, nil
 }
 
 func (m *MemoryStore) DeleteCodes(_ context.Context, index []byte) error {
@@ -276,6 +297,7 @@ type CapturedMail struct {
 	mu    sync.Mutex
 	codes map[string]string
 	Fail  bool
+	sent  map[string]int
 }
 
 func (c *CapturedMail) SendLoginCode(_ context.Context, to, code string) error {
@@ -286,9 +308,18 @@ func (c *CapturedMail) SendLoginCode(_ context.Context, to, code string) error {
 	}
 	if c.codes == nil {
 		c.codes = map[string]string{}
+		c.sent = map[string]int{}
 	}
 	c.codes[to] = code
+	c.sent[to]++
 	return nil
+}
+
+// Count is how many codes were sent to an address.
+func (c *CapturedMail) Count(to string) int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.sent[to]
 }
 
 func (c *CapturedMail) Last(to string) string {

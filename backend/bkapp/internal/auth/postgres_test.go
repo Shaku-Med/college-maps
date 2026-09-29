@@ -256,3 +256,65 @@ func checkRowLevelSecurity(t *testing.T, ctx context.Context, pool *pgxpool.Pool
 		return nil
 	})
 }
+
+// A burst of parallel code requests for one address must send one email, not one per request. Without the lock
+// every request passed the limits before any of them had stored its code.
+func TestParallelCodeRequestsSendOneEmail(t *testing.T) {
+	url := os.Getenv("TEST_DATABASE_URL")
+	if url == "" {
+		t.Skip("set TEST_DATABASE_URL to run against Postgres")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	pool, err := db.Open(ctx, url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(pool.Close)
+	if _, err := db.Migrate(ctx, pool); err != nil {
+		t.Fatal(err)
+	}
+
+	suffix := make([]byte, 6)
+	_, _ = rand.Read(suffix)
+	email := "burst." + hex.EncodeToString(suffix) + "@stu-mail.csi.cuny.edu"
+	mail := &authtest.CapturedMail{}
+	svc, err := NewService(NewPostgresStore(pool), mail, []byte(strings.Repeat("k", 40)), []string{"stu-mail.csi.cuny.edu"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	index := svc.EmailIndex(email)
+	t.Cleanup(func() {
+		cleanup, done := context.WithTimeout(context.Background(), 20*time.Second)
+		defer done()
+		if _, err := pool.Exec(cleanup, "delete from login_codes where email_index = $1", index); err != nil {
+			t.Errorf("cleanup codes: %v", err)
+		}
+	})
+
+	const burst = 20
+	results := make(chan error, burst)
+	start := make(chan struct{})
+	for i := 0; i < burst; i++ {
+		go func() {
+			<-start
+			results <- svc.RequestCode(ctx, email)
+		}()
+	}
+	close(start)
+	sent, limited := 0, 0
+	for i := 0; i < burst; i++ {
+		var rate *RateLimitError
+		switch err := <-results; {
+		case err == nil:
+			sent++
+		case errors.As(err, &rate):
+			limited++
+		default:
+			t.Errorf("unexpected error: %v", err)
+		}
+	}
+	if sent != 1 || limited != burst-1 || mail.Count(email) != 1 {
+		t.Fatalf("sent %d, limited %d, emails %d; want 1, %d, 1", sent, limited, mail.Count(email), burst-1)
+	}
+}

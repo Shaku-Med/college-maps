@@ -453,3 +453,41 @@ func TestPublicMeetups(t *testing.T) {
 		t.Fatalf("join after end: %v", err)
 	}
 }
+
+// A burst of parallel creates must not get past the limits. Without the per user lock every request passed the
+// count before any of them had written.
+func TestParallelCreatesKeepTheLimit(t *testing.T) {
+	h, ctx := setup(t)
+	host := h.person(t, ctx, "burst")
+	placeID := h.site.Places[0].ID
+
+	const burst = 10
+	results := make(chan error, burst)
+	start := make(chan struct{})
+	for i := 0; i < burst; i++ {
+		go func() {
+			<-start
+			_, err := h.social.CreatePublicMeetup(ctx, host, social.NewPublicMeetup{
+				Title:       "Study group",
+				Destination: social.DestinationInput{Kind: social.DestinationPlace, PlaceID: placeID},
+				StartsIn:    30,
+				Minutes:     60,
+			})
+			results <- err
+		}()
+	}
+	close(start)
+	created := 0
+	for i := 0; i < burst; i++ {
+		switch err := <-results; {
+		case err == nil:
+			created++
+		case errors.Is(err, social.ErrTooMany):
+		default:
+			t.Errorf("unexpected error: %v", err)
+		}
+	}
+	if created != 2 {
+		t.Fatalf("created %d campus events at once, want the limit of 2", created)
+	}
+}

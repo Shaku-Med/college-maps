@@ -47,19 +47,47 @@ func (p *PostgresStore) CodeStats(ctx context.Context, emailIndex []byte, since 
 	return count, *latest, nil
 }
 
-// ReplaceCode retires any unused code for the email so only the newest one can ever work.
-func (p *PostgresStore) ReplaceCode(ctx context.Context, emailIndex, hash []byte, expiresAt time.Time) error {
-	return db.WithScope(ctx, p.pool, db.Scope{EmailIndex: emailIndex}, func(tx pgx.Tx) error {
+// IssueCode holds a lock on the email for the whole check and insert, so parallel requests for one address take
+// turns: the first passes the limits and every other one sees its code and is refused. Without it a burst could
+// send hundreds of emails to one person. Any unused code is retired so only the newest one can ever work.
+func (p *PostgresStore) IssueCode(ctx context.Context, emailIndex, hash []byte, now, expiresAt time.Time, limits CodeLimits) (time.Duration, error) {
+	var wait time.Duration
+	err := db.WithScope(ctx, p.pool, db.Scope{EmailIndex: emailIndex}, func(tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, `select pg_advisory_xact_lock(hashtextextended(encode($1::bytea, 'hex'), 7243))`, emailIndex); err != nil {
+			return err
+		}
+		var inWindow, inDay int
+		var latest *time.Time
+		if err := tx.QueryRow(ctx,
+			`select count(*) filter (where created_at >= $2), count(*), max(created_at)
+			 from login_codes where email_index = $1 and created_at >= $3`,
+			emailIndex, now.Add(-limits.Window), now.Add(-24*time.Hour),
+		).Scan(&inWindow, &inDay, &latest); err != nil {
+			return err
+		}
+		switch {
+		case latest != nil && now.Sub(*latest) < limits.Cooldown:
+			wait = limits.Cooldown - now.Sub(*latest)
+		case inWindow >= limits.PerWindow:
+			wait = limits.Window
+		case inDay >= limits.PerDay:
+			wait = time.Hour
+		}
+		if wait > 0 {
+			return nil
+		}
 		if _, err := tx.Exec(ctx,
-			`update login_codes set consumed_at = now() where email_index = $1 and consumed_at is null`, emailIndex,
+			`update login_codes set consumed_at = $2 where email_index = $1 and consumed_at is null`, emailIndex, now,
 		); err != nil {
 			return err
 		}
 		_, err := tx.Exec(ctx,
-			`insert into login_codes (email_index, code_hash, expires_at) values ($1, $2, $3)`, emailIndex, hash, expiresAt,
+			`insert into login_codes (email_index, code_hash, expires_at, created_at) values ($1, $2, $3, $4)`,
+			emailIndex, hash, expiresAt, now,
 		)
 		return err
 	})
+	return wait, err
 }
 
 // DeleteCodes drops every code for an email. Used when the email could not be sent, so a failure on

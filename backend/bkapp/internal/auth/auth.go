@@ -136,9 +136,19 @@ const (
 	CodeAccepted
 )
 
+// CodeLimits caps how often one email can be sent a code.
+type CodeLimits struct {
+	Cooldown  time.Duration
+	Window    time.Duration
+	PerWindow int
+	PerDay    int
+}
+
 type Store interface {
 	CodeStats(ctx context.Context, emailIndex []byte, since time.Time) (count int, latest time.Time, err error)
-	ReplaceCode(ctx context.Context, emailIndex, hash []byte, expiresAt time.Time) error
+	// IssueCode checks the limits and stores a new code in one step, one request per email at a time, so a
+	// burst of parallel requests cannot all pass the limits together. A positive wait means it was refused.
+	IssueCode(ctx context.Context, emailIndex, hash []byte, now, expiresAt time.Time, limits CodeLimits) (wait time.Duration, err error)
 	DeleteCodes(ctx context.Context, emailIndex []byte) error
 	CheckCode(ctx context.Context, emailIndex []byte, now time.Time, maxAttempts int, matches func(hash []byte) bool) (outcome VerifyOutcome, attemptsLeft int, err error)
 	UpsertUser(ctx context.Context, emailIndex, emailSealed []byte, now time.Time) (StoredUser, error)
@@ -244,25 +254,6 @@ func (s *Service) RequestCode(ctx context.Context, rawEmail string) error {
 	}
 	index := s.keys.EmailIndex(addr)
 
-	now := s.now()
-	count, latest, err := s.store.CodeStats(ctx, index, now.Add(-codeWindow))
-	if err != nil {
-		return err
-	}
-	if !latest.IsZero() && now.Sub(latest) < codeCooldown {
-		return &RateLimitError{RetryAfter: codeCooldown - now.Sub(latest)}
-	}
-	if count >= codesPerWindow {
-		return &RateLimitError{RetryAfter: codeWindow}
-	}
-	daily, _, err := s.store.CodeStats(ctx, index, now.Add(-24*time.Hour))
-	if err != nil {
-		return err
-	}
-	if daily >= codesPerDay {
-		return &RateLimitError{RetryAfter: time.Hour}
-	}
-
 	code, err := s.newCode()
 	if err != nil {
 		return err
@@ -271,8 +262,18 @@ func (s *Service) RequestCode(ctx context.Context, rawEmail string) error {
 	if review {
 		code = s.reviewCode
 	}
-	if err := s.store.ReplaceCode(ctx, index, s.keys.codeHash(index, code), now.Add(CodeTTL)); err != nil {
+	now := s.now()
+	wait, err := s.store.IssueCode(ctx, index, s.keys.codeHash(index, code), now, now.Add(CodeTTL), CodeLimits{
+		Cooldown:  codeCooldown,
+		Window:    codeWindow,
+		PerWindow: codesPerWindow,
+		PerDay:    codesPerDay,
+	})
+	if err != nil {
 		return err
+	}
+	if wait > 0 {
+		return &RateLimitError{RetryAfter: wait}
 	}
 	// The reviewer has the code from the review notes, so there is nothing to send.
 	if review {
