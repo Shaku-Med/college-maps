@@ -1,0 +1,78 @@
+{
+  "expo": {
+    "name": "CSI Map",
+    "slug": "csi-map",
+    "owner": "meddi",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "csimap",
+    "userInterfaceStyle": "automatic",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "checkAutomatically": "ON_LOAD",
+      "fallbackToCacheTimeout": 0,
+      "url": "https://u.expo.dev/eceb1ff3-a4e6-4523-b073-e4883202be26"
+    },
+    "ios": {
+      "bundleIdentifier": "com.shakumed.csimap",
+      "appleTeamId": "5VH593K857",
+      "supportsTablet": false,
+      "config": {
+        "usesNonExemptEncryption": false
+      },
+      "infoPlist": {
+        "CFBundleDisplayName": "CSI Map"
+      }
+    },
+    "android": {
+      "package": "com.shakumed.csimap",
+      "adaptiveIcon": {
+        "backgroundColor": "#1268D2",
+        "foregroundImage": "./assets/images/android-icon-foreground.png",
+        "backgroundImage": "./assets/images/android-icon-background.png",
+        "monochromeImage": "./assets/images/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION"
+      ]
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#1268D2",
+          "image": "./assets/images/splash-icon.png",
+          "imageWidth": 96
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "CSI Map shows where you are on campus so you can find your way to buildings and rooms."
+        }
+      ],
+      "@maplibre/maplibre-react-native",
+      "expo-updates",
+      "expo-secure-store",
+      "expo-sqlite"
+    ],
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "eceb1ff3-a4e6-4523-b073-e4883202be26"
+      }
+    }
+  }
+}

@@ -6,6 +6,7 @@ It is built to be reused. Everything that belongs to CSI lives in one file, `app
 
 ```
 app/       Next.js 16 web app, HeroUI v3, MapLibre with OpenFreeMap tiles
+mobile/    Expo SDK 57 iPhone app, native tabs, HeroUI Native, MapLibre Native (see mobile/README.md)
 backend/
   bkapp/   Go API: places, email code sign in, sessions in Postgres
   rtapp/   Go realtime server for live meetup locations, standard library only
@@ -201,9 +202,9 @@ Add `-find someone@school.edu` to look up one account, or `-csv > users.csv` for
 - **Emails stay private.** The database never holds a readable email. Each address is stored as an HMAC-SHA256 blind index (to find the account) plus AES-256-GCM ciphertext bound to that index, so a copied or tampered row does not decrypt. Only `/v1/me` for the owner returns it. Display names and usernames that are built from the email are refused.
 - **Separate keys.** Code hashing, the email index, email encryption, and session hashing each use their own key derived from `AUTH_SECRET` with HMAC-SHA256, so a database dump alone reveals no emails, codes, or usable sessions.
 - **Codes.** 8 random digits from the OS generator, stored only as a keyed hash, valid 10 minutes, 5 tries, one live code per email, and at most 3 codes per 15 minutes and 8 per day per email. Guessing works out to about 1 in 2.5 million per day per account, however many IPs an attacker uses. Codes are left out of the email subject so they do not show on a locked phone.
-- **Sessions.** 256 bit random tokens in a `__Host-` cookie (HttpOnly, Secure, SameSite=Strict), stored as a keyed hash, ending after 30 days or 14 days unused, with sign out everywhere.
+- **Sessions.** 256 bit random tokens in a `__Host-` cookie (HttpOnly, Secure, SameSite=Strict), stored as a keyed hash, ending after 30 days or 14 days unused, with sign out everywhere. The iPhone app gets the same kind of token once, from `/v1/app/auth/verify`, keeps it in the iOS keychain, and sends it as `Authorization: Bearer`.
 - **Row level security.** RLS is on for every table (`migrations/0002_row_level_security.sql`). The Neon owner role bypasses RLS, so the API drops to a restricted `csimap_api` role inside every transaction and tells Postgres which email, session, or user the request is about. Postgres then refuses any row outside that, so a bug or injected query cannot read or change another account, and the API role cannot touch `schema_migrations` at all. Migrations and `cmd/users` run as the owner.
-- **Requests.** Only listed origins can call the API with cookies, every write must carry an allowed Origin, bodies are small strict JSON, and each route is rate limited per IP. When `CLIENT_IP_HEADER` is a list header, only the last, proxy-written entry is trusted.
+- **Requests.** Only listed origins can call the API with cookies, every write must carry an allowed Origin, bodies are small strict JSON, and each route is rate limited per IP. The iPhone app has no origin, so its writes carry `X-CSIMap-Client: app` with no Origin instead. Browsers always send Origin on writes, and a page on another site cannot add that header without a preflight only listed origins pass, so it cannot stand in for a forged browser request. When `CLIENT_IP_HEADER` is a list header, only the last, proxy-written entry is trusted.
 
 | Variable | What it is |
 | --- | --- |
@@ -226,6 +227,7 @@ Add `-find someone@school.edu` to look up one account, or `-csv > users.csv` for
 | `GET /v1/places` | Campus places as JSON |
 | `POST /v1/auth/code` | Email a sign in code |
 | `POST /v1/auth/verify` | Check the code and start a session |
+| `POST /v1/app/auth/verify` | The same for the iPhone app: answers with the session token instead of a cookie. Refused whenever an Origin is sent, so a web page can never read a token from it |
 | `POST /v1/auth/signout` | End the session |
 | `POST /v1/auth/signout-all` | End every session for the user |
 | `GET /v1/me`, `PATCH /v1/me` | Read your own account, change `displayName` or `username` |

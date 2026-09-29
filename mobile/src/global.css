@@ -1,0 +1,18 @@
+@import 'tailwindcss';
+@import 'uniwind';
+@import 'heroui-native/styles';
+
+/* The campus accent from app/campus/campus.json, the same one the web app uses. */
+@layer theme {
+  :root {
+    @variant light {
+      --accent: #1268d2;
+      --accent-foreground: #ffffff;
+    }
+
+    @variant dark {
+      --accent: #83c8ef;
+      --accent-foreground: #0a1f44;
+    }
+  }
+}
