@@ -64,3 +64,5 @@ vendor/
 AGENTS.md
 CLAUDE.md
 HANDOFF.md
+# Firebase service account keys are secrets. They go to EAS, never into git.
+*firebase-adminsdk*.json
