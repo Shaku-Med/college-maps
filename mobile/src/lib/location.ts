@@ -113,7 +113,14 @@ async function reconcile() {
     watch?.position.remove();
     watch?.heading?.remove();
     const position = navigation
-      ? await startNavigationUpdates()
+      ? // Android can refuse to start the background service on some phones and power settings. Directions then
+        // still follow along with the app open, rather than sitting still with no location at all.
+        await startNavigationUpdates().catch(() =>
+          Location.watchPositionAsync(
+            { accuracy: Location.Accuracy.BestForNavigation, distanceInterval: 1, timeInterval: 1000 },
+            publish,
+          ),
+        )
       : await Location.watchPositionAsync({ accuracy: Location.Accuracy.High, distanceInterval: 3, timeInterval: 1000 }, publish);
     const heading = await Location.watchHeadingAsync((reading) => {
       const degrees = reading.trueHeading >= 0 ? reading.trueHeading : reading.magHeading;

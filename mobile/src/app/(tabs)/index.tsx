@@ -13,7 +13,7 @@ import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { router, useFocusEffect } from 'expo-router';
 import { useThemeColor, useToast } from 'heroui-native';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Linking, Text, useColorScheme, useWindowDimensions, View } from 'react-native';
+import { Linking, Platform, Text, useColorScheme, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Icon } from '@/components/icon';
@@ -23,7 +23,7 @@ import { HeadingBeam } from '@/components/heading-beam';
 import { MapControls, type MapControl } from '@/components/map-controls';
 import { NavigationBanner, NavigationFooter } from '@/components/navigation-hud';
 import { PlaceMarker } from '@/components/place-marker';
-import { TopScrim } from '@/components/top-scrim';
+import { EdgeScrim, TopScrim } from '@/components/top-scrim';
 import { CAMPUS, PLACES, contains, getPlace, type Coordinate, type Place } from '@/data/campus';
 import { useMeetupLive } from '@/hooks/use-meetup-live';
 import { useNavigation, type FollowTarget } from '@/hooks/use-navigation';
@@ -50,6 +50,9 @@ const PLACE_ZOOM = 17;
 const BUILDING_PITCH = 52;
 // The first label layer in each OpenFreeMap style, so buildings rise under the street and place names.
 const FIRST_LABEL = { light: 'waterway_line_label', dark: 'water_name' } as const;
+// The map runs under the tab bar, which the app cannot measure, so its height per platform: the iOS glass bar
+// and Android's Material navigation bar, both above the system inset.
+const TAB_BAR_HEIGHT = Platform.OS === 'android' ? 80 : 49;
 // MapLibre keeps the last padding it was given, so every camera move says its own.
 const NO_PADDING = { top: 0, bottom: 0, left: 0, right: 0 };
 // The place sheet opens at 45% of the screen, so a focused place sits in the space above it.
@@ -494,6 +497,11 @@ export default function MapScreen() {
       </Map>
 
       {navigating ? null : <TopScrim height={insets.top + 96} dark={scheme === 'dark'} />}
+      {/* Android's tab bar is a solid Material bar rather than glass, so a fade above it keeps the map labels
+          from crowding the buttons and the bar's edge. */}
+      {Platform.OS === 'android' && tabBarShown ? (
+        <EdgeScrim edge="bottom" height={insets.bottom + TAB_BAR_HEIGHT + 90} dark={scheme === 'dark'} />
+      ) : null}
 
       <View pointerEvents="box-none" className="absolute inset-x-0" style={{ top: insets.top + 8 }}>
         {navigating && navigation.route && trip.destination ? (
@@ -518,7 +526,7 @@ export default function MapScreen() {
       <View
         pointerEvents="box-none"
         className="absolute inset-x-0 gap-3"
-        style={{ bottom: tabBarShown ? insets.bottom + 54 : insets.bottom + 6 }}>
+        style={{ bottom: tabBarShown ? insets.bottom + TAB_BAR_HEIGHT + 10 : insets.bottom + 6 }}>
         <View pointerEvents="box-none" className="items-end px-4">
           <MapControls controls={controls} />
         </View>

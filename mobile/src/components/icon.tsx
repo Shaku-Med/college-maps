@@ -1,6 +1,4 @@
-import { SymbolView, type SFSymbol, type SymbolViewProps } from 'expo-symbols';
-
-import type { AndroidSymbol } from 'expo-symbols';
+import { SymbolView, type AndroidSymbol, type SFSymbol, type SymbolViewProps } from 'expo-symbols';
 
 // Android has no SF Symbols, so every symbol the app uses has its Material Symbol here. Anything missing from
 // the list still shows a neutral dot instead of nothing.

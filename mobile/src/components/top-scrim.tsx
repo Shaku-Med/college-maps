@@ -18,20 +18,25 @@ function withAlpha(color: string, alpha: number, dark: boolean) {
 }
 
 /**
- * A soft fade from the app's background at the top of the map to clear, so the status bar and the chips over
- * it stay readable instead of blending into the street and building labels underneath.
+ * A soft fade from the app's background at the edge of the map to clear, so what sits over it, the chips and
+ * status bar at the top or the tab bar and buttons at the bottom, stays readable instead of blending into the
+ * street and building labels underneath.
  */
-export function TopScrim({ height, dark }: { height: number; dark: boolean }) {
+export function EdgeScrim({ edge, height, dark }: { edge: 'top' | 'bottom'; height: number; dark: boolean }) {
   const background = useThemeColor('background');
   const stop = (alpha: number) => withAlpha(background, alpha, dark);
   return (
     <View
       pointerEvents="none"
-      className="absolute inset-x-0 top-0"
+      className={edge === 'top' ? 'absolute inset-x-0 top-0' : 'absolute inset-x-0 bottom-0'}
       style={{
         height,
-        experimental_backgroundImage: `linear-gradient(to bottom, ${stop(0.94)} 0%, ${stop(0.82)} 45%, ${stop(0.45)} 75%, ${stop(0)} 100%)`,
+        experimental_backgroundImage: `linear-gradient(to ${edge === 'top' ? 'bottom' : 'top'}, ${stop(0.94)} 0%, ${stop(0.82)} 45%, ${stop(0.45)} 75%, ${stop(0)} 100%)`,
       }}
     />
   );
 }
+
+export const TopScrim = ({ height, dark }: { height: number; dark: boolean }) => (
+  <EdgeScrim edge="top" height={height} dark={dark} />
+);

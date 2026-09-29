@@ -1,10 +1,10 @@
-import { DatePicker, Host } from '@expo/ui/swift-ui';
 import * as Haptics from 'expo-haptics';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Button, CloseButton, Description, FieldError, Input, Label, TextField, cn, useToast } from 'heroui-native';
 import { useMemo, useState } from 'react';
-import { Alert, Pressable, ScrollView, Text, useColorScheme, View } from 'react-native';
+import { Alert, Pressable, ScrollView, Text, View } from 'react-native';
 
+import { TimeField } from '@/components/time-field';
 import { CAMPUS } from '@/data/campus';
 import { getClasses, setClasses } from '@/lib/classes';
 import {
@@ -21,16 +21,9 @@ import { floorForRoom, floorLabel, parseRoomCode } from '@/lib/search';
 const DEFAULT_START = 9 * 60;
 const DEFAULT_END = 10 * 60 + 15;
 
-const toDate = (minutes: number) => {
-  const date = new Date();
-  date.setHours(Math.floor(minutes / 60), minutes % 60, 0, 0);
-  return date;
-};
-const toMinutes = (date: Date) => date.getHours() * 60 + date.getMinutes();
 
 export default function ClassSheet() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const scheme = useColorScheme();
   const { toast } = useToast();
   const existing = id === 'new' ? undefined : getClasses().find((entry) => entry.id === id);
 
@@ -146,13 +139,7 @@ export default function ClassSheet() {
         ).map(([label, value, set]) => (
           <View key={label} className="flex-1 gap-2 rounded-2xl bg-default px-4 py-3">
             <Text className="text-sm font-medium text-muted">{label}</Text>
-            <Host matchContents colorScheme={scheme === 'dark' ? 'dark' : 'light'}>
-              <DatePicker
-                selection={toDate(value)}
-                displayedComponents={['hourAndMinute']}
-                onDateChange={(date) => set(toMinutes(date))}
-              />
-            </Host>
+            <TimeField minutes={value} onChange={set} />
           </View>
         ))}
       </View>
