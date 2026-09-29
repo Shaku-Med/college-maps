@@ -114,14 +114,20 @@ export default function MapScreen() {
 
   const follow = useCallback(
     ({ point, zoom: level, bearing }: FollowTarget) => {
-      camera.current?.easeTo({
-        center: toLngLat(point),
-        zoom: level,
-        bearing: bearing ?? 0,
-        pitch: 40,
-        duration: 900,
-        padding: { top: insets.top + 170, bottom: insets.bottom + 150, left: 0, right: 0 },
-      });
+      // A camera move that fails, which some Android map builds do while a style is still loading, must never
+      // stop guidance itself. The next fix moves the camera again.
+      try {
+        camera.current?.easeTo({
+          center: toLngLat(point),
+          zoom: level,
+          bearing: Number.isFinite(bearing) ? (bearing as number) : 0,
+          pitch: 40,
+          duration: 900,
+          padding: { top: insets.top + 170, bottom: insets.bottom + 150, left: 0, right: 0 },
+        });
+      } catch {
+        // Tried again on the next fix.
+      }
     },
     [insets.bottom, insets.top],
   );
@@ -276,13 +282,33 @@ export default function MapScreen() {
   const liveStart = trip.origin === MY_LOCATION && location.fix !== null;
 
   function start() {
-    if (!preview.route) return;
+    const route = preview.route;
+    if (!route) return;
     const from = liveStart ? (location.fix?.position ?? null) : null;
-    voice.begin(preview.route, navigation.facing());
-    navigation.start(preview.route, from);
-    startNavigating();
+    // Starting must always get as far as guidance, so the first spoken line and the camera move are extras that
+    // can fail on their own without stopping it.
+    try {
+      voice.begin(route, navigation.facing());
+    } catch {
+      // Guidance still shows the turns.
+    }
+    try {
+      navigation.start(route, from);
+      startNavigating();
+    } catch (error) {
+      toast.show({
+        variant: 'danger',
+        label: "Couldn't start directions",
+        description: error instanceof Error ? error.message.slice(0, 120) : 'Try again in a moment.',
+      });
+      return;
+    }
     if (!from && trip.destination) {
-      camera.current?.flyTo({ center: toLngLat(preview.route.path[0]), zoom: PLACE_ZOOM, duration: 700, padding: NO_PADDING });
+      try {
+        camera.current?.flyTo({ center: toLngLat(route.path[0]), zoom: PLACE_ZOOM, duration: 700, padding: NO_PADDING });
+      } catch {
+        // The map stays where it is.
+      }
     }
   }
 

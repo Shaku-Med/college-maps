@@ -86,6 +86,32 @@ function publish(location: Location.LocationObject) {
   for (const listener of fixListeners) listener(fix);
 }
 
+// How long the background service gets to start before directions use the plain foreground watch instead.
+const NAVIGATION_START_MS = 8_000;
+
+// Resolves with the watch, or rejects after the time limit. A service that starts after the limit is stopped
+// again, so it never keeps running with nothing listening.
+function withTimeout(start: Promise<{ remove: () => void }>, ms: number) {
+  return new Promise<{ remove: () => void }>((resolve, reject) => {
+    let late = false;
+    const timer = setTimeout(() => {
+      late = true;
+      reject(new Error('location service took too long'));
+    }, ms);
+    start.then(
+      (sub) => {
+        clearTimeout(timer);
+        if (late) sub.remove();
+        else resolve(sub);
+      },
+      (error: unknown) => {
+        clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}
+
 async function reconcile() {
   if (starting) return;
   const wanted = users.size > 0;
@@ -110,22 +136,26 @@ async function reconcile() {
       set({ status: 'denied' });
       return;
     }
-    watch?.position.remove();
-    watch?.heading?.remove();
+    // The new watch starts before the old one stops, so switching into directions never leaves a gap with no
+    // location at all.
+    const previous = watch;
     const position = navigation
-      ? // Android can refuse to start the background service on some phones and power settings. Directions then
-        // still follow along with the app open, rather than sitting still with no location at all.
-        await startNavigationUpdates().catch(() =>
+      ? // Android can refuse, or be slow, to start the background service on some phones and power settings.
+        // Directions then follow along with the app open instead of sitting still with no location.
+        await withTimeout(startNavigationUpdates(), NAVIGATION_START_MS).catch(() =>
           Location.watchPositionAsync(
             { accuracy: Location.Accuracy.BestForNavigation, distanceInterval: 1, timeInterval: 1000 },
             publish,
           ),
         )
       : await Location.watchPositionAsync({ accuracy: Location.Accuracy.High, distanceInterval: 3, timeInterval: 1000 }, publish);
-    const heading = await Location.watchHeadingAsync((reading) => {
-      const degrees = reading.trueHeading >= 0 ? reading.trueHeading : reading.magHeading;
-      if (Number.isFinite(degrees) && reading.accuracy !== 0) set({ compass: degrees });
-    }).catch(() => undefined);
+    previous?.position.remove();
+    const heading =
+      previous?.heading ??
+      (await Location.watchHeadingAsync((reading) => {
+        const degrees = reading.trueHeading >= 0 ? reading.trueHeading : reading.magHeading;
+        if (Number.isFinite(degrees) && reading.accuracy !== 0) set({ compass: degrees });
+      }).catch(() => undefined));
     watch = { navigation, position, heading };
     if (snapshot.status !== 'active') set({ status: snapshot.fix ? 'active' : 'asking' });
   } catch {
