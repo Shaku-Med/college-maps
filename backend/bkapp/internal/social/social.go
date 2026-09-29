@@ -52,8 +52,15 @@ type Service struct {
 	ticketSecret []byte
 	now          func() time.Time
 	random       io.Reader
-	notify       func(senderID string, userIDs []string, title, body, path string)
+	notify       func(kind, senderID string, userIDs []string, title, body, path string)
 }
+
+// The kinds of notification, which a student can turn off one by one.
+const (
+	NotifyFriendRequest = "friend"
+	NotifyInvite        = "invite"
+	NotifyJoin          = "join"
+)
 
 func NewService(pool *pgxpool.Pool, site *campus.Campus, ticketSecret []byte) (*Service, error) {
 	if len(ticketSecret) < 32 {
@@ -62,15 +69,15 @@ func NewService(pool *pgxpool.Pool, site *campus.Campus, ticketSecret []byte) (*
 	return &Service{pool: pool, site: site, ticketSecret: ticketSecret, now: time.Now, random: rand.Reader}, nil
 }
 
-func (s *Service) SetNotify(fn func(senderID string, userIDs []string, title, body, path string)) {
+func (s *Service) SetNotify(fn func(kind, senderID string, userIDs []string, title, body, path string)) {
 	s.notify = fn
 }
 
-func (s *Service) ping(senderID string, userIDs []string, title, body, path string) {
+func (s *Service) ping(kind, senderID string, userIDs []string, title, body, path string) {
 	if s.notify == nil || senderID == "" || len(userIDs) == 0 {
 		return
 	}
-	s.notify(senderID, userIDs, title, body, path)
+	s.notify(kind, senderID, userIDs, title, body, path)
 }
 
 // Person is how another student appears: a handle and a name, nothing else.

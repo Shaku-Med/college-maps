@@ -3,6 +3,7 @@ import { SymbolView, type AndroidSymbol, type SFSymbol, type SymbolViewProps } f
 // Android has no SF Symbols, so every symbol the app uses has its Material Symbol here. Anything missing from
 // the list still shows a neutral dot instead of nothing.
 const MATERIAL: Partial<Record<SFSymbol, AndroidSymbol>> = {
+  'app.badge': 'app_badging',
   'arrow.triangle.2.circlepath': 'sync',
   'arrow.triangle.branch': 'call_split',
   'arrow.turn.up.left': 'turn_left',
@@ -32,6 +33,7 @@ const MATERIAL: Partial<Record<SFSymbol, AndroidSymbol>> = {
   'door.left.hand.open': 'door_open',
   ellipsis: 'more_horiz',
   'ellipsis.circle': 'more_horiz',
+  envelope: 'mail',
   'figure.run': 'directions_run',
   'figure.stairs': 'stairs',
   'figure.walk': 'directions_walk',
@@ -59,13 +61,17 @@ const MATERIAL: Partial<Record<SFSymbol, AndroidSymbol>> = {
   pencil: 'edit',
   'person.2': 'group',
   'person.2.fill': 'group',
+  'person.badge.plus': 'person_add',
   'person.crop.circle': 'account_circle',
   'person.crop.circle.fill': 'account_circle',
   plus: 'add',
   'point.3.connected.trianglepath.dotted': 'hub',
   'rectangle.portrait.and.arrow.right': 'logout',
+  'rectangle.stack': 'web_stories',
   safari: 'explore',
+  scope: 'my_location',
   'speaker.slash.fill': 'volume_off',
+  'speaker.wave.2': 'volume_up',
   'speaker.wave.2.fill': 'volume_up',
   'square.and.arrow.up': 'share',
   trash: 'delete',

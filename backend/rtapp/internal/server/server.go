@@ -8,6 +8,7 @@ import (
 	"math"
 	"mime"
 	"net/http"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -199,11 +200,16 @@ func (a *handlers) withTicket(next func(http.ResponseWriter, *http.Request, tick
 	}
 }
 
+// A random id each phone or browser makes for itself, so one account signed in twice shares from one place.
+var devicePattern = regexp.MustCompile(`^[A-Za-z0-9_-]{8,64}$`)
+
 type positionBody struct {
 	Lat      *float64 `json:"lat"`
 	Lng      *float64 `json:"lng"`
 	Accuracy *float64 `json:"accuracy"`
 	Heading  *float64 `json:"heading"`
+	Device   string   `json:"device"`
+	Claim    bool     `json:"claim"`
 }
 
 func finite(v float64) bool {
@@ -218,6 +224,9 @@ func (b positionBody) valid() bool {
 		return false
 	}
 	if !finite(*b.Accuracy) || *b.Accuracy < 0 || *b.Accuracy > maxAccuracyMeters {
+		return false
+	}
+	if b.Device != "" && !devicePattern.MatchString(b.Device) {
 		return false
 	}
 	return b.Heading == nil || (finite(*b.Heading) && *b.Heading >= 0 && *b.Heading < 360)
@@ -262,7 +271,11 @@ func (a *handlers) postPosition(w http.ResponseWriter, r *http.Request, claims t
 		}
 		p.Heading = &heading
 	}
-	if err := a.hub.Publish(claims.Room, p); err != nil {
+	if err := a.hub.PublishFrom(claims.Room, p, body.Device, body.Claim); err != nil {
+		if errors.Is(err, hub.ErrElsewhere) {
+			writeError(w, http.StatusConflict, "sharing from another device")
+			return
+		}
 		if errors.Is(err, hub.ErrFull) {
 			writeError(w, http.StatusServiceUnavailable, "meetup is full, try again soon")
 			return
@@ -274,8 +287,20 @@ func (a *handlers) postPosition(w http.ResponseWriter, r *http.Request, claims t
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (a *handlers) leave(w http.ResponseWriter, _ *http.Request, claims ticket.Claims) {
-	a.hub.Leave(claims.Room, claims.Member)
+func (a *handlers) leave(w http.ResponseWriter, r *http.Request, claims ticket.Claims) {
+	// The body is optional, so older clients that send none still leave the way they always did.
+	var body struct {
+		Device string `json:"device"`
+	}
+	if r.ContentLength != 0 {
+		decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxBodyBytes))
+		decoder.DisallowUnknownFields()
+		if err := decoder.Decode(&body); err != nil || (body.Device != "" && !devicePattern.MatchString(body.Device)) {
+			writeError(w, http.StatusBadRequest, "invalid request")
+			return
+		}
+	}
+	a.hub.LeaveFrom(claims.Room, claims.Member, body.Device)
 	w.WriteHeader(http.StatusNoContent)
 }
 

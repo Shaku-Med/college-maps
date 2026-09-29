@@ -10,7 +10,11 @@ import (
 	"time"
 )
 
-var ErrFull = errors.New("capacity reached")
+var (
+	ErrFull = errors.New("capacity reached")
+	// ErrElsewhere means the same account is sharing from another phone or browser right now.
+	ErrElsewhere = errors.New("sharing from another device")
+)
 
 type Limits struct {
 	Rooms            int
@@ -62,8 +66,16 @@ func (s *Subscription) Events() <-chan Event {
 	return s.events
 }
 
+// owner is the device a member is sharing from. One account can be signed in on several phones, and only
+// one of them should move the member's dot, or it would jump between places.
+type owner struct {
+	device string
+	at     time.Time
+}
+
 type room struct {
 	positions map[string]Position
+	owners    map[string]owner
 	subs      map[*Subscription]struct{}
 }
 
@@ -86,7 +98,7 @@ func (h *Hub) roomFor(id string) (*room, error) {
 	if len(h.rooms) >= h.limits.Rooms {
 		return nil, ErrFull
 	}
-	r := &room{positions: map[string]Position{}, subs: map[*Subscription]struct{}{}}
+	r := &room{positions: map[string]Position{}, owners: map[string]owner{}, subs: map[*Subscription]struct{}{}}
 	h.rooms[id] = r
 	return r, nil
 }
@@ -150,6 +162,13 @@ func (h *Hub) Unsubscribe(sub *Subscription) {
 }
 
 func (h *Hub) Publish(roomID string, p Position) error {
+	return h.PublishFrom(roomID, p, "", false)
+}
+
+// PublishFrom records a position sent from one device. The device that shared last keeps the member's dot;
+// another device of the same account is turned away unless it claims sharing, which a device does when it
+// opens the meetup or the person taps to share from there. A device that goes quiet loses it.
+func (h *Hub) PublishFrom(roomID string, p Position, device string, claim bool) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
@@ -157,11 +176,16 @@ func (h *Hub) Publish(roomID string, p Position) error {
 	if err != nil {
 		return err
 	}
+	now := h.now()
+	if o, ok := r.owners[p.Member]; ok && o.device != device && !claim && now.Sub(o.at) < h.limits.PositionTTL {
+		return ErrElsewhere
+	}
 	if _, known := r.positions[p.Member]; !known && len(r.positions) >= h.limits.MembersPerRoom {
 		h.dropIfEmpty(roomID, r)
 		return ErrFull
 	}
-	p.At = h.now().UnixMilli()
+	r.owners[p.Member] = owner{device: device, at: now}
+	p.At = now.UnixMilli()
 	r.positions[p.Member] = p
 	data, err := json.Marshal(p)
 	if err != nil {
@@ -172,10 +196,18 @@ func (h *Hub) Publish(roomID string, p Position) error {
 }
 
 func (h *Hub) Leave(roomID, member string) {
+	h.LeaveFrom(roomID, member, "")
+}
+
+// LeaveFrom takes the member off the map, unless another device of theirs is the one sharing.
+func (h *Hub) LeaveFrom(roomID, member, device string) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	r, ok := h.rooms[roomID]
 	if !ok {
+		return
+	}
+	if o, ok := r.owners[member]; ok && o.device != device {
 		return
 	}
 	h.removePosition(r, member)
@@ -215,6 +247,7 @@ func (h *Hub) removePosition(r *room, member string) {
 		return
 	}
 	delete(r.positions, member)
+	delete(r.owners, member)
 	data, _ := json.Marshal(map[string]string{"member": member})
 	h.broadcast(r, Event{Type: "leave", Data: data})
 }

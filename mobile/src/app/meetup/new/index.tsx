@@ -1,5 +1,5 @@
 import * as Haptics from 'expo-haptics';
-import { router, useLocalSearchParams } from 'expo-router';
+import { Stack, router, useLocalSearchParams } from 'expo-router';
 import {
   Button,
   Checkbox,
@@ -107,6 +107,8 @@ export default function NewMeetupSheet() {
 
   return (
     <ScrollView keyboardShouldPersistTaps="handled" contentContainerClassName="gap-5 px-5" contentContainerStyle={sheet}>
+      {/* The header is hidden here, but its title is what the Where page's back button reads. */}
+      <Stack.Screen options={{ title: isPublic ? 'Campus event' : 'New meetup' }} />
       <View className="flex-row items-center justify-between">
         <Text className="text-xl font-bold text-foreground">{isPublic ? 'Campus event' : 'New meetup'}</Text>
         <CloseButton onPress={() => router.back()} />

@@ -31,7 +31,8 @@ var expoClient = &http.Client{Timeout: expoPushDeadline}
 
 // SaveAppToken keeps a phone's push token for the signed in user, moving it over if the phone last belonged to
 // another account.
-func (s *Service) SaveAppToken(ctx context.Context, me auth.User, token string) error {
+// SaveAppToken registers this phone, or refreshes it, along with whether it wants the icon badge.
+func (s *Service) SaveAppToken(ctx context.Context, me auth.User, token string, badge bool) error {
 	if s == nil {
 		return ErrUnavailable
 	}
@@ -52,14 +53,14 @@ func (s *Service) SaveAppToken(ctx context.Context, me auth.User, token string) 
 			return err
 		}
 		if owned {
-			_, err := tx.Exec(ctx, `update app_push_tokens set updated_at = now() where token = $1`, token)
+			_, err := tx.Exec(ctx, `update app_push_tokens set badge = $2, updated_at = now() where token = $1`, token, badge)
 			return err
 		}
 		if n >= maxAppTokens {
 			return ErrTooMany
 		}
 		_, err := tx.Exec(ctx,
-			`insert into app_push_tokens (user_id, token) values ($1::uuid, $2) on conflict (token) do nothing`, me.ID, token)
+			`insert into app_push_tokens (user_id, token, badge) values ($1::uuid, $2, $3) on conflict (token) do nothing`, me.ID, token, badge)
 		return err
 	})
 }
@@ -83,16 +84,21 @@ func (s *Service) RemoveAppToken(ctx context.Context, me auth.User, token string
 	})
 }
 
-// appTokensFor returns the phones to notify and the count for their app icon badge.
-func (s *Service) appTokensFor(ctx context.Context, senderID, targetID string) ([]string, int, error) {
-	var out []string
+type appToken struct {
+	Token string
+	Badge bool
+}
+
+// appTokensFor returns the phones to notify and the count for the icon badge on those that show one.
+func (s *Service) appTokensFor(ctx context.Context, senderID, targetID string) ([]appToken, int, error) {
+	var out []appToken
 	var badge int
 	err := db.WithScope(ctx, s.pool, db.Scope{UserID: senderID}, func(tx pgx.Tx) error {
-		rows, err := tx.Query(ctx, `select token from csimap_app_push_tokens($1::uuid)`, targetID)
+		rows, err := tx.Query(ctx, `select token, badge from csimap_app_push_tokens($1::uuid)`, targetID)
 		if err != nil {
 			return err
 		}
-		if out, err = pgx.CollectRows(rows, pgx.RowTo[string]); err != nil || len(out) == 0 {
+		if out, err = pgx.CollectRows(rows, pgx.RowToStructByPos[appToken]); err != nil || len(out) == 0 {
 			return err
 		}
 		return tx.QueryRow(ctx, `select csimap_app_push_badge($1::uuid)`, targetID).Scan(&badge)
@@ -118,13 +124,17 @@ type expoTicket struct {
 
 // sendToApps delivers one notification to a person's phones, and forgets any phone Expo says has uninstalled
 // the app or turned notifications off for good.
-func (s *Service) sendToApps(ctx context.Context, senderID string, tokens []string, badge int, msg Message) {
+func (s *Service) sendToApps(ctx context.Context, senderID string, tokens []appToken, badge int, msg Message) {
 	if len(tokens) == 0 {
 		return
 	}
 	messages := make([]expoMessage, 0, len(tokens))
 	for _, token := range tokens {
-		messages = append(messages, expoMessage{To: token, Title: msg.Title, Body: msg.Body, Sound: "default", Badge: badge, Data: map[string]string{"url": msg.URL}})
+		count := 0
+		if token.Badge {
+			count = badge
+		}
+		messages = append(messages, expoMessage{To: token.Token, Title: msg.Title, Body: msg.Body, Sound: "default", Badge: count, Data: map[string]string{"url": msg.URL}})
 	}
 	body, err := json.Marshal(messages)
 	if err != nil {
@@ -160,7 +170,7 @@ func (s *Service) sendToApps(ctx context.Context, senderID string, tokens []stri
 			continue
 		}
 		if ticket.Details.Error == "DeviceNotRegistered" {
-			s.forgetAppToken(ctx, senderID, tokens[i])
+			s.forgetAppToken(ctx, senderID, tokens[i].Token)
 		} else {
 			s.logger.Error("app push ticket error", "error", ticket.Details.Error)
 		}

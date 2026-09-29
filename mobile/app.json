@@ -118,7 +118,32 @@
                 "systemSmall",
                 "systemMedium"
               ],
-              "contentMarginsDisabled": false
+              "contentMarginsDisabled": false,
+              "configuration": {
+                "title": "Up Next",
+                "description": "Choose what the widget shows.",
+                "parameters": {
+                  "show": {
+                    "title": "Show",
+                    "type": "enum",
+                    "values": [
+                      {
+                        "name": "Classes and meetups",
+                        "value": "all"
+                      },
+                      {
+                        "name": "Classes only",
+                        "value": "classes"
+                      },
+                      {
+                        "name": "Meetups only",
+                        "value": "meetups"
+                      }
+                    ],
+                    "default": "all"
+                  }
+                }
+              }
             }
           ]
         }

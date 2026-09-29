@@ -23,16 +23,25 @@ func (h *settingsHandlers) get(w http.ResponseWriter, r *http.Request, user auth
 
 func (h *settingsHandlers) save(w http.ResponseWriter, r *http.Request, user auth.User) {
 	var body struct {
-		Voice *string `json:"voice"`
+		Voice  *string `json:"voice"`
+		Notify *struct {
+			FriendRequests *bool `json:"friendRequests"`
+			MeetupInvites  *bool `json:"meetupInvites"`
+			MeetupJoins    *bool `json:"meetupJoins"`
+		} `json:"notify"`
 	}
 	if !decodeJSON(w, r, &body) {
 		return
 	}
-	if body.Voice == nil {
+	patch := settings.Patch{Voice: body.Voice}
+	if body.Notify != nil {
+		patch.FriendRequests, patch.MeetupInvites, patch.MeetupJoins = body.Notify.FriendRequests, body.Notify.MeetupInvites, body.Notify.MeetupJoins
+	}
+	if patch == (settings.Patch{}) {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	saved, err := h.service.Save(r.Context(), user, settings.Settings{Voice: *body.Voice})
+	saved, err := h.service.Save(r.Context(), user, patch)
 	if err != nil {
 		h.fail(w, err)
 		return

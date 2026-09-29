@@ -13,7 +13,7 @@ import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { router, useFocusEffect } from 'expo-router';
 import { useThemeColor, useToast } from 'heroui-native';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Linking, Platform, Text, useColorScheme, useWindowDimensions, View } from 'react-native';
+import { Linking, Platform, useColorScheme, useWindowDimensions, View } from 'react-native';
 import { initialWindowMetrics, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Icon } from '@/components/icon';
@@ -21,6 +21,7 @@ import { CategoryBar, type MapFilter } from '@/components/category-bar';
 import { DirectionsPanel } from '@/components/directions-panel';
 import { HeadingBeam } from '@/components/heading-beam';
 import { MeetupBar } from '@/components/meetup-bar';
+import { PersonCard, PersonPin } from '@/components/person-pin';
 import { MapControls, type MapControl } from '@/components/map-controls';
 import { NavigationBanner, NavigationFooter } from '@/components/navigation-hud';
 import { PlaceMarker } from '@/components/place-marker';
@@ -38,6 +39,7 @@ import { stepText } from '@/lib/instructions';
 import { endTrip, showTrip } from '@/lib/live-activity';
 import { currentFix, useLocation } from '@/lib/location';
 import { setMapBearing } from '@/lib/map-bearing';
+import { markReady } from '@/lib/splash';
 import { showMeetupOnMap, useShownMeetup } from '@/lib/meetup-focus';
 import { remainingPath } from '@/lib/routing';
 import { useSocial } from '@/lib/social';
@@ -91,6 +93,7 @@ export default function MapScreen() {
   const shownMeetupId = useShownMeetup();
   const [filter, setFilter] = useState<MapFilter>('all');
   const [facingUp, setFacingUp] = useState(true);
+  const [activePerson, setActivePerson] = useState<string | null>(null);
   const [permission, requestPermission] = Location.useForegroundPermissions();
   const [accent, danger, background] = useThemeColor(['accent', 'danger', 'background']);
   const casing = scheme === 'dark' ? '#0b1a33' : '#ffffff';
@@ -360,6 +363,8 @@ export default function MapScreen() {
         return !member || member.username !== profile?.username;
       })
     : [];
+  const shownPerson = activePerson ? others.find((position) => position.member === activePerson) : undefined;
+  const shownPersonMember = shownPerson ? meetup?.members.find((m) => m.liveId === shownPerson.member) : undefined;
   const meetupPlace = meetup?.destination?.kind === 'place' ? getPlace(meetup.destination.placeId) : undefined;
   const meetupPin =
     meetup?.destination?.kind === 'pin' && meetup.destination.lat !== undefined && meetup.destination.lng !== undefined
@@ -450,6 +455,7 @@ export default function MapScreen() {
         attribution={false}
         compass={false}
         touchPitch={navigating || buildingView}
+        onDidFinishLoadingMap={() => markReady('map')}
         onRegionWillChange={(event) => {
           if (navigating && event.nativeEvent.userInteraction) navigation.pauseFollowing();
         }}
@@ -549,12 +555,14 @@ export default function MapScreen() {
           const member = meetup?.members.find((m) => m.liveId === position.member);
           const name = member?.displayName || position.name;
           return (
-            <Marker key={position.member} id={`person-${position.member}`} lngLat={toLngLat(position.coordinate)} anchor="center">
-              <View
-                accessibilityLabel={name}
-                className="size-9 items-center justify-center rounded-full border-2 border-background bg-accent shadow-md">
-                <Text className="text-xs font-bold text-accent-foreground">{initials(name, member?.username ?? '?')}</Text>
-              </View>
+            <Marker key={position.member} id={`person-${position.member}`} lngLat={toLngLat(position.coordinate)} anchor="bottom">
+              <PersonPin
+                label={initials(name, member?.username ?? '?')}
+                name={name}
+                isMeetingPoint={meetup?.destination?.kind === 'member' && meetup.destination.liveId === position.member}
+                isActive={activePerson === position.member}
+                onPress={() => setActivePerson((current) => (current === position.member ? null : position.member))}
+              />
             </Marker>
           );
         })}
@@ -588,11 +596,31 @@ export default function MapScreen() {
             where={meetupWhere}
             sharing={others.length}
             state={people.state}
+            elsewhere={people.elsewhere}
+            onTakeOver={people.takeOver}
             onOpen={() => router.push({ pathname: '/meetup/[id]', params: { id: meetup.id } })}
             onDirections={meetupPlace ? () => planTrip(meetupPlace.id) : undefined}
             onStop={() => showMeetupOnMap(null)}
           />
-        ) : trip.phase === 'idle' ? (
+        ) : null}
+        {trip.phase === 'idle' && meetup && shownPerson ? (
+          <View className="pt-2">
+            <PersonCard
+              name={shownPersonMember?.displayName || shownPerson.name}
+              username={shownPersonMember?.username}
+              isHost={shownPersonMember?.role === 'host'}
+              isMeetingPoint={meetup.destination?.kind === 'member' && meetup.destination.liveId === shownPerson.member}
+              coordinate={shownPerson.coordinate}
+              accuracy={shownPerson.accuracy}
+              at={shownPerson.at}
+              youAt={location.fix?.position}
+              onCenter={() =>
+                camera.current?.flyTo({ center: toLngLat(shownPerson.coordinate), zoom: 18, duration: 600, padding: NO_PADDING })
+              }
+              onClose={() => setActivePerson(null)}
+            />
+          </View>
+        ) : trip.phase === 'idle' && !meetup ? (
           <CategoryBar value={filter} onChange={setFilter} />
         ) : null}
       </View>

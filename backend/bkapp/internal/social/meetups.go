@@ -274,7 +274,7 @@ func (s *Service) CreateMeetup(ctx context.Context, me auth.User, in CreateMeetu
 		if name == "" {
 			name = me.Username
 		}
-		s.ping(me.ID, invited, s.site.AppName, name+" invited you to walk together", "/")
+		s.ping(NotifyInvite, me.ID, invited, s.site.AppName, name+" invited you to walk together", "/")
 	}
 	return created, err
 }

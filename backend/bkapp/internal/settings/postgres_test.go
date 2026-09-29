@@ -55,11 +55,32 @@ func TestSettingsBelongToTheirOwner(t *testing.T) {
 	bob := signIn("settings.bob.test@stu-mail.csi.cuny.edu")
 
 	service := settings.NewService(pool)
-	if got, err := service.Get(ctx, alice); err != nil || got.Voice != "" {
+	if got, err := service.Get(ctx, alice); err != nil || got.Voice != "" || !got.Notify.FriendRequests || !got.Notify.MeetupInvites || !got.Notify.MeetupJoins {
 		t.Fatalf("new account settings = %+v, %v", got, err)
 	}
-	if _, err := service.Save(ctx, alice, settings.Settings{Voice: "af_bella"}); err != nil {
+	voice := "af_bella"
+	if _, err := service.Save(ctx, alice, settings.Patch{Voice: &voice}); err != nil {
 		t.Fatal(err)
+	}
+
+	// Turning one kind of notification off leaves the voice and the other kinds alone, and the server's check
+	// for whether to send one sees it.
+	off := false
+	saved, err := service.Save(ctx, alice, settings.Patch{MeetupJoins: &off})
+	if err != nil || saved.Voice != "af_bella" || saved.Notify.MeetupJoins || !saved.Notify.FriendRequests {
+		t.Fatalf("notification change = %+v, %v", saved, err)
+	}
+	wanted := func(kind string) bool {
+		var ok bool
+		if err := db.WithScope(ctx, pool, db.Scope{UserID: bob.ID}, func(tx pgx.Tx) error {
+			return tx.QueryRow(ctx, `select csimap_push_wanted($1::uuid, $2)`, alice.ID, kind).Scan(&ok)
+		}); err != nil {
+			t.Fatal(err)
+		}
+		return ok
+	}
+	if wanted("join") || !wanted("invite") || !wanted("friend") {
+		t.Fatal("push preference check does not match what alice chose")
 	}
 	if got, _ := service.Get(ctx, alice); got.Voice != "af_bella" {
 		t.Fatalf("saved voice = %q", got.Voice)
@@ -67,7 +88,8 @@ func TestSettingsBelongToTheirOwner(t *testing.T) {
 	if got, _ := service.Get(ctx, bob); got.Voice != "" {
 		t.Fatalf("bob sees a voice he never chose: %q", got.Voice)
 	}
-	if _, err := service.Save(ctx, alice, settings.Settings{Voice: "not_a_voice"}); !errors.Is(err, settings.ErrInvalidVoice) {
+	bad := "not_a_voice"
+	if _, err := service.Save(ctx, alice, settings.Patch{Voice: &bad}); !errors.Is(err, settings.ErrInvalidVoice) {
 		t.Fatalf("unknown voice = %v", err)
 	}
 

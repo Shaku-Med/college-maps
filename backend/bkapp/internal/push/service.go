@@ -29,6 +29,8 @@ var (
 )
 
 type Message struct {
+	// Kind is checked against what the recipient turned off. It is not part of the payload.
+	Kind  string `json:"-"`
 	Title string `json:"title"`
 	Body  string `json:"body"`
 	URL   string `json:"url"`
@@ -168,6 +170,9 @@ func (s *Service) Notify(ctx context.Context, senderID string, userIDs []string,
 		if userID == "" || userID == senderID {
 			continue
 		}
+		if msg.Kind != "" && !s.wanted(ctx, senderID, userID, msg.Kind) {
+			continue
+		}
 		if web {
 			subs, err := s.keysFor(ctx, senderID, userID)
 			if err != nil {
@@ -184,6 +189,19 @@ func (s *Service) Notify(ctx context.Context, senderID string, userIDs []string,
 		}
 		s.sendToApps(ctx, senderID, tokens, badge, msg)
 	}
+}
+
+// wanted reports whether the recipient still wants this kind of notification. A failed check sends nothing.
+func (s *Service) wanted(ctx context.Context, senderID, targetID, kind string) bool {
+	var ok bool
+	err := db.WithScope(ctx, s.pool, db.Scope{UserID: senderID}, func(tx pgx.Tx) error {
+		return tx.QueryRow(ctx, `select csimap_push_wanted($1::uuid, $2)`, targetID, kind).Scan(&ok)
+	})
+	if err != nil {
+		s.logger.Error("push preference lookup failed", "error", err)
+		return false
+	}
+	return ok
 }
 
 type webSub struct {

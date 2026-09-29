@@ -1,13 +1,12 @@
 import { getPlace } from '@/data/campus';
 import { classesOn, dayKey, type ClassEntry } from '@/lib/schedule';
 import type { Meetup } from '@/lib/social-api';
-import UpNext, { type UpNextProps } from '@/widgets/up-next';
+import UpNext, { type UpNextItem, type UpNextProps } from '@/widgets/up-next';
 
-type Item = Omit<UpNextProps, 'kind'> & { kind: 'meetup' | 'class' };
+type Item = UpNextItem & { kind: 'meetup' | 'class' };
 
 const HORIZON_MS = 36 * 60 * 60 * 1000;
 const MAX_ENTRIES = 24;
-const NOTHING: UpNextProps = { kind: 'none', title: '', detail: '', startsAt: 0, endsAt: 0 };
 
 function meetupItem(meetup: Meetup): Item {
   const place = meetup.destination?.kind === 'place' ? getPlace(meetup.destination.placeId) : undefined;
@@ -40,13 +39,19 @@ function classItems(classes: ClassEntry[], now: Date): Item[] {
   return out;
 }
 
-// What the widget shows at a moment: a meetup going on, then a class going on, then whatever starts next.
+// At a moment, the meetup and the class that matter: the one going on, or else the next to start. The widget
+// chooses between them by its own setting.
+function current(items: Item[], at: number): UpNextItem | null {
+  const going = items.find((item) => item.startsAt <= at && item.endsAt > at);
+  const found = going ?? items.filter((item) => item.startsAt > at).sort((a, b) => a.startsAt - b.startsAt)[0];
+  return found ? { title: found.title, detail: found.detail, startsAt: found.startsAt, endsAt: found.endsAt } : null;
+}
+
 function pick(items: Item[], at: number): UpNextProps {
-  const live = items.filter((item) => item.startsAt <= at && item.endsAt > at);
-  const now = live.find((item) => item.kind === 'meetup') ?? live[0];
-  if (now) return now;
-  const next = items.filter((item) => item.startsAt > at).sort((a, b) => a.startsAt - b.startsAt)[0];
-  return next ?? NOTHING;
+  return {
+    meetup: current(items.filter((item) => item.kind === 'meetup'), at),
+    lesson: current(items.filter((item) => item.kind === 'class'), at),
+  };
 }
 
 /**

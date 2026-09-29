@@ -209,7 +209,7 @@ func (s *Service) SendRequest(ctx context.Context, me auth.User, rawUsername str
 		if name == "" {
 			name = me.Username
 		}
-		s.ping(me.ID, []string{targetID}, s.site.AppName, name+" sent you a friend request", "/")
+		s.ping(NotifyFriendRequest, me.ID, []string{targetID}, s.site.AppName, name+" sent you a friend request", "/")
 	}
 	return result, err
 }

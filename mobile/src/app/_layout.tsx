@@ -2,6 +2,7 @@
 import '@/lib/polyfills';
 import 'expo-sqlite/localStorage/install';
 import '@/global.css';
+import { markReady } from '@/lib/splash';
 
 import { isLiquidGlassAvailable } from 'expo-glass-effect';
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
@@ -39,7 +40,7 @@ function Navigation() {
   useNotificationTaps();
 
   useEffect(() => {
-    void refreshAccount();
+    void refreshAccount().finally(() => markReady('account'));
     // A session ended on another device is noticed when the app comes back to the front.
     const sub = AppState.addEventListener('change', (next) => {
       if (next === 'active') void refreshAccount();

@@ -17,6 +17,9 @@ type MeetupSheetProps = {
   myUsername: string;
   positions: LivePosition[];
   state: LiveState;
+  /** This account is sharing from another phone or browser, not this one. */
+  elsewhere?: boolean;
+  onTakeOver?: () => void;
   youAt?: Coordinate;
   onMeetupChange: (meetup: Meetup) => void;
   onDirections: (place: Place) => void;
@@ -36,6 +39,8 @@ export function MeetupSheet({
   myUsername,
   positions,
   state,
+  elsewhere = false,
+  onTakeOver,
   youAt,
   onMeetupChange,
   onDirections,
@@ -98,8 +103,8 @@ export function MeetupSheet({
         <div className="min-w-0 flex-1">
           <h2 className="truncate text-base font-semibold leading-tight">{meetup.note || meetupWhere(meetup, myUsername)}</h2>
           <p className="flex items-center gap-1.5 truncate text-xs text-muted">
-            <Radio className={state === "live" ? "size-3 text-accent" : "size-3"} aria-hidden />
-            {stateLabel[state]}
+            <Radio className={state === "live" && !elsewhere ? "size-3 text-accent" : "size-3"} aria-hidden />
+            {elsewhere ? "Sharing from your other device" : stateLabel[state]}
           </p>
         </div>
         <CollapseButton onCollapse={onCollapse} />
@@ -107,6 +112,16 @@ export function MeetupSheet({
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-[max(1.25rem,var(--map-safe-bottom))] pt-1">
+        {elsewhere ? (
+          <div className="mb-3 flex items-center gap-3 rounded-2xl bg-surface-secondary px-4 py-3">
+            <p className="min-w-0 flex-1 text-sm text-muted">
+              You&apos;re signed in on another device that is sharing your location for this meetup.
+            </p>
+            <Button size="sm" onPress={onTakeOver}>
+              Share from here
+            </Button>
+          </div>
+        ) : null}
         <div className="flex items-center gap-3 rounded-2xl bg-surface-secondary px-4 py-3">
           <div className="min-w-0 flex-1">
             <p className="text-xs text-muted">Heading to</p>

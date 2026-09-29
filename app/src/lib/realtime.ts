@@ -14,6 +14,8 @@ export type LivePosition = {
 type Handlers = {
   onPositions: (positions: LivePosition[]) => void;
   onState: (state: "connecting" | "live" | "offline") => void;
+  /** True while this account is sharing from another phone or browser instead of this one. */
+  onElsewhere?: (elsewhere: boolean) => void;
 };
 
 const RETRY_MIN_MS = 1000;
@@ -48,16 +50,35 @@ function retryDelay(attempt: number) {
   return wait * (0.5 + Math.random());
 }
 
+// A random id for this phone or browser, so one account signed in on two of them shares its location from
+// one place at a time instead of jumping between both.
+const DEVICE_KEY = "csimap.device";
+const DEVICE_PATTERN = /^[A-Za-z0-9_-]{8,64}$/;
+let sessionDevice: string | null = null;
+
+function deviceId() {
+  try {
+    const saved = globalThis.localStorage?.getItem(DEVICE_KEY);
+    if (saved && DEVICE_PATTERN.test(saved)) return saved;
+    const made = crypto.randomUUID();
+    globalThis.localStorage?.setItem(DEVICE_KEY, made);
+    return made;
+  } catch {
+    sessionDevice ??= crypto.randomUUID();
+    return sessionDevice;
+  }
+}
+
 /**
  * Keeps one meetup's live positions flowing: it streams everyone else's positions and sends yours,
  * swapping in a fresh pass before the old one runs out. Nothing is stored anywhere; closing the
  * connection stops the sharing.
  */
-export function joinMeetupLive(meetupId: string, { onPositions, onState }: Handlers) {
+export function joinMeetupLive(meetupId: string, { onPositions, onState, onElsewhere }: Handlers) {
   const origin = apiOriginFor(window.location.hostname, REALTIME_ORIGIN);
   if (!origin) {
     onState("offline");
-    return { send: async () => {}, close: () => {} };
+    return { send: async () => {}, takeOver: () => {}, close: () => {} };
   }
 
   const positions = new Map<string, LivePosition>();
@@ -68,6 +89,14 @@ export function joinMeetupLive(meetupId: string, { onPositions, onState }: Handl
   let closed = false;
   let connecting = false;
   let sending = false;
+  // Opening the meetup here claims sharing for this device; after that it only keeps it.
+  let claim = true;
+  let elsewhere = false;
+  const setElsewhere = (next: boolean) => {
+    if (next === elsewhere) return;
+    elsewhere = next;
+    onElsewhere?.(next);
+  };
 
   const publish = () => onPositions([...positions.values()]);
 
@@ -167,12 +196,12 @@ export function joinMeetupLive(meetupId: string, { onPositions, onState }: Handl
 
   return {
     async send({ position, accuracy, heading }: { position: Coordinate; accuracy: number; heading?: number }) {
-      if (sending || closed) return;
+      if (sending || closed || (elsewhere && !claim)) return;
       sending = true;
       try {
         const token = await renewPass();
         if (!token || closed) return;
-        await fetch(`${origin}/v1/position`, {
+        const res = await fetch(`${origin}/v1/position`, {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
           body: JSON.stringify({
@@ -180,11 +209,25 @@ export function joinMeetupLive(meetupId: string, { onPositions, onState }: Handl
             lng: position.longitude,
             accuracy: Math.min(Math.max(Math.round(accuracy), 0), 5000),
             heading: heading === undefined ? undefined : ((Math.round(heading) % 360) + 360) % 360,
+            device: deviceId(),
+            claim,
           }),
-        }).catch(() => {});
+        }).catch(() => null);
+        if (res?.status === 409) {
+          setElsewhere(true);
+        } else if (res?.ok) {
+          claim = false;
+          setElsewhere(false);
+        }
+
       } finally {
         sending = false;
       }
+    },
+    /** Moves sharing to this device from the account's other phone or browser. */
+    takeOver() {
+      claim = true;
+      setElsewhere(false);
     },
     close() {
       closed = true;
@@ -195,7 +238,8 @@ export function joinMeetupLive(meetupId: string, { onPositions, onState }: Handl
       if (pass && pass.expiresAt > Date.now()) {
         fetch(`${origin}/v1/leave`, {
           method: "POST",
-          headers: { Authorization: `Bearer ${pass.token}` },
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${pass.token}` },
+          body: JSON.stringify({ device: deviceId() }),
           keepalive: true,
         }).catch(() => {});
       }

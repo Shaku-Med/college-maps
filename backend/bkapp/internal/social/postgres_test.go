@@ -523,11 +523,11 @@ func TestAppPushTokens(t *testing.T) {
 	}
 
 	for _, bad := range []string{"", "ExponentPushToken[]", "https://evil.example", "ExponentPushToken[a b]", token + "x"} {
-		if err := pushes.SaveAppToken(ctx, owner, bad); !errors.Is(err, push.ErrInvalid) {
+		if err := pushes.SaveAppToken(ctx, owner, bad, true); !errors.Is(err, push.ErrInvalid) {
 			t.Errorf("token %q: %v", bad, err)
 		}
 	}
-	if err := pushes.SaveAppToken(ctx, owner, token); err != nil {
+	if err := pushes.SaveAppToken(ctx, owner, token, true); err != nil {
 		t.Fatal(err)
 	}
 	if got := tokensSeenBy(stranger, owner); len(got) != 0 {
@@ -557,7 +557,7 @@ func TestAppPushTokens(t *testing.T) {
 	}
 
 	// The phone is signed into another account without the first one signing out: the token moves.
-	if err := pushes.SaveAppToken(ctx, stranger, token); err != nil {
+	if err := pushes.SaveAppToken(ctx, stranger, token, true); err != nil {
 		t.Fatal(err)
 	}
 	if got := tokensSeenBy(friend, owner); len(got) != 0 {

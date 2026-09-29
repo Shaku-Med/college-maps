@@ -13,18 +13,22 @@ type MeetupBarProps = {
   /** Other people currently sharing, not counting you. */
   sharing: number;
   state: LiveState;
+  /** This account is sharing from another phone or browser, not this one. */
+  elsewhere: boolean;
+  onTakeOver: () => void;
   onOpen: () => void;
   onDirections?: () => void;
   onStop: () => void;
 };
 
 /** What the map is showing while a meetup is on it: who is live, where you meet, and a way to stop sharing. */
-export function MeetupBar({ meetup, where, sharing, state, onOpen, onDirections, onStop }: MeetupBarProps) {
+export function MeetupBar({ meetup, where, sharing, state, elsewhere, onTakeOver, onOpen, onDirections, onStop }: MeetupBarProps) {
   const [accent, muted] = useThemeColor(['accent', 'muted']);
   const others = meetup.members.filter((m) => m.status === 'joined').length - 1;
   const title = meetup.title ?? (meetup.yourRole === 'host' ? 'Your meetup' : `${meetup.host.displayName}'s meetup`);
-  const status =
-    state === 'live'
+  const status = elsewhere
+    ? 'Sharing from your other device'
+    : state === 'live'
       ? others <= 0
         ? 'Waiting for others to join'
         : `${sharing} of ${others} sharing now`
@@ -55,7 +59,19 @@ export function MeetupBar({ meetup, where, sharing, state, onOpen, onDirections,
             </View>
           </View>
         </Pressable>
-        {onDirections ? (
+        {elsewhere ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Share your location from this phone instead"
+            hitSlop={6}
+            onPress={() => {
+              void Haptics.selectionAsync();
+              onTakeOver();
+            }}
+            className="h-9 items-center justify-center rounded-full bg-accent px-3.5 active:opacity-80">
+            <Text className="text-sm font-semibold text-accent-foreground">Share here</Text>
+          </Pressable>
+        ) : onDirections ? (
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={`Directions to ${where}`}

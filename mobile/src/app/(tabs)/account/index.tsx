@@ -1,9 +1,8 @@
 import Constants from 'expo-constants';
 import { router, Stack } from 'expo-router';
 import type { SFSymbol } from 'expo-symbols';
-import { Card, ListGroup, Separator, Spinner, Switch, useThemeColor, useToast } from 'heroui-native';
-import { useState } from 'react';
-import { Alert, Linking, ScrollView, Text, View } from 'react-native';
+import { Card, ListGroup, Separator, Spinner, useThemeColor, useToast } from 'heroui-native';
+import { Alert, ScrollView, Text, View } from 'react-native';
 
 import { Icon } from '@/components/icon';
 import { ProfileForm } from '@/components/profile-form';
@@ -13,7 +12,6 @@ import { UpdatesSection } from '@/components/updates-section';
 import { CAMPUS } from '@/data/campus';
 import { signOut, useAccount } from '@/lib/account';
 import { openWeb } from '@/lib/links';
-import { disableNotifications, enableNotifications, useNotificationsEnabled } from '@/lib/notifications';
 
 const VERSION = Constants.expoConfig?.version ?? '1.0.0';
 
@@ -53,60 +51,6 @@ function initials(name: string) {
       .slice(0, 2)
       .map((word) => word[0]?.toUpperCase() ?? '')
       .join('') || '?'
-  );
-}
-
-function NotificationsRow() {
-  const { toast } = useToast();
-  const muted = useThemeColor('muted');
-  const [enabled, setEnabled] = useNotificationsEnabled();
-  const [busy, setBusy] = useState(false);
-
-  async function change(next: boolean) {
-    setBusy(true);
-    if (!next) {
-      await disableNotifications().catch(() => undefined);
-      setEnabled(false);
-      setBusy(false);
-      return;
-    }
-    const result = await enableNotifications();
-    setBusy(false);
-    if (result === 'on') {
-      setEnabled(true);
-    } else if (result === 'denied') {
-      toast.show({
-        variant: 'warning',
-        label: 'Notifications are off for CSI Map',
-        description: 'Turn them on in Settings to hear about friend requests and meetups.',
-        actionLabel: 'Settings',
-        onActionPress: ({ hide }) => {
-          hide();
-          void Linking.openSettings();
-        },
-      });
-    } else if (result === 'unavailable') {
-      toast.show({
-        variant: 'warning',
-        label: "Notifications aren't available on this build",
-        description: 'This version of the app cannot receive notifications yet. An update will turn them on.',
-      });
-    } else {
-      toast.show({ variant: 'danger', label: "Couldn't turn on notifications", description: 'Try again in a moment.' });
-    }
-  }
-
-  return (
-    <ListGroup.Item disabled>
-      <ListGroup.ItemPrefix>
-        <Icon name="bell" size={20} tintColor={muted} />
-      </ListGroup.ItemPrefix>
-      <ListGroup.ItemContent>
-        <ListGroup.ItemTitle>Notifications</ListGroup.ItemTitle>
-        <ListGroup.ItemDescription>Friend requests and meetup invites on this phone</ListGroup.ItemDescription>
-      </ListGroup.ItemContent>
-      <Switch isSelected={enabled} isDisabled={busy} onSelectedChange={(next) => void change(next)} />
-    </ListGroup.Item>
   );
 }
 
@@ -177,7 +121,12 @@ export default function AccountScreen() {
                 <Separator className="mx-4" />
                 <Row symbol="lock" title="Email, only visible to you" description={account.user.email} />
                 <Separator className="mx-4" />
-                <NotificationsRow />
+                <Row
+                  symbol="bell"
+                  title="Notifications"
+                  description="Alerts, badge, and what you hear about"
+                  onPress={() => router.push('/account/notifications')}
+                />
               </ListGroup>
             </View>
             <View>

@@ -2,6 +2,7 @@ import * as Notifications from 'expo-notifications';
 import { useEffect, useSyncExternalStore } from 'react';
 import { AppState, Platform } from 'react-native';
 
+import { getPhonePrefs } from '@/lib/notifications';
 import { socialApi, type FriendsOverview, type Meetup } from '@/lib/social-api';
 
 const REFRESH_MS = 30_000;
@@ -56,7 +57,7 @@ function waitingCount(social: Social) {
 // The icon badge is what still needs an answer: friend requests and meetup invites.
 function syncBadge(count: number) {
   if (Platform.OS === 'web') return;
-  void Notifications.setBadgeCountAsync(count).catch(() => undefined);
+  void Notifications.setBadgeCountAsync(getPhonePrefs().badge ? count : 0).catch(() => undefined);
 }
 
 // Every screen that shows friends or meetups shares one refresher, so opening a screen never starts another

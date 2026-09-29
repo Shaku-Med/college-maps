@@ -110,8 +110,8 @@ func Build(ctx context.Context, logger *slog.Logger, migrate bool) (*App, error)
 	} else {
 		logger.Info("push notifications off")
 	}
-	socialService.SetNotify(func(senderID string, userIDs []string, title, body, path string) {
-		go pushService.Notify(context.Background(), senderID, userIDs, push.Message{Title: title, Body: body, URL: path})
+	socialService.SetNotify(func(kind, senderID string, userIDs []string, title, body, path string) {
+		go pushService.Notify(context.Background(), senderID, userIDs, push.Message{Kind: kind, Title: title, Body: body, URL: path})
 	})
 
 	api := httpapi.New(cfg, logger, site, authService, socialService, pushService, settings.NewService(pool))

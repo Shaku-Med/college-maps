@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { Coordinate } from "@/data/campus";
 import { distanceMeters } from "@/lib/geo";
@@ -11,9 +11,9 @@ const SEND_AFTER_METERS = 8;
 
 export type LiveState = "connecting" | "live" | "offline";
 
-type Live = { meetupId: string; positions: LivePosition[]; state: LiveState };
+type Live = { meetupId: string; positions: LivePosition[]; state: LiveState; elsewhere: boolean };
 
-const nothing: Live = { meetupId: "", positions: [], state: "offline" };
+const nothing: Live = { meetupId: "", positions: [], state: "offline", elsewhere: false };
 
 /**
  * Streams the meetup's positions while it is open and shares yours. Passing a null id stops both,
@@ -30,10 +30,13 @@ export function useMeetupLive(meetupId: string | null, fix?: { position: Coordin
     let active = true;
     const connection = joinMeetupLive(meetupId, {
       onPositions: (positions) => {
-        if (active) setLive((current) => ({ meetupId, positions, state: current.state }));
+        if (active) setLive((current) => ({ ...(current.meetupId === meetupId ? current : nothing), meetupId, positions }));
       },
       onState: (state) => {
-        if (active) setLive((current) => ({ meetupId, positions: current.positions, state }));
+        if (active) setLive((current) => ({ ...(current.meetupId === meetupId ? current : nothing), meetupId, state }));
+      },
+      onElsewhere: (elsewhere) => {
+        if (active) setLive((current) => ({ ...(current.meetupId === meetupId ? current : nothing), meetupId, elsewhere }));
       },
     });
     connectionRef.current = connection;
@@ -58,5 +61,10 @@ export function useMeetupLive(meetupId: string | null, fix?: { position: Coordin
   // Anything left from a previous meetup is ignored rather than cleared, so no extra render happens.
   const current = meetupId && live.meetupId === meetupId ? live : nothing;
   const state: LiveState = !meetupId ? "offline" : current.state === "offline" ? "connecting" : current.state;
-  return { positions: current.positions, state };
+  // Sharing moves here from the account's other phone or browser, and the next fix goes out right away.
+  const takeOver = useCallback(() => {
+    connectionRef.current?.takeOver();
+    lastSentRef.current = null;
+  }, []);
+  return { positions: current.positions, state, elsewhere: current.elsewhere, takeOver };
 }

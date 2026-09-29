@@ -63,7 +63,7 @@ func (s *Service) pingJoined(me auth.User, userIDs []string, m Meetup) {
 	if m.Title != "" {
 		what = m.Title
 	}
-	s.ping(me.ID, userIDs, s.site.AppName, displayName(me)+" joined "+what, "/")
+	s.ping(NotifyJoin, me.ID, userIDs, s.site.AppName, displayName(me)+" joined "+what, "/")
 }
 
 // InviteToMeetup adds friends to a live private meetup the host runs, including anyone who left or said no,
@@ -168,7 +168,7 @@ func (s *Service) InviteToMeetup(ctx context.Context, me auth.User, publicID str
 		return err
 	})
 	if err == nil && len(invited) > 0 {
-		s.ping(me.ID, invited, s.site.AppName, displayName(me)+" invited you to walk together", "/")
+		s.ping(NotifyInvite, me.ID, invited, s.site.AppName, displayName(me)+" invited you to walk together", "/")
 	}
 	return m, err
 }

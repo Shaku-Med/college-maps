@@ -128,3 +128,31 @@ func TestMaxStreams(t *testing.T) {
 		t.Fatal("total streams should be capped")
 	}
 }
+
+// One account signed in on two phones shares from one of them, so its dot does not jump between places.
+func TestOneDevicePerMember(t *testing.T) {
+	h, now := newTestHub(DefaultLimits)
+	if err := h.PublishFrom("room", pos("alice"), "phone-one", true); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.PublishFrom("room", pos("alice"), "phone-two", false); !errors.Is(err, ErrElsewhere) {
+		t.Fatalf("a second phone moved the dot: %v", err)
+	}
+	// The second phone leaving must not take down the dot the first phone is sharing.
+	h.LeaveFrom("room", "alice", "phone-two")
+	if _, snapshot, _ := h.Subscribe("room", "bob"); len(snapshot) != 1 {
+		t.Fatalf("alice vanished when her other phone left: %v", snapshot)
+	}
+	// Opening the meetup on the second phone takes over.
+	if err := h.PublishFrom("room", pos("alice"), "phone-two", true); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.PublishFrom("room", pos("alice"), "phone-one", false); !errors.Is(err, ErrElsewhere) {
+		t.Fatalf("the old phone kept sharing: %v", err)
+	}
+	// A phone that goes quiet loses it without anyone claiming.
+	*now = now.Add(DefaultLimits.PositionTTL + time.Second)
+	if err := h.PublishFrom("room", pos("alice"), "phone-one", false); err != nil {
+		t.Fatalf("a quiet phone still held sharing: %v", err)
+	}
+}

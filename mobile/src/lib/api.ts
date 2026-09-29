@@ -97,3 +97,26 @@ export const accountApi = {
   signOutEverywhere: () => apiCall<void>('/v1/auth/signout-all', 'POST'),
   deleteAccount: () => apiCall<void>('/v1/me', 'DELETE'),
 };
+
+/** Which notifications the account wants, the same on every phone and browser. */
+export type NotifyPrefs = { friendRequests: boolean; meetupInvites: boolean; meetupJoins: boolean };
+
+function readNotify(value: unknown): NotifyPrefs | null {
+  const n = (value as { notify?: Record<string, unknown> } | null)?.notify;
+  if (!n || typeof n.friendRequests !== 'boolean' || typeof n.meetupInvites !== 'boolean' || typeof n.meetupJoins !== 'boolean') {
+    return null;
+  }
+  return { friendRequests: n.friendRequests, meetupInvites: n.meetupInvites, meetupJoins: n.meetupJoins };
+}
+
+async function withNotify(result: Promise<ApiResult<unknown>>): Promise<ApiResult<NotifyPrefs>> {
+  const res = await result;
+  if (!res.ok) return res;
+  const prefs = readNotify(res.data);
+  return prefs ? { ok: true, data: prefs } : { ok: false, status: 0, message: 'Unexpected response from the server.' };
+}
+
+export const settingsApi = {
+  notify: () => withNotify(apiCall('/v1/me/settings', 'GET')),
+  saveNotify: (change: Partial<NotifyPrefs>) => withNotify(apiCall('/v1/me/settings', 'PATCH', { notify: change })),
+};

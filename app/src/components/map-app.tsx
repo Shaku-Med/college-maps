@@ -11,6 +11,7 @@ import { DragScroll } from "@/components/drag-scroll";
 import { NavigationHud, type RouteNotice } from "@/components/navigation-hud";
 import { MeetupPeek, MeetupSheet } from "@/components/meetup-sheet";
 import { PeoplePanel, initialsFor } from "@/components/people-panel";
+import { PersonCard } from "@/components/person-card";
 import { PlaceSheet } from "@/components/place-sheet";
 import { SchedulePanel } from "@/components/schedule-panel";
 import { SearchPanel } from "@/components/search-panel";
@@ -774,6 +775,9 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
           };
         })
     : [];
+  const activePosition = meetup && activePersonId ? live.positions.find((p) => p.member === activePersonId) : undefined;
+  const activeMember = activePosition ? meetup?.members.find((m) => m.liveId === activePosition.member) : undefined;
+
   const meetupPin =
     meetup?.destination?.kind === "pin" && meetup.destination.lat !== undefined && meetup.destination.lng !== undefined
       ? { latitude: meetup.destination.lat, longitude: meetup.destination.lng }
@@ -1025,6 +1029,25 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
         unbounded={mode === "directions" ? isOffCampus : mode === "navigate" && navRoute?.travel !== undefined}
       />
 
+      {activePosition && meetup ? (
+        <div className="pointer-events-none absolute inset-x-0 top-[calc(var(--map-safe-top)+4.25rem)] z-40 flex justify-center md:left-[436px] md:right-auto md:top-4 md:justify-start">
+          <PersonCard
+            person={{
+              name: activeMember?.displayName || activePosition.name,
+              username: activeMember?.username,
+              isHost: activeMember?.role === "host",
+              isMeetingPoint: meetup.destination?.kind === "member" && meetup.destination.liveId === activePosition.member,
+              coordinate: activePosition.coordinate,
+              accuracy: activePosition.accuracy,
+              at: activePosition.at,
+            }}
+            youAt={geo.position}
+            onCenter={() => mapRef.current?.focus(activePosition.coordinate)}
+            onClose={() => setActivePersonId(null)}
+          />
+        </div>
+      ) : null}
+
       {mode === "browse" && scheduleExpanded ? (
         <SheetLayer wrapClassName={SHEET_FULL_WRAP} onCollapse={() => setIsScheduleExpanded(false)}>
           <SchedulePanel
@@ -1063,6 +1086,8 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
             myUsername={myUsername}
             positions={live.positions}
             state={live.state}
+            elsewhere={live.elsewhere}
+            onTakeOver={live.takeOver}
             youAt={geo.position}
             onMeetupChange={(updated) => {
               social.updateMeetup(updated);

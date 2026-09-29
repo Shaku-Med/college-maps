@@ -70,11 +70,13 @@ func (h *pushHandlers) remove(w http.ResponseWriter, r *http.Request, user auth.
 func (h *pushHandlers) saveApp(w http.ResponseWriter, r *http.Request, user auth.User) {
 	var body struct {
 		Token string `json:"token"`
+		Badge *bool  `json:"badge"`
 	}
 	if !decodeJSON(w, r, &body) {
 		return
 	}
-	if err := h.service.SaveAppToken(r.Context(), user, body.Token); err != nil {
+	badge := body.Badge == nil || *body.Badge
+	if err := h.service.SaveAppToken(r.Context(), user, body.Token, badge); err != nil {
 		h.fail(w, err)
 		return
 	}

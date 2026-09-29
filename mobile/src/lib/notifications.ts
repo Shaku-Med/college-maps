@@ -1,7 +1,7 @@
 import Constants from 'expo-constants';
 import * as Notifications from 'expo-notifications';
 import { router } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import { Platform } from 'react-native';
 
 import { apiCall } from '@/lib/api';
@@ -13,11 +13,61 @@ const TOKEN_PATTERN = /^ExponentPushToken\[[A-Za-z0-9_-]{8,128}\]$/;
 
 let registered: string | null = null;
 
+// Choices that belong to this phone rather than the account: the icon badge, banners while the app is open,
+// and sound. All start on.
+export type PhonePrefs = { badge: boolean; banners: boolean; sound: boolean };
+const PHONE_KEY = 'csimap.notifications.phone';
+const PHONE_DEFAULTS: PhonePrefs = { badge: true, banners: true, sound: true };
+const phoneListeners = new Set<() => void>();
+
+function loadPhonePrefs(): PhonePrefs {
+  try {
+    const saved = JSON.parse(globalThis.localStorage?.getItem(PHONE_KEY) ?? '{}') as Partial<Record<keyof PhonePrefs, unknown>>;
+    return {
+      badge: typeof saved.badge === 'boolean' ? saved.badge : true,
+      banners: typeof saved.banners === 'boolean' ? saved.banners : true,
+      sound: typeof saved.sound === 'boolean' ? saved.sound : true,
+    };
+  } catch {
+    return PHONE_DEFAULTS;
+  }
+}
+
+let phonePrefs = loadPhonePrefs();
+
+export const getPhonePrefs = () => phonePrefs;
+
+export function setPhonePref(key: keyof PhonePrefs, value: boolean) {
+  phonePrefs = { ...phonePrefs, [key]: value };
+  try {
+    globalThis.localStorage?.setItem(PHONE_KEY, JSON.stringify(phonePrefs));
+  } catch {
+    // Kept for this visit only.
+  }
+  if (key === 'badge') {
+    if (!value) void Notifications.setBadgeCountAsync(0).catch(() => undefined);
+    // The server puts the count on notifications that arrive while the app is closed, so it has to know too.
+    if (registered) void apiCall<void>('/v1/push/app-tokens', 'POST', { token: registered, badge: value });
+  }
+  for (const listener of phoneListeners) listener();
+}
+
+export function usePhonePrefs() {
+  return useSyncExternalStore(
+    (listener) => {
+      phoneListeners.add(listener);
+      return () => void phoneListeners.delete(listener);
+    },
+    () => phonePrefs,
+    () => phonePrefs,
+  );
+}
+
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
-    shouldShowBanner: true,
+    shouldShowBanner: phonePrefs.banners,
     shouldShowList: true,
-    shouldPlaySound: true,
+    shouldPlaySound: phonePrefs.sound,
     shouldSetBadge: false,
   }),
 });
@@ -72,7 +122,7 @@ export async function enableNotifications(): Promise<EnableResult> {
   }
   if (!token) return 'unavailable';
   try {
-    const res = await apiCall<void>('/v1/push/app-tokens', 'POST', { token });
+    const res = await apiCall<void>('/v1/push/app-tokens', 'POST', { token, badge: phonePrefs.badge });
     if (!res.ok) return 'failed';
     registered = token;
     savePreference(true);
@@ -102,7 +152,7 @@ export async function syncNotifications() {
   try {
     const token = await phoneToken();
     if (token && token !== registered) {
-      const res = await apiCall<void>('/v1/push/app-tokens', 'POST', { token });
+      const res = await apiCall<void>('/v1/push/app-tokens', 'POST', { token, badge: phonePrefs.badge });
       if (res.ok) registered = token;
     }
   } catch {
