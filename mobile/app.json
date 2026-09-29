@@ -154,6 +154,7 @@
           "color": "#1268D2"
         }
       ],
+      "expo-quick-actions",
       "./plugins/with-background-modes"
     ],
     "experiments": {

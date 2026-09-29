@@ -2,6 +2,7 @@ import { useSyncExternalStore } from 'react';
 
 import { getPlace, type Place } from '@/data/campus';
 import type { TravelMode } from '@/lib/routing';
+import { rememberPlace } from '@/lib/recent-places';
 import { isValidRoom } from '@/lib/search';
 
 export const MY_LOCATION = 'me';
@@ -32,6 +33,7 @@ export function planTrip(placeId: string, room?: string, origin: string = MY_LOC
   const destination = getPlace(placeId);
   if (!destination) return;
   const from = origin !== MY_LOCATION && getPlace(origin) && origin !== placeId ? origin : MY_LOCATION;
+  rememberPlace(destination.id);
   set({ phase: 'preview', destination, room: isValidRoom(room) ? room : undefined, origin: from });
 }
 

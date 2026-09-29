@@ -1,12 +1,15 @@
 import { NativeTabs } from 'expo-router/unstable-native-tabs';
 import { useThemeColor } from 'heroui-native';
+import { useQuickActionRouting } from 'expo-quick-actions/router';
 import { useEffect } from 'react';
 import { DynamicColorIOS, Platform } from 'react-native';
 
 import { useProfile } from '@/lib/account';
 import { useClasses } from '@/lib/classes';
+import { updateQuickActions } from '@/lib/quick-actions';
+import { useRecentPlaces } from '@/lib/recent-places';
 import { useSocial } from '@/lib/social';
-import { useTrip } from '@/lib/trip';
+import { planTrip, useTrip } from '@/lib/trip';
 import { updateUpNextWidget } from '@/lib/up-next-widget';
 
 // The campus accent in both themes. On iOS the tab bar is native glass and takes a native dynamic color, which
@@ -20,6 +23,18 @@ export default function TabLayout() {
   const themeAccent = useThemeColor('accent');
   const accent = iosAccent ?? themeAccent;
   const classes = useClasses();
+  const recent = useRecentPlaces();
+
+  useEffect(() => updateQuickActions(classes, recent), [classes, recent]);
+
+  // The next class action plans the walk before landing on the map; the rest are plain links.
+  useQuickActionRouting((action) => {
+    if (action.id !== 'next-class') return false;
+    const placeId = typeof action.params?.placeId === 'string' ? action.params.placeId : undefined;
+    const room = typeof action.params?.room === 'string' ? action.params.room : undefined;
+    if (placeId) planTrip(placeId, room);
+    return false;
+  });
 
   // The home screen widget follows the same classes and meetups the app shows.
   useEffect(() => {

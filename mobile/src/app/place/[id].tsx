@@ -8,6 +8,7 @@ import { Icon } from '@/components/icon';
 import { getPlace } from '@/data/campus';
 import { CATEGORY_SYMBOLS, categoryLabel } from '@/lib/categories';
 import { focusPlace } from '@/lib/focus';
+import { rememberPlace } from '@/lib/recent-places';
 import { openWeb, sharePlace } from '@/lib/links';
 import { floorForRoom, floorLabel, isValidRoom } from '@/lib/search';
 import { planTrip } from '@/lib/trip';
@@ -21,6 +22,7 @@ export default function PlaceSheet() {
   useEffect(() => {
     if (!place) return;
     focusPlace(place.id);
+    rememberPlace(place.id);
     return () => focusPlace(null);
   }, [place]);
 
