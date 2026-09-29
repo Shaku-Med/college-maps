@@ -66,7 +66,7 @@ export default function SearchScreen() {
 
   return (
     <>
-      <Stack.Title>Search</Stack.Title>
+      <Stack.Title large>Search</Stack.Title>
       <Stack.SearchBar
         placement="automatic"
         placeholder={`Room or building, like ${CAMPUS.rooms.example}`}

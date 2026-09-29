@@ -2,27 +2,34 @@ import { GlassView, isLiquidGlassAvailable } from 'expo-glass-effect';
 import { cn } from 'heroui-native';
 import type { ReactNode } from 'react';
 import { View, type StyleProp, type ViewStyle } from 'react-native';
+import { withUniwind } from 'uniwind';
 
 const LIQUID_GLASS = isLiquidGlassAvailable();
+// GlassView is a native view, which Tailwind classes do not reach on their own. Without this its size and
+// rounded corners are dropped and it stretches to fill its parent.
+const StyledGlassView = withUniwind(GlassView);
 
 type GlassProps = {
   children?: ReactNode;
   className?: string;
   style?: StyleProp<ViewStyle>;
   interactive?: boolean;
+  /** Corner radius. The native glass reads it from the style to shape itself. */
+  radius?: number;
 };
 
 /** Liquid Glass on iOS 26, and a solid floating surface on anything older. */
-export function Glass({ children, className, style, interactive = false }: GlassProps) {
+export function Glass({ children, className, style, interactive = false, radius }: GlassProps) {
+  const shape = radius === undefined ? style : [{ borderRadius: radius, overflow: 'hidden' as const }, style];
   if (LIQUID_GLASS) {
     return (
-      <GlassView isInteractive={interactive} className={className} style={style}>
+      <StyledGlassView isInteractive={interactive} className={className} style={shape}>
         {children}
-      </GlassView>
+      </StyledGlassView>
     );
   }
   return (
-    <View className={cn('border border-border bg-overlay shadow-md', className)} style={style}>
+    <View className={cn('border border-border bg-overlay shadow-md', className)} style={shape}>
       {children}
     </View>
   );

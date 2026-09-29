@@ -42,7 +42,7 @@ export function CategoryBar({ value, onChange }: CategoryBarProps) {
             }}>
             {selected ? null : (
               <Chip.Background>
-                <Glass interactive className="flex-1" />
+                <Glass interactive radius={20} style={{ flex: 1 }} />
               </Chip.Background>
             )}
             {filter === 'all' ? null : (

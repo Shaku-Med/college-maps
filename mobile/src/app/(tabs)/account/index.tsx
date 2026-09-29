@@ -91,7 +91,7 @@ export default function AccountScreen() {
 
   return (
     <>
-      <Stack.Title>Account</Stack.Title>
+      <Stack.Title large>Account</Stack.Title>
       <ScrollView
         contentInsetAdjustmentBehavior="automatic"
         keyboardShouldPersistTaps="handled"

@@ -34,7 +34,7 @@ export function MapControls({ controls }: { controls: MapControl[] }) {
 
   return (
     <View pointerEvents="box-none" className="items-center gap-2.5">
-      <Glass interactive className="w-12 overflow-hidden rounded-3xl">
+      <Glass interactive radius={24} style={{ width: 48 }}>
         {controls.map((control, index) => (
           <Fragment key={control.label}>
             {index > 0 ? <View className="mx-3 h-px" style={{ backgroundColor: separator, opacity: 0.6 }} /> : null}
@@ -43,7 +43,8 @@ export function MapControls({ controls }: { controls: MapControl[] }) {
               accessibilityLabel={control.label}
               accessibilityState={{ selected: control.active }}
               onPress={() => tap(control.onPress)}
-              className="h-12 items-center justify-center active:opacity-60">
+              style={{ width: 48, height: 48 }}
+              className="items-center justify-center active:opacity-60">
               <SymbolView
                 name={control.symbol}
                 size={19}
@@ -60,8 +61,8 @@ export function MapControls({ controls }: { controls: MapControl[] }) {
         hitSlop={8}
         onPress={() => tap(showAttribution)}
         className="active:opacity-60">
-        <Glass className="size-7 items-center justify-center rounded-full">
-          <SymbolView name="info" size={12} weight="semibold" tintColor={muted} />
+        <Glass radius={15} style={{ width: 30, height: 30 }} className="items-center justify-center">
+          <SymbolView name="info" size={13} weight="semibold" tintColor={muted} />
         </Glass>
       </Pressable>
     </View>

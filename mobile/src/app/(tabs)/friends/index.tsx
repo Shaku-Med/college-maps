@@ -63,7 +63,7 @@ export default function FriendsScreen() {
   if (!profile) {
     return (
       <>
-        <Stack.Title>Friends</Stack.Title>
+        <Stack.Title large>Friends</Stack.Title>
         <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerClassName="px-4 pt-6">
           <EmptyState
             title="See friends on the map"
@@ -141,7 +141,7 @@ export default function FriendsScreen() {
 
   return (
     <>
-      <Stack.Title>Friends</Stack.Title>
+      <Stack.Title large>Friends</Stack.Title>
       <ScrollView
         contentInsetAdjustmentBehavior="automatic"
         keyboardShouldPersistTaps="handled"

@@ -54,7 +54,7 @@ export default function ClassesScreen() {
 
   return (
     <>
-      <Stack.Title>Classes</Stack.Title>
+      <Stack.Title large>Classes</Stack.Title>
       <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerClassName="gap-6 px-4 pb-16 pt-2">
         {upcoming ? (
           <Card className="gap-4 rounded-3xl bg-accent p-5">

@@ -6,6 +6,7 @@ import {
   Marker,
   NativeUserLocation,
   type CameraRef,
+  type MapRef,
 } from '@maplibre/maplibre-react-native';
 import * as Location from 'expo-location';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
@@ -21,6 +22,7 @@ import { DirectionsPanel } from '@/components/directions-panel';
 import { MapControls, type MapControl } from '@/components/map-controls';
 import { NavigationBanner, NavigationFooter } from '@/components/navigation-hud';
 import { PlaceMarker } from '@/components/place-marker';
+import { TopScrim } from '@/components/top-scrim';
 import { CAMPUS, PLACES, contains, getPlace, type Coordinate, type Place } from '@/data/campus';
 import { useMeetupLive } from '@/hooks/use-meetup-live';
 import { useNavigation, type FollowTarget } from '@/hooks/use-navigation';
@@ -38,6 +40,10 @@ const { center, zoom, bounds, styles } = CAMPUS.map;
 const CAMPUS_CENTER: [number, number] = [center.longitude, center.latitude];
 const MAX_BOUNDS: [number, number, number, number] = [bounds.west - 0.3, bounds.south - 0.3, bounds.east + 0.3, bounds.north + 0.3];
 const PLACE_ZOOM = 17;
+// The web app's building view: the same tilt, colours, and heights.
+const BUILDING_PITCH = 52;
+// The first label layer in each OpenFreeMap style, so buildings rise under the street and place names.
+const FIRST_LABEL = { light: 'waterway_line_label', dark: 'water_name' } as const;
 // MapLibre keeps the last padding it was given, so every camera move says its own.
 const NO_PADDING = { top: 0, bottom: 0, left: 0, right: 0 };
 // The place sheet opens at 45% of the screen, so a focused place sits in the space above it.
@@ -66,6 +72,8 @@ export default function MapScreen() {
   const { height } = useWindowDimensions();
   const { toast } = useToast();
   const camera = useRef<CameraRef>(null);
+  const mapRef = useRef<MapRef>(null);
+  const [buildingView, setBuildingView] = useState(false);
   const focused = useFocusedPlace();
   const trip = useTrip();
   const profile = useProfile();
@@ -169,6 +177,18 @@ export default function MapScreen() {
     },
     [trip.phase],
   );
+
+  const toggleBuildings = useCallback(async () => {
+    const next = !buildingView;
+    setBuildingView(next);
+    if (next) {
+      const level = (await mapRef.current?.getZoom().catch(() => zoom)) ?? zoom;
+      camera.current?.zoomTo(Math.max(level, 16), { pitch: BUILDING_PITCH, duration: 650, padding: NO_PADDING });
+    } else {
+      const level = (await mapRef.current?.getZoom().catch(() => zoom)) ?? zoom;
+      camera.current?.zoomTo(level, { pitch: 0, bearing: 0, duration: 650, padding: NO_PADDING });
+    }
+  }, [buildingView]);
 
   const showCampus = useCallback(() => {
     camera.current?.flyTo({ center: CAMPUS_CENTER, zoom, bearing: 0, pitch: 0, duration: 700, padding: NO_PADDING });
@@ -282,6 +302,12 @@ export default function MapScreen() {
           : [{ symbol: 'location.fill' as const, label: 'Follow me again', onPress: navigation.recenter }]),
       ]
     : [
+        {
+          symbol: buildingView ? 'view.2d' : 'view.3d',
+          label: buildingView ? 'Flat map' : '3D buildings',
+          active: buildingView,
+          onPress: () => void toggleBuildings(),
+        },
         { symbol: 'building.2', label: 'Show the whole campus', onPress: showCampus },
         {
           symbol: located ? 'location.fill' : 'location',
@@ -296,15 +322,50 @@ export default function MapScreen() {
   return (
     <View className="flex-1" style={{ backgroundColor: background }}>
       <Map
+        ref={mapRef}
         style={{ flex: 1 }}
         mapStyle={scheme === 'dark' ? styles.dark : styles.light}
         logo={false}
         attribution={false}
         compass={false}
-        touchPitch={navigating}
+        touchPitch={navigating || buildingView}
         onRegionWillChange={(event) => {
           if (navigating && event.nativeEvent.userInteraction) navigation.pauseFollowing();
         }}>
+        {buildingView ? (
+          <Layer
+            id="buildings-3d"
+            type="fill-extrusion"
+            source="openmaptiles"
+            source-layer="building"
+            minzoom={14}
+            beforeId={scheme === 'dark' ? FIRST_LABEL.dark : FIRST_LABEL.light}
+            paint={{
+              'fill-extrusion-color': scheme === 'dark' ? '#3a3a3a' : '#ddd9d2',
+              'fill-extrusion-opacity': 0.94,
+              'fill-extrusion-vertical-gradient': true,
+              // Rises from flat as the map zooms in, to the building's mapped height, or 14 m when unknown.
+              'fill-extrusion-height': [
+                'interpolate',
+                ['linear'],
+                ['zoom'],
+                14,
+                0,
+                15.6,
+                [
+                  'case',
+                  ['>', ['to-number', ['get', 'render_height']], 0],
+                  ['to-number', ['get', 'render_height']],
+                  ['>', ['to-number', ['get', 'height']], 0],
+                  ['to-number', ['get', 'height']],
+                  14,
+                ],
+              ],
+              'fill-extrusion-base': ['to-number', ['get', 'render_min_height']],
+            }}
+          />
+        ) : null}
+
         <Camera ref={camera} initialViewState={{ center: CAMPUS_CENTER, zoom }} maxBounds={MAX_BOUNDS} minZoom={10} maxZoom={19.5} />
 
         {previousLine ? (
@@ -375,6 +436,8 @@ export default function MapScreen() {
         })}
       </Map>
 
+      {navigating ? null : <TopScrim height={insets.top + 96} dark={scheme === 'dark'} />}
+
       <View pointerEvents="box-none" className="absolute inset-x-0" style={{ top: insets.top + 8 }}>
         {navigating && navigation.route && trip.destination ? (
           <NavigationBanner
@@ -398,7 +461,7 @@ export default function MapScreen() {
       <View
         pointerEvents="box-none"
         className="absolute inset-x-0 gap-3"
-        style={{ bottom: tabBarShown ? insets.bottom + 62 : insets.bottom + 6 }}>
+        style={{ bottom: tabBarShown ? insets.bottom + 54 : insets.bottom + 6 }}>
         <View pointerEvents="box-none" className="items-end px-4">
           <MapControls controls={controls} />
         </View>
