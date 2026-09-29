@@ -440,3 +440,65 @@ func TestSendFailureDoesNotSpendATry(t *testing.T) {
 		t.Fatal("no code was sent")
 	}
 }
+
+// A reviewer cannot receive a school email, so one configured account signs in with a fixed code. It still
+// goes through every normal limit, and nobody else is affected.
+func TestReviewAccount(t *testing.T) {
+	const reviewer = "review@stu-mail.csi.cuny.edu"
+	const code = "48213957"
+	for _, bad := range [][2]string{{"review@example.com", code}, {reviewer, "1234"}, {"", code}} {
+		if _, err := NewService(authtest.NewMemoryStore(time.Now), &authtest.CapturedMail{}, testSecret,
+			[]string{"stu-mail.csi.cuny.edu"}, WithReviewAccount(bad[0], bad[1])); err == nil {
+			t.Errorf("review account %v should be refused", bad)
+		}
+	}
+
+	c := &clock{t: time.Date(2026, 9, 14, 12, 0, 0, 0, time.UTC)}
+	mail := &authtest.CapturedMail{}
+	svc, err := NewService(authtest.NewMemoryStore(c.now), mail, testSecret, []string{"stu-mail.csi.cuny.edu"},
+		WithClock(c.now), WithReviewAccount(reviewer, code))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+
+	if err := svc.RequestCode(ctx, reviewer); err != nil {
+		t.Fatal(err)
+	}
+	if mail.Last(reviewer) != "" {
+		t.Fatal("no email should go out for the review account")
+	}
+	if _, _, err := svc.VerifyCode(ctx, reviewer, "00000000"); err == nil {
+		t.Fatal("a wrong code must still fail")
+	}
+	user, token, err := svc.VerifyCode(ctx, reviewer, code)
+	if err != nil || token == "" || user.Email != reviewer {
+		t.Fatalf("review sign in: %v", err)
+	}
+
+	// Without asking for a code first there is nothing to check against, like any account.
+	c.advance(time.Hour)
+	if _, _, err := svc.VerifyCode(ctx, reviewer, code); err == nil {
+		t.Fatal("the fixed code must only work right after asking for a code")
+	}
+
+	// Guessing is limited the same way: five wrong tries lock the code.
+	c.advance(time.Hour)
+	if err := svc.RequestCode(ctx, reviewer); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 5; i++ {
+		_, _, _ = svc.VerifyCode(ctx, reviewer, "00000000")
+	}
+	if _, _, err := svc.VerifyCode(ctx, reviewer, code); err == nil {
+		t.Fatal("the code must lock after too many wrong tries")
+	}
+
+	// Everyone else still gets a random code by email.
+	if err := svc.RequestCode(ctx, student); err != nil {
+		t.Fatal(err)
+	}
+	if got := mail.Last(student); got == "" || got == code {
+		t.Fatalf("a student got %q instead of a random emailed code", got)
+	}
+}

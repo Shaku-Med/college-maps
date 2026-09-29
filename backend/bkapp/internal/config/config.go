@@ -25,6 +25,7 @@ var (
 	hostName       = regexp.MustCompile(`^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)+$`)
 	googleClientID = regexp.MustCompile(`^[A-Za-z0-9-]{1,128}\.apps\.googleusercontent\.com$`)
 	opaqueSecret   = regexp.MustCompile(`^[A-Za-z0-9._~+/=-]{20,512}$`)
+	reviewCode     = regexp.MustCompile(`^[0-9]{8}$`)
 )
 
 type Config struct {
@@ -46,10 +47,14 @@ type Config struct {
 	EmailFrom      string
 	CronSecret     string
 	ClientIPHeader string
-	PushAvailable  bool
-	VAPIDPublic    string
-	VAPIDPrivate   string
-	VAPIDSubject   string
+	// App Store review: one account whose sign in code is fixed, because a reviewer cannot receive a
+	// school email. Both are set or neither is.
+	ReviewEmail   string
+	ReviewCode    string
+	PushAvailable bool
+	VAPIDPublic   string
+	VAPIDPrivate  string
+	VAPIDSubject  string
 }
 
 func (c Config) IsProduction() bool {
@@ -154,6 +159,14 @@ func Load() (Config, error) {
 			add(fmt.Errorf("CRON_SECRET must be at least %d characters of random text, or left unset", minSecretLength))
 		}
 		cfg.CronSecret = cron
+	}
+
+	reviewEmail, reviewCodeValue := strings.ToLower(strings.TrimSpace(os.Getenv("REVIEW_EMAIL"))), os.Getenv("REVIEW_CODE")
+	if reviewEmail != "" || reviewCodeValue != "" {
+		if reviewEmail == "" || !reviewCode.MatchString(reviewCodeValue) || distinctBytes(reviewCodeValue) < 5 {
+			add(errors.New("REVIEW_EMAIL and REVIEW_CODE go together: a school email and 8 digits using at least 5 different ones, or leave both unset"))
+		}
+		cfg.ReviewEmail, cfg.ReviewCode = reviewEmail, reviewCodeValue
 	}
 
 	if header := os.Getenv("CLIENT_IP_HEADER"); header != "" {

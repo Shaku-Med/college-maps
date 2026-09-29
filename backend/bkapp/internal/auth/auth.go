@@ -159,6 +159,9 @@ type Service struct {
 	domains map[string]struct{}
 	now     func() time.Time
 	random  io.Reader
+
+	reviewEmail string
+	reviewCode  string
 }
 
 type Option func(*Service)
@@ -166,6 +169,15 @@ type Option func(*Service)
 // WithClock replaces the time source, for tests that need to move time forward.
 func WithClock(now func() time.Time) Option {
 	return func(s *Service) { s.now = now }
+}
+
+// WithReviewAccount lets one school address sign in with a fixed code instead of an emailed one, for App
+// Store review. The code still goes through every normal limit: tries per code, cooldowns, and daily caps.
+func WithReviewAccount(address, code string) Option {
+	return func(s *Service) {
+		s.reviewEmail = strings.ToLower(strings.TrimSpace(address))
+		s.reviewCode = code
+	}
 }
 
 func NewService(store Store, mailer email.Sender, secret []byte, domains []string, opts ...Option) (*Service, error) {
@@ -180,6 +192,12 @@ func NewService(store Store, mailer email.Sender, secret []byte, domains []strin
 	s := &Service{store: store, mailer: mailer, keys: keys, domains: allowed, now: time.Now, random: rand.Reader}
 	for _, opt := range opts {
 		opt(s)
+	}
+	if s.reviewEmail != "" || s.reviewCode != "" {
+		addr, err := s.NormalizeEmail(s.reviewEmail)
+		if err != nil || addr != s.reviewEmail || !codePattern.MatchString(s.reviewCode) {
+			return nil, errors.New("the review account needs an allowed school email and an 8 digit code")
+		}
 	}
 	return s, nil
 }
@@ -249,8 +267,16 @@ func (s *Service) RequestCode(ctx context.Context, rawEmail string) error {
 	if err != nil {
 		return err
 	}
+	review := s.reviewEmail != "" && addr == s.reviewEmail
+	if review {
+		code = s.reviewCode
+	}
 	if err := s.store.ReplaceCode(ctx, index, s.keys.codeHash(index, code), now.Add(CodeTTL)); err != nil {
 		return err
+	}
+	// The reviewer has the code from the review notes, so there is nothing to send.
+	if review {
+		return nil
 	}
 	if err := s.mailer.SendLoginCode(ctx, addr, code); err != nil {
 		// Nobody received this code, so it should not spend one of the sender's tries or hold the

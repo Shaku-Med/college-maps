@@ -220,6 +220,7 @@ Add `-find someone@school.edu` to look up one account, or `-csv > users.csv` for
 | `CRON_SECRET` | Only on serverless hosts. Turns on `/v1/maintenance` for the scheduler that runs cleanup |
 | `EMAIL_FROM` | Sender shown to students, like `CSI Map <yourapp@gmail.com>` |
 | `CLIENT_IP_HEADER` | Optional, a client IP header your host sets itself, like `Fly-Client-IP` |
+| `REVIEW_EMAIL`, `REVIEW_CODE` | Optional, for App Store review, set together. A reviewer cannot receive a school email, so asking for a code for `REVIEW_EMAIL` sends nothing and stores `REVIEW_CODE` (8 digits) as the code instead. Every normal limit still applies. Remove both after approval |
 
 | Route | Purpose |
 | --- | --- |

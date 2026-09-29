@@ -220,3 +220,30 @@ func TestLocalNetworkOriginsOnlyInDevelopment(t *testing.T) {
 		t.Fatal("production must reject http local network origins")
 	}
 }
+
+func TestReviewAccountSettings(t *testing.T) {
+	for name, env := range map[string][2]string{
+		"email without code":  {"review@stu-mail.csi.cuny.edu", ""},
+		"code without email":  {"", "48213957"},
+		"short code":          {"review@stu-mail.csi.cuny.edu", "4821395"},
+		"letters in code":     {"review@stu-mail.csi.cuny.edu", "4821395a"},
+		"easily guessed code": {"review@stu-mail.csi.cuny.edu", "11112222"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			setValid(t)
+			t.Setenv("REVIEW_EMAIL", env[0])
+			t.Setenv("REVIEW_CODE", env[1])
+			if _, err := Load(); err == nil {
+				t.Fatal("expected the review settings to be refused")
+			}
+		})
+	}
+
+	setValid(t)
+	t.Setenv("REVIEW_EMAIL", " Review@stu-mail.csi.cuny.edu ")
+	t.Setenv("REVIEW_CODE", "48213957")
+	cfg, err := Load()
+	if err != nil || cfg.ReviewEmail != "review@stu-mail.csi.cuny.edu" || cfg.ReviewCode != "48213957" {
+		t.Fatalf("valid review settings: %+v %v", cfg.ReviewEmail, err)
+	}
+}

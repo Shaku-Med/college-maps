@@ -416,6 +416,19 @@ func TestPublicMeetups(t *testing.T) {
 	if _, err := s.GetMeetup(ctx, student, later.ID); !errors.Is(err, social.ErrMeetupNotFound) {
 		t.Fatalf("blocked host's meetup still visible: %v", err)
 	}
+	// The campus list still loads, just without it.
+	hidden, err := s.ListPublicMeetups(ctx, student)
+	if err != nil {
+		t.Fatalf("campus list after blocking the host: %v", err)
+	}
+	for _, m := range hidden {
+		if m.ID == later.ID {
+			t.Fatal("blocked host's meetup still in the campus list")
+		}
+	}
+	if _, err := s.JoinPublicMeetup(ctx, student, later.ID); !errors.Is(err, social.ErrMeetupNotFound) {
+		t.Fatalf("joined a blocked host's meetup: %v", err)
+	}
 	if err := s.Unblock(ctx, student, host.Username); err != nil {
 		t.Fatal(err)
 	}

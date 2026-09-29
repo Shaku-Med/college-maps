@@ -142,14 +142,16 @@ func (s *Service) CreatePublicMeetup(ctx context.Context, me auth.User, in NewPu
 	return created, err
 }
 
-// ListPublicMeetups shows what is coming up on campus, soonest first.
+// ListPublicMeetups shows what is coming up on campus, soonest first. Events from anyone either side has
+// blocked are left out, the same as opening one directly.
 func (s *Service) ListPublicMeetups(ctx context.Context, me auth.User) ([]Meetup, error) {
 	out := []Meetup{}
 	err := db.WithScope(ctx, s.pool, db.Scope{UserID: me.ID}, func(tx pgx.Tx) error {
 		rows, err := tx.Query(ctx,
 			`select public_id from meetups
 			 where visibility = 'public' and ended_at is null and expires_at > $1
-			 order by starts_at limit $2`, s.now(), publicListLimit)
+			   and not csimap_blocked_between(host_id, $3::uuid)
+			 order by starts_at limit $2`, s.now(), publicListLimit, me.ID)
 		if err != nil {
 			return err
 		}
