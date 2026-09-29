@@ -500,8 +500,8 @@ export default function MapScreen() {
       </Map>
 
       {navigating ? null : <TopScrim height={insets.top + 96} dark={scheme === 'dark'} />}
-      {/* Android's tab bar is a solid Material bar rather than glass, so a fade above it keeps the map labels
-          from crowding the buttons and the bar's edge. */}
+      {/* Android's tab bar is see through, so the map fades out behind it the same way it does under the chips,
+          keeping the tab labels and the buttons above them readable. */}
       {Platform.OS === 'android' && tabBarShown ? (
         <EdgeScrim edge="bottom" height={bottomInset + TAB_BAR_HEIGHT + 90} dark={scheme === 'dark'} />
       ) : null}

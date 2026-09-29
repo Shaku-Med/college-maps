@@ -19,7 +19,13 @@ export default function TabLayout() {
 
   return (
     // Directions and navigation take the whole screen, so the tab bar steps aside for them.
-    <NativeTabs tintColor={accent} minimizeBehavior="onScrollDown" hidden={trip.phase !== 'idle'}>
+    <NativeTabs
+      tintColor={accent}
+      minimizeBehavior="onScrollDown"
+      hidden={trip.phase !== 'idle'}
+      // Android's bar is a solid Material surface by default. Clear, it sits on the map's fade the way the chips
+      // at the top do, and on the page background everywhere else. iOS draws its own Liquid Glass.
+      backgroundColor={Platform.OS === 'android' ? 'transparent' : undefined}>
       {/* The map fills the whole screen, under the tab bar. */}
       <NativeTabs.Trigger name="index" disableAutomaticContentInsets>
         <NativeTabs.Trigger.Label>Map</NativeTabs.Trigger.Label>
