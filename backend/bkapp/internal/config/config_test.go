@@ -239,16 +239,21 @@ func TestReviewAccountSettings(t *testing.T) {
 			t.Setenv("REVIEW_EMAIL", env[0])
 			t.Setenv("REVIEW_CODE", env[1])
 			t.Setenv("REVIEW_UNTIL", env[2])
-			if _, err := Load(); err == nil {
-				t.Fatal("expected the review settings to be refused")
+			cfg, err := Load()
+			if err != nil {
+				t.Fatalf("a bad review setting must not stop the server: %v", err)
+			}
+			if cfg.ReviewEmail != "" || cfg.ReviewCode != "" || len(cfg.Warnings) == 0 {
+				t.Fatal("expected review sign in to be off with a warning")
 			}
 		})
 	}
 
 	setValid(t)
+	// Dashboards make it easy to paste a stray space, line break, or quotes around a value.
 	t.Setenv("REVIEW_EMAIL", " Review@stu-mail.csi.cuny.edu ")
-	t.Setenv("REVIEW_CODE", "48213957")
-	t.Setenv("REVIEW_UNTIL", soon)
+	t.Setenv("REVIEW_CODE", "\"48213957\"\n")
+	t.Setenv("REVIEW_UNTIL", " "+soon+" ")
 	cfg, err := Load()
 	if err != nil || cfg.ReviewEmail != "review@stu-mail.csi.cuny.edu" || cfg.ReviewCode != "48213957" || !cfg.ReviewUntil.After(time.Now()) {
 		t.Fatalf("valid review settings: %+v %v", cfg.ReviewEmail, err)

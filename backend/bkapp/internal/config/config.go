@@ -55,6 +55,8 @@ type Config struct {
 	ReviewEmail string
 	ReviewCode  string
 	ReviewUntil time.Time
+	// Problems with optional settings that turned a feature off rather than stopping the server.
+	Warnings []string
 	// Optional. When Expo's enhanced push security is turned on, sends to the iPhone app need this token.
 	ExpoAccessToken string
 	PushAvailable   bool
@@ -167,18 +169,21 @@ func Load() (Config, error) {
 		cfg.CronSecret = cron
 	}
 
-	reviewEmail, reviewCodeValue := strings.ToLower(strings.TrimSpace(os.Getenv("REVIEW_EMAIL"))), os.Getenv("REVIEW_CODE")
-	reviewUntilValue := strings.TrimSpace(os.Getenv("REVIEW_UNTIL"))
+	// The review sign in is optional, so a mistake in it turns it off with a warning instead of taking the
+	// whole API down. Off is the closed state: no fixed code is accepted.
+	unquote := func(name string) string { return strings.Trim(strings.TrimSpace(os.Getenv(name)), `"'`) }
+	reviewEmail, reviewCodeValue, reviewUntilValue := strings.ToLower(unquote("REVIEW_EMAIL")), unquote("REVIEW_CODE"), unquote("REVIEW_UNTIL")
 	if reviewEmail != "" || reviewCodeValue != "" || reviewUntilValue != "" {
-		if reviewEmail == "" || !reviewCode.MatchString(reviewCodeValue) || distinctBytes(reviewCodeValue) < 5 {
-			add(errors.New("REVIEW_EMAIL, REVIEW_CODE and REVIEW_UNTIL go together: a school email, 8 digits using at least 5 different ones, and an end date, or leave all three unset"))
-		}
-		// A past date is allowed, so a server still starts after review ends; the fixed code just stops working.
 		until, err := time.Parse(time.DateOnly, reviewUntilValue)
-		if err != nil || until.After(time.Now().Add(maxReviewWindow)) {
-			add(errors.New("REVIEW_UNTIL must be a date like 2026-10-31, no more than 60 days away"))
+		switch {
+		case reviewEmail == "" || !reviewCode.MatchString(reviewCodeValue) || distinctBytes(reviewCodeValue) < 5:
+			cfg.Warnings = append(cfg.Warnings, "review sign in is off: REVIEW_EMAIL, REVIEW_CODE and REVIEW_UNTIL go together, a school email, 8 digits using at least 5 different ones, and an end date")
+		case err != nil || until.After(time.Now().Add(maxReviewWindow)):
+			cfg.Warnings = append(cfg.Warnings, "review sign in is off: REVIEW_UNTIL must be a date like 2026-10-31, no more than 60 days away")
+		default:
+			// A past date is fine: the server starts and the fixed code just no longer works.
+			cfg.ReviewEmail, cfg.ReviewCode, cfg.ReviewUntil = reviewEmail, reviewCodeValue, until.Add(24*time.Hour)
 		}
-		cfg.ReviewEmail, cfg.ReviewCode, cfg.ReviewUntil = reviewEmail, reviewCodeValue, until.Add(24*time.Hour)
 	}
 
 	if token := os.Getenv("EXPO_ACCESS_TOKEN"); token != "" {

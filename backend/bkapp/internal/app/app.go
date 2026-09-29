@@ -74,6 +74,9 @@ func Build(ctx context.Context, logger *slog.Logger, migrate bool) (*App, error)
 		return nil, fmt.Errorf("email: %w", err)
 	}
 
+	for _, warning := range cfg.Warnings {
+		logger.Warn(warning)
+	}
 	var authOptions []auth.Option
 	if cfg.ReviewEmail != "" {
 		authOptions = append(authOptions, auth.WithReviewAccount(cfg.ReviewEmail, cfg.ReviewCode, cfg.ReviewUntil))
@@ -82,6 +85,11 @@ func Build(ctx context.Context, logger *slog.Logger, migrate bool) (*App, error)
 		}
 	}
 	authService, err := auth.NewService(auth.NewPostgresStore(pool), mailer, cfg.AuthSecret, site.EmailDomains, authOptions...)
+	if err != nil && len(authOptions) > 0 {
+		// Only the review account can make this fail with options, say an address outside the school domains.
+		logger.Warn("review sign in is off", "error", err)
+		authService, err = auth.NewService(auth.NewPostgresStore(pool), mailer, cfg.AuthSecret, site.EmailDomains)
+	}
 	if err != nil {
 		pool.Close()
 		return nil, fmt.Errorf("auth: %w", err)
