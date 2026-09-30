@@ -373,7 +373,8 @@ func TestPublicMeetups(t *testing.T) {
 		t.Fatalf("created: %+v", later)
 	}
 
-	// Anyone signed in sees it in the campus list, without the place before it starts.
+	// Anyone signed in sees it in the campus list. Named campus places show for the heat layer;
+	// pin coordinates stay hidden until the event starts and they join.
 	list, err := s.ListPublicMeetups(ctx, student)
 	if err != nil {
 		t.Fatal(err)
@@ -384,16 +385,25 @@ func TestPublicMeetups(t *testing.T) {
 			found = &list[i]
 		}
 	}
-	if found == nil || found.Destination != nil || found.YourStatus != "" {
+	if found == nil || found.YourStatus != "" {
 		t.Fatalf("campus list: %+v", found)
+	}
+	if found.Destination == nil || found.Destination.Kind != social.DestinationPlace || found.Destination.PlaceID != placeID {
+		t.Fatalf("campus list should expose the place for heat: %+v", found.Destination)
+	}
+	if found.Destination.Lat != nil || found.Destination.Lng != nil {
+		t.Fatal("campus list must not expose pin coordinates before start")
 	}
 
 	joined, err := s.JoinPublicMeetup(ctx, student, later.ID)
 	if err != nil || joined.YourStatus != social.StatusJoined || joined.Going != 2 {
 		t.Fatalf("join: %+v %v", joined, err)
 	}
-	if joined.Destination != nil {
-		t.Fatal("the place must stay hidden until a public meetup starts")
+	if joined.Destination == nil || joined.Destination.PlaceID != placeID {
+		t.Fatalf("joined place should stay visible for heat: %+v", joined.Destination)
+	}
+	if joined.Destination.Lat != nil || joined.Destination.Lng != nil {
+		t.Fatal("the pin must stay hidden until a public meetup starts")
 	}
 	if joined.YourLiveID != "" || joined.Members[0].LiveID != "" {
 		t.Fatal("public meetups must not hand out live location ids")

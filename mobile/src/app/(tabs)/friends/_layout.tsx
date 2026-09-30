@@ -6,6 +6,7 @@ export default function Layout() {
   return (
     <Stack screenOptions={tabStackOptions}>
       <Stack.Screen name="index" options={{ title: 'Friends' }} />
+      <Stack.Screen name="campus" options={{ title: 'Happening on campus', headerLargeTitle: false }} />
       <Stack.Screen name="list" options={{ title: 'Your friends', headerLargeTitle: false }} />
       <Stack.Screen name="sent" options={{ title: 'Sent', headerLargeTitle: false }} />
       <Stack.Screen name="blocked" options={{ title: 'Blocked', headerLargeTitle: false }} />

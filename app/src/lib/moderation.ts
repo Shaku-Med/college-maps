@@ -53,5 +53,12 @@ export async function sendReport(body: {
   reason: ReportReason;
   details?: string;
 }) {
-  return apiCall<void>("/v1/reports", "POST", body);
+  const res = await apiCall<void>("/v1/reports", "POST", body);
+  if (!res.ok && res.status === 404) {
+    return {
+      ...res,
+      message: "Reporting is not available on the server yet. Deploy the latest API, then try again.",
+    };
+  }
+  return res;
 }

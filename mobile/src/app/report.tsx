@@ -16,8 +16,7 @@ import { ScrollView, Text, View } from 'react-native';
 
 import { useSheetInsets } from '@/hooks/use-sheet-insets';
 import { useProfile } from '@/lib/account';
-import { apiCall } from '@/lib/api';
-import { reasonLabel, type ReportReason } from '@/lib/moderation';
+import { reasonLabel, sendReport, type ReportReason } from '@/lib/moderation';
 import { refreshSocial } from '@/lib/social';
 import { socialApi } from '@/lib/social-api';
 
@@ -58,7 +57,7 @@ export default function ReportScreen() {
       return;
     }
     setBusy(true);
-    const report = await apiCall<void>('/v1/reports', 'POST', {
+    const report = await sendReport({
       kind,
       meetupId,
       username,

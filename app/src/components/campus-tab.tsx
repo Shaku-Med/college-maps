@@ -8,6 +8,7 @@ import { useConfirmDialog } from "@/components/confirm-dialog";
 import { PlaceItem } from "@/components/place-row";
 import { useReportFlow } from "@/components/report-flow";
 import { getPlace } from "@/data/campus";
+import { matchesCampusEvent } from "@/lib/campus-search";
 import { searchPlaces } from "@/lib/search";
 import { socialApi, type Meetup, type MeetupDestination } from "@/lib/social-api";
 
@@ -49,8 +50,10 @@ export function CampusTab({
 }) {
   const [isCreating, setIsCreating] = useState(false);
   const [isBusy, setIsBusy] = useState(false);
+  const [query, setQuery] = useState("");
   const report = useReportFlow(onRefresh);
   const confirm = useConfirmDialog();
+  const filtered = useMemo(() => campus.filter((meetup) => matchesCampusEvent(meetup, query)), [campus, query]);
 
   async function toggleGoing(meetup: Meetup) {
     if (meetup.yourRole === "host") return;
@@ -116,12 +119,22 @@ export function CampusTab({
         Open to every student. The spot shows up when it starts, and nobody shares a live location.
       </p>
 
+      {campus.length > 0 ? (
+        <SearchField value={query} onChange={setQuery} aria-label="Search campus events">
+          <Input variant="secondary" placeholder="Search events, places, hosts" />
+        </SearchField>
+      ) : null}
+
       {campus.length === 0 ? (
         <p className="rounded-2xl bg-surface-secondary px-4 py-5 text-sm text-muted">
           Nothing posted yet. Be the first to put something on the campus board.
         </p>
+      ) : filtered.length === 0 ? (
+        <p className="rounded-2xl bg-surface-secondary px-4 py-5 text-sm text-muted">
+          Nothing matched “{query.trim()}”.
+        </p>
       ) : (
-        campus.map((meetup) => {
+        filtered.map((meetup) => {
           const going = meetup.yourStatus === "joined";
           const place = meetup.destination?.kind === "place" ? getPlace(meetup.destination.placeId) : undefined;
           return (
@@ -170,7 +183,9 @@ export function CampusTab({
                   <p className="truncate text-xs text-muted">
                     {startsWhen(meetup)} · {meetup.going} going · by {meetup.host.displayName}
                   </p>
-                  {meetup.note ? <p className="truncate pt-1 text-xs text-muted">{meetup.note}</p> : null}
+                  {meetup.note && !meetup.note.startsWith("seed:") ? (
+                    <p className="truncate pt-1 text-xs text-muted">{meetup.note}</p>
+                  ) : null}
                   <p className="truncate pt-1 text-xs text-muted">
                     {place
                       ? place.name

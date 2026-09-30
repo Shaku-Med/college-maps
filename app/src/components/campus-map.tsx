@@ -535,25 +535,27 @@ function applyActivityHeat(
       source: ACTIVITY_SOURCE,
       maxzoom: 19,
       paint: {
-        "heatmap-weight": ["interpolate", ["linear"], ["get", "weight"], 1, 0.45, 6, 1],
-        "heatmap-intensity": ["interpolate", ["linear"], ["zoom"], 14, 0.55, 17, 1.15],
+        "heatmap-weight": ["interpolate", ["linear"], ["get", "weight"], 1, 0.65, 6, 1],
+        "heatmap-intensity": ["interpolate", ["linear"], ["zoom"], 14, 0.85, 17, 1.45],
         "heatmap-color": [
           "interpolate",
           ["linear"],
           ["heatmap-density"],
           0,
           "rgba(0,0,0,0)",
-          0.2,
-          "rgba(61,156,240,0.18)",
-          0.45,
-          "rgba(61,156,240,0.4)",
-          0.7,
-          "rgba(255,140,66,0.55)",
+          0.12,
+          "rgba(61,156,240,0.28)",
+          0.35,
+          "rgba(61,156,240,0.55)",
+          0.55,
+          "rgba(255,160,60,0.65)",
+          0.75,
+          "rgba(255,110,50,0.78)",
           1,
-          "rgba(255,90,70,0.7)",
+          "rgba(255,70,55,0.88)",
         ],
-        "heatmap-radius": ["interpolate", ["linear"], ["zoom"], 14, 28, 17, 52],
-        "heatmap-opacity": 0.85,
+        "heatmap-radius": ["interpolate", ["linear"], ["zoom"], 14, 36, 17, 68],
+        "heatmap-opacity": 0.95,
       },
     },
     before,
@@ -564,10 +566,10 @@ function applyActivityHeat(
       type: "circle",
       source: ACTIVITY_SOURCE,
       paint: {
-        "circle-radius": ["interpolate", ["linear"], ["get", "weight"], 1, 16, 6, 28],
+        "circle-radius": ["interpolate", ["linear"], ["get", "weight"], 1, 22, 6, 40],
         "circle-color": "#3d9cf0",
-        "circle-opacity": 0.18,
-        "circle-blur": 0.8,
+        "circle-opacity": 0.32,
+        "circle-blur": 0.65,
       },
     },
     before,
@@ -934,6 +936,11 @@ export function CampusMap({
       let entry = markers.get(place.id);
       if (!entry) {
         const wrapper = document.createElement("div");
+        wrapper.className = "relative flex items-center justify-center";
+        const glow = document.createElement("span");
+        glow.dataset.activityGlow = "1";
+        glow.className = "pointer-events-none absolute rounded-full bg-accent/40";
+        glow.style.display = "none";
         const el = document.createElement("button");
         el.type = "button";
         el.dataset.placeMarker = place.id;
@@ -943,6 +950,7 @@ export function CampusMap({
           event.stopPropagation();
           onSelectRef.current(place);
         });
+        wrapper.appendChild(glow);
         wrapper.appendChild(el);
         const marker = new lib.Marker({ element: wrapper, anchor: "center" })
           .setLngLat(toLngLat(place.coordinate))
@@ -953,15 +961,28 @@ export function CampusMap({
 
       const isSelected = place.id === selectedId;
       const isOrigin = place.id === originId;
+      const activity = activityByPlace?.[place.id] ?? 0;
       entry.el.className = cn(
         markerBase,
         isSelected ? markerActive : isOrigin ? markerOrigin : markerIdle,
       );
       entry.el.setAttribute("aria-pressed", String(isSelected));
+      const glow = entry.marker.getElement().querySelector("[data-activity-glow]") as HTMLElement | null;
+      if (glow) {
+        if (activity > 0) {
+          const size = 34 + Math.min(activity, 6) * 6;
+          glow.style.display = "block";
+          glow.style.width = `${size}px`;
+          glow.style.height = `${size}px`;
+          glow.style.opacity = String(0.35 + Math.min(activity, 6) * 0.08);
+        } else {
+          glow.style.display = "none";
+        }
+      }
       entry.marker.getElement().style.zIndex =
-        isSelected || isOrigin ? "2" : "1";
+        isSelected || isOrigin || activity > 0 ? "2" : "1";
     }
-  }, [isReady, places, selectedId, originId]);
+  }, [isReady, places, selectedId, originId, activityByPlace]);
 
   useEffect(() => {
     const lib = libRef.current;

@@ -85,7 +85,7 @@ func New(
 		mux.HandleFunc("DELETE /v1/friends/{username}", a.requireUser(sh.unfriend))
 		mux.Handle("POST /v1/blocks", a.requireUser(limitUser(blockUser, sh.block)))
 		mux.HandleFunc("DELETE /v1/blocks/{username}", a.requireUser(sh.unblock))
-		mux.Handle("POST /v1/reports", a.requireUser(limitUser(reportUser, sh.report)))
+		mux.HandleFunc("POST /v1/reports", a.requireUser(limitUser(reportUser, sh.report)))
 		mux.HandleFunc("GET /v1/meetups", a.requireUser(sh.listMeetups))
 		mux.Handle("POST /v1/meetups", a.requireUser(limitUser(meetupUser, sh.createMeetup)))
 		mux.HandleFunc("GET /v1/meetups/public", a.requireUser(sh.listPublicMeetups))

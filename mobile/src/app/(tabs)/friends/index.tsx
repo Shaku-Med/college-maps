@@ -1,11 +1,10 @@
 import * as Haptics from 'expo-haptics';
 import { router, Stack } from 'expo-router';
-import { Button, Card, Chip, FieldError, Input, ListGroup, Separator, TextField, useThemeColor, useToast } from 'heroui-native';
+import { Button, Chip, FieldError, Input, ListGroup, Separator, TextField, useThemeColor, useToast } from 'heroui-native';
 import { Fragment, useState } from 'react';
 import { RefreshControl, ScrollView, Text, View } from 'react-native';
 
 import { Icon } from '@/components/icon';
-import { NativeMenu } from '@/components/native-menu';
 import { EmptyState, SectionTitle } from '@/components/section';
 import { StackLinkedItem } from '@/components/stack-linked-item';
 import { getPlace } from '@/data/campus';
@@ -13,9 +12,7 @@ import { useLinkedParam, useLinkedSuffix } from '@/hooks/use-linked-row-opacity'
 import { useReadableStyle } from '@/hooks/use-layout';
 import { useProfile } from '@/lib/account';
 import { MAX_USERNAME_LENGTH, normalizeUsername } from '@/lib/api';
-import { confirmDangerous } from '@/lib/confirm';
-import { reportMeetup } from '@/lib/moderation';
-import { refreshSocial, updateMeetup, useSocial } from '@/lib/social';
+import { refreshSocial, useSocial } from '@/lib/social';
 import { socialApi, type Meetup, type Person } from '@/lib/social-api';
 
 function timeLeft(expiresAt: string) {
@@ -23,13 +20,6 @@ function timeLeft(expiresAt: string) {
   if (minutes <= 0) return 'ending';
   if (minutes < 60) return `${minutes} min left`;
   return `${Math.round(minutes / 60)} h left`;
-}
-
-function startsText(startsAt?: string) {
-  if (!startsAt) return 'Happening now';
-  const at = new Date(startsAt);
-  if (at.getTime() <= Date.now()) return 'Happening now';
-  return at.toLocaleString(undefined, { weekday: 'short', hour: 'numeric', minute: '2-digit' });
 }
 
 function whereText(meetup: Meetup) {
@@ -73,7 +63,7 @@ export default function FriendsScreen() {
   const [addError, setAddError] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [pulling, setPulling] = useState(false);
-  const activePeople = useLinkedSuffix('/list', '/sent', '/blocked');
+  const activePeople = useLinkedSuffix('/campus', '/list', '/sent', '/blocked');
   const activeMeetupId = useLinkedParam(/\/meetup\/([^/?]+)/);
   const meetupLinked = activeMeetupId && activeMeetupId !== 'new' ? activeMeetupId : null;
 
@@ -125,14 +115,6 @@ export default function FriendsScreen() {
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     toast.show({ variant: 'success', label: res.data.status === 'friends' ? `You and @${handle} are friends` : 'Request sent' });
     reload();
-  }
-
-  async function join(meetup: Meetup) {
-    const res = await socialApi.joinPublicMeetup(meetup.id);
-    if (!res.ok) return toast.show({ variant: 'danger', label: res.message });
-    updateMeetup(res.data);
-    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    router.push({ pathname: '/meetup/[id]', params: { id: meetup.id } });
   }
 
   const { friends, incoming, outgoing, blocked } = social.friends;
@@ -192,64 +174,25 @@ export default function FriendsScreen() {
           </View>
         ) : null}
 
-        {social.campus.length > 0 ? (
-          <View>
-            <SectionTitle>Happening on campus</SectionTitle>
-            <View className="gap-3">
-              {social.campus.map((meetup) => (
-                <Card key={meetup.id} className="gap-3 rounded-3xl p-4">
-                  <View className="gap-1">
-                    <View className="flex-row items-start gap-2">
-                      <Text className="flex-1 text-lg font-semibold text-foreground" numberOfLines={1}>
-                        {meetup.title}
-                      </Text>
-                      {meetup.yourRole === 'host' ? null : (
-                        <NativeMenu
-                          label="Event options"
-                          actions={[
-                            {
-                              id: 'report',
-                              title: 'Report this event',
-                              onPress: () => reportMeetup(meetup),
-                            },
-                            {
-                              id: 'block',
-                              title: `Block @${meetup.host.username}`,
-                              destructive: true,
-                              onPress: () =>
-                                confirmDangerous({
-                                  title: `Block @${meetup.host.username}?`,
-                                  message: 'Their events disappear for you, and they cannot add you or invite you.',
-                                  confirmLabel: 'Block',
-                                  onConfirm: () => void run(socialApi.block(meetup.host.username), 'Blocked'),
-                                }),
-                            },
-                          ]}>
-                          <View className="p-1">
-                            <Icon name="ellipsis" size={18} tintColor={muted} />
-                          </View>
-                        </NativeMenu>
-                      )}
-                    </View>
-                    <Text className="text-sm text-muted" numberOfLines={1}>
-                      {startsText(meetup.startsAt)} · {whereText(meetup)} · {meetup.going} going
-                    </Text>
-                    {meetup.note ? <Text className="text-sm leading-5 text-foreground">{meetup.note}</Text> : null}
-                  </View>
-                  {meetup.yourStatus === 'joined' ? (
-                    <Button variant="secondary" size="sm" onPress={() => router.push({ pathname: '/meetup/[id]', params: { id: meetup.id } })}>
-                      <Button.Label>You’re going</Button.Label>
-                    </Button>
-                  ) : (
-                    <Button size="sm" onPress={() => void join(meetup)}>
-                      <Button.Label>Join</Button.Label>
-                    </Button>
+        <View>
+          <SectionTitle>Campus</SectionTitle>
+          <ListGroup>
+            <StackLinkedItem linked={activePeople === '/campus'} onPress={() => router.push('/friends/campus')}>
+              <ListGroup.ItemContent>
+                <ListGroup.ItemTitle>Happening on campus</ListGroup.ItemTitle>
+                <ListGroup.ItemDescription>
+                  {countLabel(
+                    social.campus.length,
+                    'Nothing posted yet',
+                    '1 open event',
+                    (n) => `${n} open events`,
                   )}
-                </Card>
-              ))}
-            </View>
-          </View>
-        ) : null}
+                </ListGroup.ItemDescription>
+              </ListGroup.ItemContent>
+              <ListGroup.ItemSuffix />
+            </StackLinkedItem>
+          </ListGroup>
+        </View>
 
         <View>
           <SectionTitle>Add a friend</SectionTitle>
