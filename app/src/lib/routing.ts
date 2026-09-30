@@ -70,6 +70,12 @@ const MAX_SNAP_METERS = 250;
 // A staircase only counts as where someone is when it is clearly closer than the step-free path beside it.
 const STAIRS_CLEARLY_CLOSER_METERS = 6;
 const U_TURN_METERS = 25;
+// A building can be reached from any walkway beside it, not only the one nearest its center, which may be
+// round the back. Walkways this much further out than the nearest still count as a way in.
+const GOAL_SIDE_METERS = 40;
+const MAX_GOALS = 12;
+// Between two ways in, a closer one wins a near tie, but a much shorter walk always wins.
+const GOAL_SIDE_WEIGHT = 0.5;
 const BEHIND_DEGREES = 100;
 const TURN_LOOK_METERS = 12;
 const DEPART_LOOK_METERS = 35;
@@ -146,6 +152,25 @@ function snapToGraph(g: WalkGraph, p: Coordinate, avoidStairs: boolean): Walkway
   return best && best.distance <= MAX_SNAP_METERS ? best : undefined;
 }
 
+// Every walkway that reaches the destination: the nearest one, plus any other within GOAL_SIDE_METERS of it,
+// one point per walkway, so the route can arrive from whichever side is the shortest walk.
+function snapGoals(g: WalkGraph, p: Coordinate, avoidStairs: boolean): WalkwayMatch[] {
+  const hits: WalkwayMatch[] = [];
+  for (let e = 0; e < g.edgeA.length; e++) {
+    if (avoidStairs && g.edgeStairs[e]) continue;
+    const a = g.edgeA[e];
+    const b = g.edgeB[e];
+    const hit = projectOntoSegment(p, nodeCoord(g, a), nodeCoord(g, b));
+    if (hit.distance <= MAX_SNAP_METERS) {
+      hits.push({ a, b, edge: e, point: hit.point, distance: hit.distance, stairs: g.edgeStairs[e] === 1 });
+    }
+  }
+  if (hits.length === 0) return [];
+  hits.sort((x, y) => x.distance - y.distance);
+  const reach = hits[0].distance + GOAL_SIDE_METERS;
+  return hits.filter((hit) => hit.distance <= reach).slice(0, MAX_GOALS);
+}
+
 /**
  * The walkway someone is actually on, stairs included. With stairs avoided, a staircase only wins when
  * it is clearly closer than the step-free path, so GPS wobble beside a ramp is not read as taking the stairs.
@@ -216,8 +241,12 @@ export function findRoute(
   { avoidStairs, heading, start: startOn }: RouteOptions,
 ): Route | null {
   const start = startOn ?? snapToGraph(g, from, avoidStairs);
-  const goal = snapToGraph(g, to, avoidStairs);
-  if (!start || !goal) return null;
+  const goals = snapGoals(g, to, avoidStairs);
+  if (!start || goals.length === 0) return null;
+  const nearestGoal = goals[0].distance;
+  // What finishing at each way in costs beyond the walk itself, so a side far from the building loses ties.
+  const goalExtra = goals.map((goal) => (goal.distance - nearestGoal) * GOAL_SIDE_WEIGHT);
+  const farthestGoal = goals[goals.length - 1].distance;
 
   // Someone partway down a staircase has to finish it, and long ones are several stair segments in a row.
   // The rest of that flight stays open even while stairs are avoided; every other staircase stays closed.
@@ -229,10 +258,25 @@ export function findRoute(
   const previous = new Int32Array(nodeCount + 1).fill(-1);
   const closed = new Uint8Array(nodeCount + 1);
   const heap = new MinHeap();
-  const heuristic = (i: number) => (i === goalNode ? 0 : distanceMeters(nodeCoord(g, i), goal.point));
+  // Every way in lies within farthestGoal of the destination, so this never overestimates.
+  const heuristic = (i: number) =>
+    i === goalNode ? 0 : Math.max(0, distanceMeters(nodeCoord(g, i), to) - farthestGoal);
 
-  const goalCost = (i: number) =>
-    i === goal.a || i === goal.b ? distanceMeters(nodeCoord(g, i), goal.point) : Infinity;
+  // The cheapest way in reachable from a node, and which one it is.
+  let chosen = -1;
+  const goalCost = (i: number): [number, number] => {
+    let best = Infinity;
+    let which = -1;
+    goals.forEach((goal, k) => {
+      if (i !== goal.a && i !== goal.b) return;
+      const c = distanceMeters(nodeCoord(g, i), goal.point) + goalExtra[k];
+      if (c < best) {
+        best = c;
+        which = k;
+      }
+    });
+    return [best, which];
+  };
 
   // Someone who took a shortcut should be led on from where they are heading, not turned around to
   // save a few steps. The extra cost only steers the search; the distance shown is measured from the path.
@@ -252,11 +296,16 @@ export function findRoute(
     }
   }
 
-  const sameEdge = (start.a === goal.a && start.b === goal.b) || (start.a === goal.b && start.b === goal.a);
-  if (sameEdge) {
-    cost[goalNode] = distanceMeters(start.point, goal.point);
-    heap.push(goalNode, cost[goalNode]);
-  }
+  goals.forEach((goal, k) => {
+    const sameEdge = (start.a === goal.a && start.b === goal.b) || (start.a === goal.b && start.b === goal.a);
+    if (!sameEdge) return;
+    const c = distanceMeters(start.point, goal.point) + goalExtra[k];
+    if (c < cost[goalNode]) {
+      cost[goalNode] = c;
+      chosen = k;
+      heap.push(goalNode, c);
+    }
+  });
 
   while (heap.size > 0) {
     const node = heap.pop();
@@ -264,10 +313,11 @@ export function findRoute(
     closed[node] = 1;
     if (node === goalNode) break;
 
-    const toGoal = goalCost(node);
+    const [toGoal, which] = goalCost(node);
     if (toGoal !== Infinity && cost[node] + toGoal < cost[goalNode]) {
       cost[goalNode] = cost[node] + toGoal;
       previous[goalNode] = node;
+      chosen = which;
       heap.push(goalNode, cost[goalNode]);
     }
 
@@ -284,7 +334,8 @@ export function findRoute(
     }
   }
 
-  if (cost[goalNode] === Infinity) return null;
+  if (cost[goalNode] === Infinity || chosen === -1) return null;
+  const goal = goals[chosen];
 
   const nodes: number[] = [];
   for (let at = previous[goalNode]; at !== -1; at = previous[at]) nodes.push(at);

@@ -16,6 +16,7 @@ import { useNotificationTaps } from '@/lib/notifications';
 // Registers the background location task at startup, as iOS requires.
 import '@/lib/location';
 import { OfflineBanner } from '@/components/offline-banner';
+import { updateUpNextWidget } from '@/lib/up-next-widget';
 
 // iOS 26 draws sheets in Liquid Glass when they are see through. Older versions get a solid sheet.
 const GLASS_SHEETS = isLiquidGlassAvailable();
@@ -47,6 +48,8 @@ function Navigation() {
   useNotificationTaps();
 
   useEffect(() => {
+    // Paint an empty Up Next right away so a freshly added widget is not a blank square.
+    updateUpNextWidget([], []);
     void refreshAccount().finally(() => markReady('account'));
     // A session ended on another device is noticed when the app comes back to the front.
     const sub = AppState.addEventListener('change', (next) => {
@@ -68,7 +71,14 @@ function Navigation() {
             sheetLargestUndimmedDetentIndex: 0,
           }}
         />
-        <Stack.Screen name="origin" options={sheetCompact} />
+        <Stack.Screen
+          name="origin"
+          options={{
+            // Full-screen modal — form sheets crush the list on iPad.
+            presentation: 'fullScreenModal',
+            contentStyle: { backgroundColor: background },
+          }}
+        />
         <Stack.Screen name="class/[id]" options={sheetTall} />
         <Stack.Screen name="class-import" options={sheetTall} />
         <Stack.Screen name="profile" options={sheetMedium} />

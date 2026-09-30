@@ -5,7 +5,7 @@ import { walkGraph } from '@/data/walk-graph';
 import { fetchStreetRoute } from '@/lib/directions';
 import { distanceMeters } from '@/lib/geo';
 import type { LocationStatus } from '@/lib/location';
-import { findRoute, type Route } from '@/lib/routing';
+import { findRoute, matchWalkway, type Route } from '@/lib/routing';
 import { MY_LOCATION, type Trip } from '@/lib/trip';
 
 // Street routes come from a free shared server, so a preview is only refreshed after moving this far.
@@ -29,8 +29,12 @@ export const ISSUE_TEXT: Record<Exclude<RouteIssue, 'locating' | 'finding'>, str
 };
 
 // Campus walking directions only exist inside the campus path network. Anywhere outside it the route has to
-// come from the street network instead.
-const onCampusPaths = (point: Coordinate) => contains(CAMPUS.map.walkingArea, point);
+// come from the street network instead. A fix that lands just past the edge of the walking area, which GPS
+// does beside buildings, still counts as on campus while a campus walkway is this close.
+const NEAR_CAMPUS_PATH_METERS = 40;
+const onCampusPaths = (point: Coordinate) =>
+  contains(CAMPUS.map.walkingArea, point) ||
+  (matchWalkway(walkGraph(), point, { avoidStairs: false })?.distance ?? Infinity) <= NEAR_CAMPUS_PATH_METERS;
 
 type Preview = { route: Route | null; issue?: RouteIssue; isOffCampus: boolean };
 
@@ -44,7 +48,8 @@ export function useRoutePreview(
   const planning = trip.phase === 'preview' && trip.destination !== null;
   const fromMe = trip.origin === MY_LOCATION;
   const originCoordinate = fromMe ? position : getPlace(trip.origin)?.coordinate;
-  const isOffCampus = fromMe && position !== undefined && !onCampusPaths(position);
+  // Checked once per fix, not on every render: it looks through every campus walkway.
+  const isOffCampus = useMemo(() => fromMe && position !== undefined && !onCampusPaths(position), [fromMe, position]);
 
   const campusRoute = useMemo(() => {
     if (!planning || !trip.destination || !originCoordinate || isOffCampus) return null;

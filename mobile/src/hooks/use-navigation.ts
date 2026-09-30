@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import type { Coordinate, Place } from '@/data/campus';
+import { CAMPUS, contains, type Coordinate, type Place } from '@/data/campus';
 import { walkGraph } from '@/data/walk-graph';
 import type { RouteNotice } from '@/hooks/use-voice-guidance';
 import { fetchStreetRoute } from '@/lib/directions';
@@ -45,6 +45,15 @@ const FOLLOW_AGAIN_MS = 8_000;
 const COURSE_SPEED_MPS = 0.7;
 const MAX_SPEED_SLACK = 8;
 const WALK_FOLLOW_ZOOM = 18;
+// Arriving takes two fixes in a row, and "near the building" only counts on a fix this sure of itself, so one
+// wild reading beside the destination is not an arrival.
+const ARRIVAL_FIXES = 2;
+const ARRIVAL_ACCURACY_METERS = 30;
+// A fix that would mean moving faster than this since the last good one is a GPS jump, not the traveller.
+const MAX_BELIEVABLE_MPS: Record<TravelMode, number> = { walk: 12, bike: 20, drive: 60 };
+// A walk or bike ride that started on streets switches to the campus paths once the traveller is on them.
+const ON_CAMPUS_WALKWAY_METERS = 15;
+const ON_CAMPUS_FIXES = 2;
 
 function offRouteLimit(accuracy: number) {
   return Math.min(45, Math.max(20, accuracy * 1.5));
@@ -79,6 +88,8 @@ export function useNavigation({ destination, avoidStairs, follow, facingUp }: Op
   const [isRiding, setIsRiding] = useState(false);
   const [isFollowing, setIsFollowing] = useState(true);
   const [manualStep, setManualStep] = useState<number | null>(null);
+  /** Where the traveller is shown: on the route when close to it, else on the walkway underfoot. */
+  const [shownAt, setShownAt] = useState<Coordinate | null>(null);
 
   const nav = useRef({
     active: false,
@@ -105,6 +116,9 @@ export function useNavigation({ destination, avoidStairs, follow, facingUp }: Op
   const previousStartAlong = useRef(0);
   const previousMatches = useRef(0);
   const streetReroute = useRef({ inflight: false, at: 0 });
+  const arrivalCount = useRef(0);
+  const onCampusCount = useRef(0);
+  const lastGood = useRef<{ position: Coordinate; at: number } | null>(null);
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const followTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
@@ -198,6 +212,14 @@ export function useNavigation({ destination, avoidStairs, follow, facingUp }: Op
   const handleFix = useCallback(
     (fix: Fix) => {
       const { position, accuracy, heading, speed: reported } = fix;
+      const guiding = nav.current.active && nav.current.route !== null;
+      const good = lastGood.current;
+      if (guiding && good) {
+        const seconds = Math.max((fix.at - good.at) / 1000, 0.5);
+        const limit = MAX_BELIEVABLE_MPS[nav.current.route?.travel ?? 'walk'];
+        if (distanceMeters(good.position, position) / seconds > limit && accuracy > 10) return;
+      }
+      lastGood.current = { position, at: fix.at };
       const state = motion.current.update({ position, accuracy, speed: reported }, Date.now());
       motionState.current = state;
 
@@ -241,6 +263,26 @@ export function useNavigation({ destination, avoidStairs, follow, facingUp }: Op
 
       const match = graph && !holding ? matchWalkway(graph, position, { avoidStairs: current.avoidStairs }) : undefined;
       const walkway = match && match.distance <= WALKWAY_MATCH_METERS ? match : undefined;
+
+      // A walk that began off campus follows streets; once on the campus paths, the paths are the way.
+      if ((travel === 'walk' || travel === 'bike') && trusted && !holding && contains(CAMPUS.map.walkingArea, position)) {
+        const onPath = matchWalkway(walkGraph(), position, { avoidStairs: current.avoidStairs });
+        onCampusCount.current = onPath && onPath.distance <= ON_CAMPUS_WALKWAY_METERS ? onCampusCount.current + 1 : 0;
+        if (onCampusCount.current >= ON_CAMPUS_FIXES) {
+          onCampusCount.current = 0;
+          const campus = findRoute(walkGraph(), position, target.coordinate, {
+            avoidStairs: current.avoidStairs,
+            heading: facing(),
+            start: onPath,
+          });
+          if (campus) {
+            commit(campus, active, position, 'rerouted');
+            return;
+          }
+        }
+      } else {
+        onCampusCount.current = 0;
+      }
 
       const adopt = (candidate: Route, kind: RouteNotice) => {
         const leaving = active;
@@ -336,7 +378,10 @@ export function useNavigation({ destination, avoidStairs, follow, facingUp }: Op
 
       const reachedEntrance =
         next.distanceAlong >= active.arrivalDistance - (travel ? STREET_ARRIVAL_METERS[travel] : ARRIVAL_METERS);
-      const arrived = !holding && (reachedEntrance || distanceMeters(position, target.coordinate) <= NEAR_DESTINATION_METERS);
+      const nearDestination =
+        accuracy <= ARRIVAL_ACCURACY_METERS && distanceMeters(position, target.coordinate) <= NEAR_DESTINATION_METERS;
+      arrivalCount.current = trusted && !holding && (reachedEntrance || nearDestination) ? arrivalCount.current + 1 : 0;
+      const arrived = arrivalCount.current >= ARRIVAL_FIXES;
       if (arrived) {
         nav.current = { ...nav.current, arrived: true, previous: null };
         setHasArrived(true);
@@ -345,9 +390,10 @@ export function useNavigation({ destination, avoidStairs, follow, facingUp }: Op
       }
       const onRoute = next.distanceFromRoute <= SNAP_TO_ROUTE_METERS;
       const shown = onRoute ? next.point : (walkway?.point ?? position);
+      setShownAt(shown);
       if (nav.current.following) follow(followTarget(shown, travel));
     },
-    [facing, follow, followTarget, rerouteStreet, showNotice],
+    [commit, facing, follow, followTarget, rerouteStreet, showNotice],
   );
 
   useEffect(() => onFix(handleFix), [handleFix]);
@@ -360,6 +406,10 @@ export function useNavigation({ destination, avoidStairs, follow, facingUp }: Op
     lastRecheck.current = { at: Date.now(), along: 0 };
     streetReroute.current = { inflight: false, at: Date.now() };
     riding.current = false;
+    arrivalCount.current = 0;
+    onCampusCount.current = 0;
+    lastGood.current = null;
+    setShownAt(null);
     setIsRiding(false);
     setPreviousPath(null);
     setIsWrongWay(false);
@@ -460,6 +510,7 @@ export function useNavigation({ destination, avoidStairs, follow, facingUp }: Op
   return {
     route,
     progress,
+    shownAt,
     previousPath,
     isWrongWay,
     hasArrived,

@@ -7,6 +7,7 @@ type Item = UpNextItem & { kind: 'meetup' | 'class' };
 
 const HORIZON_MS = 36 * 60 * 60 * 1000;
 const MAX_ENTRIES = 24;
+const EMPTY: UpNextProps = { meetup: null, lesson: null };
 
 function meetupItem(meetup: Meetup): Item {
   const place = meetup.destination?.kind === 'place' ? getPlace(meetup.destination.placeId) : undefined;
@@ -70,12 +71,16 @@ export function updateUpNextWidget(classes: ClassEntry[], meetups: Meetup[]) {
     if (item.startsAt > now) moments.add(item.startsAt);
     if (item.endsAt > now) moments.add(item.endsAt);
   }
+  const props = pick(items, now);
   const entries = [...moments]
     .sort((a, b) => a - b)
     .slice(0, MAX_ENTRIES)
     .map((at) => ({ date: new Date(at), props: pick(items, at) }));
   try {
-    UpNext.updateTimeline(entries);
+    // Snapshot paints immediately; the timeline keeps it moving after that.
+    UpNext.updateSnapshot(props.meetup || props.lesson ? props : EMPTY);
+    UpNext.updateTimeline(entries.length > 0 ? entries : [{ date: new Date(now), props: EMPTY }]);
+    UpNext.reload();
   } catch {
     // Widgets are an extra; an older build without the extension just has none.
   }

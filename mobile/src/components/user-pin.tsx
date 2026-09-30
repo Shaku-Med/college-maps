@@ -1,14 +1,60 @@
 import { GeoJSONSource, Layer, Marker } from '@maplibre/maplibre-react-native';
 import { useThemeColor } from 'heroui-native';
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { View } from 'react-native';
 import Svg, { Defs, Path, RadialGradient, Stop } from 'react-native-svg';
 
+import type { Coordinate } from '@/data/campus';
+import { distanceMeters } from '@/lib/geo';
 import { useCompass, type Fix } from '@/lib/location';
 import { useMapBearing } from '@/lib/map-bearing';
 
 const BEAM = 140;
 const HALF = BEAM / 2;
+// Fixes come about once a second; the dot glides between them over about the same time, like the camera.
+const GLIDE_MS = 1000;
+const FRAME_MS = 33;
+// Further than this is a new place, not a step: the dot goes straight there.
+const JUMP_METERS = 120;
+
+/** Moves smoothly from where the dot is shown to each new target, easing out like a walk. */
+function useGlide(target: Coordinate) {
+  const [shown, setShown] = useState(target);
+  const shownRef = useRef(target);
+  const { latitude, longitude } = target;
+
+  useEffect(() => {
+    const start = shownRef.current;
+    const end = { latitude, longitude };
+    const gap = distanceMeters(start, end);
+    if (gap < 0.3 || gap > JUMP_METERS) {
+      shownRef.current = end;
+      setShown(end);
+      return;
+    }
+    let frame = 0;
+    let painted = 0;
+    const began = performance.now();
+    const step = (now: number) => {
+      const t = Math.min(1, (now - began) / GLIDE_MS);
+      const eased = 1 - (1 - t) ** 3;
+      const at = {
+        latitude: start.latitude + (end.latitude - start.latitude) * eased,
+        longitude: start.longitude + (end.longitude - start.longitude) * eased,
+      };
+      shownRef.current = at;
+      if (t === 1 || now - painted >= FRAME_MS) {
+        painted = now;
+        setShown(at);
+      }
+      if (t < 1) frame = requestAnimationFrame(step);
+    };
+    frame = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(frame);
+  }, [latitude, longitude]);
+
+  return shown;
+}
 
 function pointFeature(longitude: number, latitude: number): GeoJSON.Feature<GeoJSON.Point> {
   return {
@@ -23,14 +69,15 @@ function pointFeature(longitude: number, latitude: number): GeoJSON.Feature<GeoJ
  * The dot is a map layer (always visible). The beam is a fixed-size screen cone so it stays
  * readable at any zoom, not a tiny 70 m wedge on a city-wide preview.
  */
-export function UserPin({ fix }: { fix: Fix }) {
+export function UserPin({ fix, at }: { fix: Fix; at?: Coordinate | null }) {
   const accent = useThemeColor('accent');
   const mapBearing = useMapBearing();
   const compass = useCompass();
   // Moving, the phone's course says where someone is going; standing still, the compass (or last course).
   const heading =
     (fix.speed ?? 0) >= 0.7 && fix.heading !== undefined ? fix.heading : (compass ?? fix.heading);
-  const { longitude, latitude } = fix.position;
+  // During directions the dot sits on the route, or the walkway underfoot, instead of raw GPS.
+  const { longitude, latitude } = useGlide(at ?? fix.position);
 
   const point = useMemo(() => pointFeature(longitude, latitude), [longitude, latitude]);
   const rotation = heading === undefined ? 0 : (((heading - mapBearing) % 360) + 360) % 360;

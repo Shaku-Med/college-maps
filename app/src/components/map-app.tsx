@@ -48,6 +48,7 @@ import {
 
 const OFF_CAMPUS_METERS = CAMPUS.map.onCampusRadiusMeters;
 const WALKING_AREA = CAMPUS.map.walkingArea;
+const NEAR_CAMPUS_PATH_METERS = 40;
 
 // Campus walking directions only exist where the campus path network does. Anywhere outside it, even a
 // few hundred metres away on the expressway, the route has to come from the street network instead.
@@ -641,10 +642,14 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
 
   const originPlace = origin === MY_LOCATION ? undefined : getPlace(origin);
   const originCoordinate = origin === MY_LOCATION ? geo.position : originPlace?.coordinate;
-  const isOffCampus =
-    origin === MY_LOCATION &&
-    geo.position !== undefined &&
-    !onCampusPaths(geo.position);
+  // A fix just past the edge of the walking area, which GPS does beside buildings, still counts as on campus
+  // while a campus walkway is close by, so one stray reading never turns a campus walk into street directions.
+  const isOffCampus = useMemo(() => {
+    const position = geo.position;
+    if (origin !== MY_LOCATION || position === undefined || onCampusPaths(position)) return false;
+    const nearest = graph ? matchWalkway(graph, position, { avoidStairs: false }) : undefined;
+    return !(nearest && nearest.distance <= NEAR_CAMPUS_PATH_METERS);
+  }, [geo.position, graph, origin]);
 
   const campusRoute = useMemo(() => {
     if (mode !== "directions" || !graph || !selected || !originCoordinate || isOffCampus) return null;

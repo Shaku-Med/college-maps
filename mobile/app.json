@@ -3,7 +3,7 @@
     "name": "CSI Map",
     "slug": "csi-map",
     "owner": "meddi",
-    "version": "1.2.0",
+    "version": "1.3.0",
     "platforms": ["ios", "android"],
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -121,33 +121,32 @@
               "name": "UpNext",
               "displayName": "Up Next",
               "description": "Your next class or the meetup you're in.",
-              "supportedFamilies": [
-                "systemSmall",
-                "systemMedium"
-              ],
-              "contentMarginsDisabled": false,
-              "configuration": {
-                "title": "Up Next",
-                "description": "Choose what the widget shows.",
-                "parameters": {
-                  "show": {
-                    "title": "Show",
-                    "type": "enum",
-                    "values": [
-                      {
-                        "name": "Classes and meetups",
-                        "value": "all"
-                      },
-                      {
-                        "name": "Classes only",
-                        "value": "classes"
-                      },
-                      {
-                        "name": "Meetups only",
-                        "value": "meetups"
-                      }
-                    ],
-                    "default": "all"
+              "ios": {
+                "supportedFamilies": ["systemSmall", "systemMedium"],
+                "contentMarginsDisabled": true,
+                "configuration": {
+                  "title": "Up Next",
+                  "description": "Choose what the widget shows.",
+                  "parameters": {
+                    "show": {
+                      "title": "Show",
+                      "type": "enum",
+                      "values": [
+                        {
+                          "name": "Classes and meetups",
+                          "value": "all"
+                        },
+                        {
+                          "name": "Classes only",
+                          "value": "classes"
+                        },
+                        {
+                          "name": "Meetups only",
+                          "value": "meetups"
+                        }
+                      ],
+                      "default": "all"
+                    }
                   }
                 }
               }

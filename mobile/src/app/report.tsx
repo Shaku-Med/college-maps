@@ -103,7 +103,7 @@ export default function ReportScreen() {
           can keep CSI Map a place students can trust.
         </Text>
         <Text className="text-sm leading-5 text-muted">
-          You chose "{reasonLabel(reason)}" for {name ? `${name} ` : ''}@{username}.
+          You chose “{reasonLabel(reason)}” for {name ? `${name} ` : ''}@{username}.
         </Text>
       </View>
 

@@ -121,12 +121,14 @@ export function DirectionsPanel({
               );
             })}
           </View>
-        ) : (
+        ) : null}
+
+        {!isOffCampus || trip.travelMode === 'walk' ? (
           <View className="flex-row items-center justify-between px-1">
             <Text className="text-sm text-foreground">Avoid stairs</Text>
             <Switch isSelected={trip.avoidStairs} onSelectedChange={setAvoidStairs} />
           </View>
-        )}
+        ) : null}
 
         {events.length > 0 ? (
           <View className="gap-2">
@@ -154,6 +156,7 @@ export function DirectionsPanel({
               <Text className="text-3xl font-bold text-foreground">{formatRouteTime(route)}</Text>
               <Text className="text-sm text-muted">
                 {formatDistance(route.distance)} · Arrive {arrivalTime(route, now)}
+                {trip.avoidStairs && (!isOffCampus || trip.travelMode === 'walk') ? ' · step-free' : ''}
                 {route.hasStairs ? ' · Stairs' : ''}
               </Text>
             </View>

@@ -13,7 +13,7 @@ type PlacePickerProps = {
   selectedId?: string;
   /** Only buildings, for classes. */
   buildingsOnly?: boolean;
-  /** Rows shown above the places, like "My location". */
+  /** Rows shown inside the same list as places, like "My location". */
   header?: ReactNode;
 };
 
@@ -33,13 +33,27 @@ export function PlacePicker({ onPick, selectedId, buildingsOnly = false, header 
       <SearchField value={query} onChange={(value) => setQuery(value.slice(0, MAX_QUERY_LENGTH))}>
         <SearchField.Group>
           <SearchField.SearchIcon />
-          <SearchField.Input placeholder="Search places" autoCorrect={false} />
+          <SearchField.Input
+            placeholder="Search places"
+            autoCapitalize="none"
+            autoCorrect={false}
+            autoComplete="off"
+          />
           <SearchField.ClearButton />
         </SearchField.Group>
       </SearchField>
-      <ScrollView keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" contentContainerClassName="gap-4 pb-8">
-        {header}
+      <ScrollView
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+        contentContainerClassName="pb-8"
+        showsVerticalScrollIndicator={false}>
         <ListGroup>
+          {header ? (
+            <>
+              {header}
+              {places.length > 0 ? <Separator className="ml-14 mr-4" /> : null}
+            </>
+          ) : null}
           {places.map((place, index) => (
             <Fragment key={place.id}>
               {index > 0 ? <Separator className="ml-14 mr-4" /> : null}

@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { Button, ListGroup, SearchField, Separator, useThemeColor, useToast } from 'heroui-native';
+import { ListGroup, SearchField, Separator, useThemeColor, useToast } from 'heroui-native';
 import { Fragment, useMemo, useState } from 'react';
 import { RefreshControl, ScrollView, Text, View } from 'react-native';
 

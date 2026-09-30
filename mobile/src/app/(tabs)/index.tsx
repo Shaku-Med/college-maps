@@ -9,7 +9,7 @@ import {
 } from '@maplibre/maplibre-react-native';
 import * as Location from 'expo-location';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
-import { router, useFocusEffect } from 'expo-router';
+import { router, useFocusEffect, usePathname } from 'expo-router';
 import { useThemeColor, useToast } from 'heroui-native';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Linking, Platform, useColorScheme, useWindowDimensions, View } from 'react-native';
@@ -40,8 +40,9 @@ import { formatRouteTime } from '@/lib/directions';
 import { formatDistance } from '@/lib/geo';
 import { stepText } from '@/lib/instructions';
 import { endTrip, showTrip } from '@/lib/live-activity';
-import { currentFix, useLocation } from '@/lib/location';
+import { currentFix, useCompass, useLocation } from '@/lib/location';
 import { setMapBearing } from '@/lib/map-bearing';
+import { createCameraMemory, createSmoothHeading, shortestTurn } from '@/lib/smooth-heading';
 import { markReady } from '@/lib/splash';
 import { showMeetupOnMap, useShownMeetup } from '@/lib/meetup-focus';
 import { remainingPath } from '@/lib/routing';
@@ -58,6 +59,11 @@ const BUILDING_PITCH = 52;
 const FIRST_LABEL = { light: 'waterway_line_label', dark: 'water_name' } as const;
 // MapLibre keeps the last padding it was given, so every camera move says its own.
 const NO_PADDING = { top: 0, bottom: 0, left: 0, right: 0 };
+// Facing-up: ignore tiny wobble, and never cut a camera ease short with another.
+const HEADING_UP_MIN_DEGREES = 3;
+const HEADING_UP_GAP_MS = 520;
+const HEADING_UP_MS = 780;
+const FOLLOW_MS = 1100;
 
 const toLngLat = ({ latitude, longitude }: Coordinate): [number, number] => [longitude, latitude];
 
@@ -87,6 +93,11 @@ export default function MapScreen() {
   const { toast } = useToast();
   const camera = useRef<CameraRef>(null);
   const mapRef = useRef<MapRef>(null);
+  const [cameraMemory] = useState(createCameraMemory);
+  const [smoothHeading] = useState(createSmoothHeading);
+  const facingUpRef = useRef(true);
+  // Where and how close the camera last followed, so a turn to match the compass keeps both.
+  const lastFollow = useRef<{ point: Coordinate; zoom: number } | null>(null);
   const [buildingView, setBuildingView] = useState(false);
   const focused = useFocusedPlace();
   const trip = useTrip();
@@ -114,6 +125,8 @@ export default function MapScreen() {
   );
   const planning = trip.phase === 'preview';
   const navigating = trip.phase === 'navigate';
+  const pathname = usePathname();
+  const pickingOrigin = pathname.endsWith('/origin');
   const located = permission?.granted ?? false;
   const [onScreen, setOnScreen] = useState(true);
   useFocusEffect(
@@ -133,19 +146,30 @@ export default function MapScreen() {
       // A camera move that fails, which some Android map builds do while a style is still loading, must never
       // stop guidance itself. The next fix moves the camera again.
       try {
+        // Prefer the smoothed facing heading so follow and compass turns do not fight.
+        const smoothed = facingUpRef.current ? smoothHeading.current() : undefined;
+        const nextBearing =
+          smoothed !== undefined
+            ? smoothed
+            : Number.isFinite(bearing)
+              ? (bearing as number)
+              : cameraMemory.bearing();
+        if (Number.isFinite(bearing)) smoothHeading.set(bearing as number);
+        cameraMemory.moving(nextBearing, FOLLOW_MS);
+        lastFollow.current = { point, zoom: level };
         camera.current?.easeTo({
           center: toLngLat(point),
           zoom: level,
-          bearing: Number.isFinite(bearing) ? (bearing as number) : 0,
+          bearing: nextBearing,
           pitch: 40,
-          duration: 900,
+          duration: FOLLOW_MS,
           padding: mapCameraPadding(wide, 'follow', insets),
         });
       } catch {
         // Tried again on the next fix.
       }
     },
-    [insets, wide],
+    [cameraMemory, insets, smoothHeading, wide],
   );
 
   const navigation = useNavigation({
@@ -154,6 +178,53 @@ export default function MapScreen() {
     follow,
     facingUp,
   });
+  const compass = useCompass();
+  useEffect(() => {
+    facingUpRef.current = facingUp;
+  }, [facingUp]);
+
+  // Feed the smoother every compass/course reading; only ease the camera when it has settled enough
+  // and nothing else is already moving it (same idea as the web map's turnMapToFacing).
+  useEffect(() => {
+    if (!navigating || !facingUp || !navigation.isFollowing || navigation.manualStep !== null) {
+      return;
+    }
+    const fix = location.fix;
+    const raw =
+      fix && (fix.speed ?? 0) >= 0.7 && fix.heading !== undefined ? fix.heading : compass;
+    if (raw === undefined) return;
+
+    smoothHeading.set(raw, (shown) => {
+      if (!facingUpRef.current) return;
+      if (cameraMemory.busy()) return;
+      if (cameraMemory.sinceMove() < HEADING_UP_GAP_MS) return;
+      const delta = Math.abs(shortestTurn(cameraMemory.bearing(), shown));
+      if (delta < HEADING_UP_MIN_DEGREES) return;
+      const at = lastFollow.current;
+      if (!at) return;
+      cameraMemory.moving(shown, HEADING_UP_MS);
+      try {
+        // The same center, zoom, and padding as following, or each turn would shift the view.
+        camera.current?.easeTo({
+          center: toLngLat(at.point),
+          zoom: at.zoom,
+          bearing: shown,
+          pitch: 40,
+          duration: HEADING_UP_MS,
+          padding: mapCameraPadding(wide, 'follow', insets),
+        });
+      } catch {
+        // Map may still be loading.
+      }
+    });
+  }, [cameraMemory, compass, facingUp, insets, location.fix, navigating, navigation.isFollowing, navigation.manualStep, smoothHeading, wide]);
+
+  useEffect(() => {
+    if (facingUp) return;
+    smoothHeading.stop();
+  }, [facingUp, smoothHeading]);
+
+  useEffect(() => () => smoothHeading.stop(), [smoothHeading]);
   const preview = useRoutePreview(trip, location.fix?.position, location.status, navigation.travelHeading);
   const voice = useVoiceGuidance({
     route: navigating ? navigation.route : null,
@@ -333,6 +404,7 @@ export default function MapScreen() {
     const destination = trip.destination;
     setFacingUp(true);
     setIsRotated(false);
+    smoothHeading.stop();
     endTrip();
     navigation.end();
     closeTrip();
@@ -348,14 +420,16 @@ export default function MapScreen() {
     }
   }
 
-  function pointNorth() {
+  const pointNorth = useCallback(() => {
     void (async () => {
       const center = await mapRef.current?.getCenter().catch(() => undefined);
       if (!center) return;
+      smoothHeading.set(0);
+      cameraMemory.moving(0, 500);
       camera.current?.easeTo({ center, bearing: 0, duration: 500, padding: NO_PADDING });
       setIsRotated(false);
     })();
-  }
+  }, [cameraMemory, smoothHeading]);
 
   function toggleFacing() {
     const next = !facingUp;
@@ -366,6 +440,7 @@ export default function MapScreen() {
 
   function noteBearing(bearing: number) {
     setMapBearing(bearing);
+    cameraMemory.setBearing(bearing);
     const turned = ((bearing % 360) + 360) % 360;
     setIsRotated(turned > 1 && turned < 359);
   }
@@ -557,12 +632,20 @@ export default function MapScreen() {
             onPress={() => {
               if (!navigation.switchToPrevious()) toast.show({ variant: 'danger', label: 'Could not find a way to that route' });
             }}>
+            {/* The route left behind stays as a faded dashed line, like the web, and tapping it goes back to it. */}
+            <Layer
+              id="previous-route-casing"
+              type="line"
+              layout={{ 'line-cap': 'round', 'line-join': 'round' }}
+              paint={{ 'line-color': casing, 'line-width': 9, 'line-opacity': 0.45 }}
+            />
             <Layer
               id="previous-route-line"
               type="line"
-              layout={{ 'line-cap': 'round', 'line-join': 'round' }}
-              paint={{ 'line-color': '#8e8e93', 'line-width': 6, 'line-opacity': 0.55 }}
+              layout={{ 'line-join': 'round' }}
+              paint={{ 'line-color': accent, 'line-width': 5, 'line-opacity': 0.6, 'line-dasharray': [1.2, 1.4] }}
             />
+            <Layer id="previous-route-hit" type="line" paint={{ 'line-color': accent, 'line-width': 28, 'line-opacity': 0 }} />
           </GeoJSONSource>
         ) : null}
 
@@ -612,7 +695,7 @@ export default function MapScreen() {
           </GeoJSONSource>
         ) : null}
 
-        {location.fix ? <UserPin fix={location.fix} /> : null}
+        {location.fix ? <UserPin fix={location.fix} at={navigating ? navigation.shownAt : null} /> : null}
 
         {places.map((place) => (
           <PlaceMarker
@@ -725,7 +808,7 @@ export default function MapScreen() {
 
       {/* Browse map buttons stay on the right. During navigation, Point north / facing / Recenter sit in a
           horizontal row above the footer, like the web app. */}
-      {wide && controls.length > 0 ? (
+      {wide && !navigating ? (
         <View
           pointerEvents="box-none"
           className="absolute items-end px-4"
@@ -743,13 +826,13 @@ export default function MapScreen() {
           left: 0,
           ...(columnChrome ? { width: PANEL_WIDTH, maxWidth: '100%' } : { right: 0 }),
         }}>
-        {columnChrome ? null : controls.length > 0 ? (
+        {columnChrome ? null : !navigating ? (
           <View pointerEvents="box-none" className="items-end px-4">
             <MapControls controls={controls} />
           </View>
         ) : null}
         {navControls}
-        {planning ? (
+        {planning && !pickingOrigin ? (
           <View className="px-3" style={wide && !columnChrome ? { alignItems: 'center' } : undefined}>
             <View style={{ width: '100%', maxWidth: PANEL_WIDTH }}>
               <DirectionsPanel
