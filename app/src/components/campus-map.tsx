@@ -46,6 +46,9 @@ const ROUTE_SOURCE = "route";
 const PREVIOUS_SOURCE = "route-previous";
 const PREVIOUS_HIT = "route-previous-hit";
 const BUILDINGS_3D = "campus-buildings-3d";
+const ACTIVITY_SOURCE = "campus-activity";
+const ACTIVITY_HEAT = "campus-activity-heat";
+const ACTIVITY_GLOW = "campus-activity-glow";
 const BUILDING_PITCH = 52;
 const NO_PADDING = { top: 0, right: 0, bottom: 0, left: 0 };
 
@@ -96,6 +99,8 @@ type CampusMapProps = {
   rotatable?: boolean;
   /** Turns the map so the way the person is facing is up, the way navigation apps do. */
   headingUp?: boolean;
+  /** Public events per place id — soft heat under busy buildings when signed in and online. */
+  activityByPlace?: Readonly<Record<string, number>>;
 };
 
 const markerBase =
@@ -493,6 +498,82 @@ function createHeadingAnimator(render: (degrees: number | undefined) => void) {
   };
 }
 
+function applyActivityHeat(
+  map: MapLibreMap,
+  places: readonly Place[],
+  activityByPlace: Readonly<Record<string, number>> | undefined,
+) {
+  if (!map.isStyleLoaded()) return;
+  const features: GeoJSON.Feature<GeoJSON.Point>[] = [];
+  if (activityByPlace) {
+    for (const place of places) {
+      const weight = activityByPlace[place.id] ?? 0;
+      if (weight < 1) continue;
+      features.push({
+        type: "Feature",
+        properties: { weight: Math.min(weight, 6) },
+        geometry: { type: "Point", coordinates: toLngLat(place.coordinate) },
+      });
+    }
+  }
+  const data: GeoJSON.FeatureCollection = { type: "FeatureCollection", features };
+  const existing = map.getSource<GeoJSONSource>(ACTIVITY_SOURCE);
+  if (existing) {
+    existing.setData(data);
+    return;
+  }
+  if (features.length === 0) return;
+
+  map.addSource(ACTIVITY_SOURCE, { type: "geojson", data });
+  const before = map.getLayer(`${ROUTE_SOURCE}-casing`)
+    ? `${ROUTE_SOURCE}-casing`
+    : map.getStyle().layers?.find((layer) => layer.type === "symbol")?.id;
+  map.addLayer(
+    {
+      id: ACTIVITY_HEAT,
+      type: "heatmap",
+      source: ACTIVITY_SOURCE,
+      maxzoom: 19,
+      paint: {
+        "heatmap-weight": ["interpolate", ["linear"], ["get", "weight"], 1, 0.45, 6, 1],
+        "heatmap-intensity": ["interpolate", ["linear"], ["zoom"], 14, 0.55, 17, 1.15],
+        "heatmap-color": [
+          "interpolate",
+          ["linear"],
+          ["heatmap-density"],
+          0,
+          "rgba(0,0,0,0)",
+          0.2,
+          "rgba(61,156,240,0.18)",
+          0.45,
+          "rgba(61,156,240,0.4)",
+          0.7,
+          "rgba(255,140,66,0.55)",
+          1,
+          "rgba(255,90,70,0.7)",
+        ],
+        "heatmap-radius": ["interpolate", ["linear"], ["zoom"], 14, 28, 17, 52],
+        "heatmap-opacity": 0.85,
+      },
+    },
+    before,
+  );
+  map.addLayer(
+    {
+      id: ACTIVITY_GLOW,
+      type: "circle",
+      source: ACTIVITY_SOURCE,
+      paint: {
+        "circle-radius": ["interpolate", ["linear"], ["get", "weight"], 1, 16, 6, 28],
+        "circle-color": "#3d9cf0",
+        "circle-opacity": 0.18,
+        "circle-blur": 0.8,
+      },
+    },
+    before,
+  );
+}
+
 export function CampusMap({
   ref,
   places,
@@ -515,6 +596,7 @@ export function CampusMap({
   unbounded = false,
   rotatable = false,
   headingUp = false,
+  activityByPlace,
 }: CampusMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
@@ -551,6 +633,8 @@ export function CampusMap({
   const initialFocusRef = useRef(initialFocus);
   const getFocusPaddingRef = useRef(getFocusPadding);
   const buildingViewRef = useRef(buildingView);
+  const placesRef = useRef(places);
+  const activityRef = useRef(activityByPlace);
 
   const headingRef = useRef<ReturnType<typeof createHeadingAnimator> | null>(
     null,
@@ -570,6 +654,8 @@ export function CampusMap({
     onPersonPressRef.current = onPersonPress;
     getFocusPaddingRef.current = getFocusPadding;
     buildingViewRef.current = buildingView;
+    placesRef.current = places;
+    activityRef.current = activityByPlace;
   }, [
     onSelect,
     onUserPan,
@@ -581,6 +667,8 @@ export function CampusMap({
     buildingView,
     rotatable,
     headingUp,
+    places,
+    activityByPlace,
   ]);
 
   // Eases the map round to the way the person faces. Tiny corrections are skipped so a wobbling compass does
@@ -753,6 +841,7 @@ export function CampusMap({
       map.on("style.load", () => {
         applyRouteLayers(map, routesRef.current);
         applyBuildingView(map, buildingViewRef.current, "keep", rotatableRef.current);
+        applyActivityHeat(map, placesRef.current, activityRef.current);
       });
       map.on("click", PREVIOUS_HIT, (event) => {
         event.preventDefault();
@@ -811,6 +900,12 @@ export function CampusMap({
     if (!isReady || !map) return;
     applyBuildingView(map, buildingView, "ease", rotatable);
   }, [isReady, buildingView, rotatable]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!isReady || !map) return;
+    applyActivityHeat(map, places, activityByPlace);
+  }, [isReady, places, activityByPlace]);
 
   useEffect(() => {
     const map = mapRef.current;

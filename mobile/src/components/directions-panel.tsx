@@ -2,19 +2,21 @@ import * as Haptics from 'expo-haptics';
 import type { SFSymbol } from 'expo-symbols';
 import { CloseButton, Spinner, Switch, cn, useThemeColor } from 'heroui-native';
 import { useState } from 'react';
-import { Pressable, ScrollView, Text, View } from 'react-native';
+import { Pressable, ScrollView, Text, useWindowDimensions, View } from 'react-native';
 
 import { Icon } from '@/components/icon';
 import { Glass } from '@/components/glass';
 import { MapButton } from '@/components/map-button';
 import { StepIcon } from '@/components/step-icon';
 import { getPlace } from '@/data/campus';
+import { PANEL_WIDTH } from '@/hooks/use-layout';
 import { useNow } from '@/hooks/use-now';
 import { ISSUE_TEXT, type RouteIssue } from '@/hooks/use-route-preview';
 import { formatRouteTime } from '@/lib/directions';
 import { formatDistance } from '@/lib/geo';
 import { stepText } from '@/lib/instructions';
 import type { Route, TravelMode } from '@/lib/routing';
+import type { Meetup } from '@/lib/social-api';
 import { MY_LOCATION, setAvoidStairs, setTravelMode, type Trip } from '@/lib/trip';
 
 const MODES: { id: TravelMode; label: string; symbol: SFSymbol }[] = [
@@ -34,23 +36,43 @@ type DirectionsPanelProps = {
   issue?: RouteIssue;
   isOffCampus: boolean;
   live: boolean;
+  events?: Meetup[];
+  onOpenEvent?: (meetup: Meetup) => void;
   onStart: () => void;
   onClose: () => void;
   onPickOrigin: () => void;
 };
 
-export function DirectionsPanel({ trip, route, issue, isOffCampus, live, onStart, onClose, onPickOrigin }: DirectionsPanelProps) {
+export function DirectionsPanel({
+  trip,
+  route,
+  issue,
+  isOffCampus,
+  live,
+  events = [],
+  onOpenEvent,
+  onStart,
+  onClose,
+  onPickOrigin,
+}: DirectionsPanelProps) {
   const [showSteps, setShowSteps] = useState(false);
   const now = useNow();
+  const { height } = useWindowDimensions();
   const [foreground, muted, accent, accentForeground] = useThemeColor(['foreground', 'muted', 'accent', 'accent-foreground']);
   const destination = trip.destination;
   if (!destination) return null;
   const originName = trip.origin === MY_LOCATION ? 'My location' : (getPlace(trip.origin)?.name ?? 'My location');
   const waiting = issue === 'locating' || issue === 'finding';
+  // Landscape / short windows: scroll instead of crushing Drive/Walk/Bike and the Start row.
+  const maxHeight = Math.min(height * 0.72, Math.max(220, height - 96));
 
   return (
-    <Glass className="overflow-hidden rounded-[28px]">
-      <View className="gap-4 p-4">
+    <Glass className="w-full overflow-hidden rounded-[28px]" style={{ width: '100%', minWidth: 280, maxWidth: PANEL_WIDTH }}>
+      <ScrollView
+        bounces={false}
+        showsVerticalScrollIndicator={false}
+        style={{ maxHeight }}
+        contentContainerClassName="gap-4 p-4">
         <View className="flex-row items-start gap-3">
           <View className="min-w-0 flex-1">
             <Text className="text-xs font-semibold uppercase tracking-wide text-muted">Directions</Text>
@@ -88,7 +110,7 @@ export function DirectionsPanel({ trip, route, issue, isOffCampus, live, onStart
                     setTravelMode(mode.id);
                   }}
                   className={cn(
-                    'flex-1 flex-row items-center justify-center gap-1.5 rounded-2xl py-2.5',
+                    'min-w-[88px] flex-1 flex-row items-center justify-center gap-1.5 rounded-2xl py-2.5',
                     selected ? 'bg-accent' : 'bg-default',
                   )}>
                   <Icon name={mode.symbol} size={14} tintColor={selected ? accentForeground : foreground} />
@@ -106,9 +128,29 @@ export function DirectionsPanel({ trip, route, issue, isOffCampus, live, onStart
           </View>
         )}
 
+        {events.length > 0 ? (
+          <View className="gap-2">
+            <Text className="text-xs font-semibold uppercase tracking-wide text-muted">
+              Events at {destination.name}
+            </Text>
+            {events.slice(0, 3).map((meetup) => (
+              <Pressable
+                key={meetup.id}
+                onPress={() => onOpenEvent?.(meetup)}
+                className="flex-row items-center gap-2.5 rounded-2xl bg-default px-3 py-2.5 active:opacity-70">
+                <Icon name="calendar" size={14} tintColor={accent} />
+                <Text className="flex-1 text-sm font-medium text-foreground" numberOfLines={1}>
+                  {meetup.title ?? 'Campus event'}
+                </Text>
+                {meetup.going > 0 ? <Text className="text-xs text-muted">{meetup.going}</Text> : null}
+              </Pressable>
+            ))}
+          </View>
+        ) : null}
+
         {route ? (
           <View className="flex-row items-end justify-between px-1">
-            <View>
+            <View className="min-w-0 flex-1">
               <Text className="text-3xl font-bold text-foreground">{formatRouteTime(route)}</Text>
               <Text className="text-sm text-muted">
                 {formatDistance(route.distance)} · Arrive {arrivalTime(route, now)}
@@ -129,7 +171,7 @@ export function DirectionsPanel({ trip, route, issue, isOffCampus, live, onStart
         ) : null}
 
         {route && showSteps ? (
-          <ScrollView className="max-h-56" contentContainerClassName="gap-3 py-1">
+          <View className="gap-3 py-1">
             {route.steps.map((step, index) => (
               <View key={index} className="flex-row items-center gap-3">
                 <View className="size-8 items-center justify-center rounded-full bg-default">
@@ -141,7 +183,7 @@ export function DirectionsPanel({ trip, route, issue, isOffCampus, live, onStart
                 ) : null}
               </View>
             ))}
-          </ScrollView>
+          </View>
         ) : null}
 
         <MapButton
@@ -154,7 +196,7 @@ export function DirectionsPanel({ trip, route, issue, isOffCampus, live, onStart
             onStart();
           }}
         />
-      </View>
+      </ScrollView>
     </Glass>
   );
 }

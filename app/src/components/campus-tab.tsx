@@ -1,10 +1,12 @@
 "use client";
 
-import { Button, Input, Label, ListBox, SearchField, TextField, ToggleButton, ToggleButtonGroup, toast } from "@heroui/react";
-import { CalendarPlus, Clock, MapPin } from "lucide-react";
+import { Button, Dropdown, Input, Label, ListBox, SearchField, TextField, ToggleButton, ToggleButtonGroup, toast } from "@heroui/react";
+import { Ban, CalendarPlus, Clock, Flag, MapPin, MoreHorizontal } from "lucide-react";
 import { useMemo, useState } from "react";
 
+import { useConfirmDialog } from "@/components/confirm-dialog";
 import { PlaceItem } from "@/components/place-row";
+import { useReportFlow } from "@/components/report-flow";
 import { getPlace } from "@/data/campus";
 import { searchPlaces } from "@/lib/search";
 import { socialApi, type Meetup, type MeetupDestination } from "@/lib/social-api";
@@ -35,16 +37,20 @@ function startsWhen(meetup: Meetup) {
 }
 
 export function CampusTab({
+  myUsername,
   campus,
   onMeetupChange,
   onRefresh,
 }: {
+  myUsername: string;
   campus: Meetup[];
   onMeetupChange: (meetup: Meetup) => void;
   onRefresh: () => void;
 }) {
   const [isCreating, setIsCreating] = useState(false);
   const [isBusy, setIsBusy] = useState(false);
+  const report = useReportFlow(onRefresh);
+  const confirm = useConfirmDialog();
 
   async function toggleGoing(meetup: Meetup) {
     if (meetup.yourRole === "host") return;
@@ -73,6 +79,18 @@ export function CampusTab({
     onRefresh();
   }
 
+  async function blockHost(meetup: Meetup) {
+    setIsBusy(true);
+    const res = await socialApi.block(meetup.host.username);
+    setIsBusy(false);
+    if (!res.ok) {
+      toast.danger(res.message);
+      return;
+    }
+    toast.success(`Blocked @${meetup.host.username}`);
+    onRefresh();
+  }
+
   if (isCreating) {
     return (
       <NewPublicMeetupForm
@@ -88,6 +106,8 @@ export function CampusTab({
 
   return (
     <div className="flex flex-col gap-3 pt-3">
+      {report.dialog}
+      {confirm.dialog}
       <Button onPress={() => setIsCreating(true)} fullWidth>
         <CalendarPlus aria-hidden />
         Post a campus meetup
@@ -111,7 +131,42 @@ export function CampusTab({
                   <Clock className="size-4" aria-hidden />
                 </span>
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium">{meetup.title}</p>
+                  <div className="flex items-start gap-2">
+                    <p className="min-w-0 flex-1 truncate text-sm font-medium">{meetup.title}</p>
+                    {meetup.yourRole === "host" || meetup.host.username === myUsername ? null : (
+                      <Dropdown>
+                        <Button size="sm" variant="ghost" isIconOnly aria-label="Event options" isDisabled={isBusy}>
+                          <MoreHorizontal aria-hidden />
+                        </Button>
+                        <Dropdown.Popover>
+                          <Dropdown.Menu
+                            onAction={(key) => {
+                              if (key === "report") {
+                                report.openMeetup(meetup);
+                                return;
+                              }
+                              if (key === "block") {
+                                confirm.ask({
+                                  title: `Block @${meetup.host.username}?`,
+                                  body: "Their events disappear for you, and they cannot add you or invite you.",
+                                  action: "Block",
+                                  onConfirm: () => blockHost(meetup),
+                                });
+                              }
+                            }}>
+                            <Dropdown.Item id="report" textValue="Report this event">
+                              <Flag className="size-4 shrink-0 text-muted" aria-hidden />
+                              <Label>Report this event</Label>
+                            </Dropdown.Item>
+                            <Dropdown.Item id="block" textValue={`Block @${meetup.host.username}`} variant="danger">
+                              <Ban className="size-4 shrink-0" aria-hidden />
+                              <Label>Block @{meetup.host.username}</Label>
+                            </Dropdown.Item>
+                          </Dropdown.Menu>
+                        </Dropdown.Popover>
+                      </Dropdown>
+                    )}
+                  </div>
                   <p className="truncate text-xs text-muted">
                     {startsWhen(meetup)} · {meetup.going} going · by {meetup.host.displayName}
                   </p>
@@ -133,7 +188,18 @@ export function CampusTab({
                     <Button size="sm" variant="secondary" isDisabled className="flex-1">
                       You are going
                     </Button>
-                    <Button size="sm" variant="secondary" isDisabled={isBusy} onPress={() => void takeDown(meetup)}>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      isDisabled={isBusy}
+                      onPress={() =>
+                        confirm.ask({
+                          title: "Take down this event?",
+                          body: "It comes off the campus board for everyone.",
+                          action: "Take down",
+                          onConfirm: () => takeDown(meetup),
+                        })
+                      }>
                       Take down
                     </Button>
                   </>

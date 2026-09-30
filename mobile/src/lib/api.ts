@@ -1,4 +1,5 @@
 import { API_ORIGIN, APP_CLIENT_HEADERS } from '@/lib/config';
+import { noteNetworkResult } from '@/lib/online';
 import { readToken } from '@/lib/session';
 
 import type { AccountUser, ApiResult } from '../../../app/src/lib/api';
@@ -44,11 +45,13 @@ export async function apiCall<T>(
       credentials: 'omit',
     });
   } catch {
+    noteNetworkResult(false);
     return { ok: false, status: 0, message: OFFLINE_MESSAGE };
   } finally {
     clearTimeout(timer);
   }
 
+  noteNetworkResult(true);
   if (response.status === 204) return { ok: true, data: undefined as T };
 
   const payload: unknown = await response.json().catch(() => null);

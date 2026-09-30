@@ -10,7 +10,9 @@ export default function MeetupPlaceScreen() {
   const selected = useChosenPlace();
 
   return (
-    <View className="flex-1 px-4 pt-3" style={{ paddingBottom: Platform.OS === 'android' ? insets.bottom : 0 }}>
+    <View
+      className="flex-1 px-4 pt-3"
+      style={{ width: '100%', paddingBottom: Platform.OS === 'android' ? insets.bottom : 0 }}>
       <PlacePicker
         selectedId={selected}
         onPick={(place) => {

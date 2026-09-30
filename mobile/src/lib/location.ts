@@ -188,7 +188,8 @@ async function reconcile() {
       previous?.heading ??
       (await Location.watchHeadingAsync((reading) => {
         const degrees = reading.trueHeading >= 0 ? reading.trueHeading : reading.magHeading;
-        if (Number.isFinite(degrees) && reading.accuracy !== 0) setCompass(degrees);
+        // Expo: 0 is high accuracy, negative means the reading is not usable yet.
+        if (Number.isFinite(degrees) && reading.accuracy >= 0) setCompass(degrees);
       }).catch(() => undefined));
     watch = { navigation, position, heading };
     if (snapshot.status !== 'active') set({ status: snapshot.fix ? 'active' : 'asking' });

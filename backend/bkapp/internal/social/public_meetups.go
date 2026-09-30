@@ -23,8 +23,8 @@ const (
 	maxPublicMinutes   = 8 * 60
 )
 
-// NewPublicMeetup is a campus wide meetup: a name, when it starts, and where. The place stays hidden
-// until it starts, and nobody shares a live location.
+// NewPublicMeetup is a campus wide meetup: a name, when it starts, and where. Named campus places are
+// shown on the map heat layer; pin spots stay hidden until the event starts.
 type NewPublicMeetup struct {
 	Title       string           `json:"title"`
 	Note        string           `json:"note"`
@@ -40,7 +40,7 @@ func cleanTitle(raw string) (string, error) {
 		return "", invalid("Give it a name between %d and %d characters.", minTitleRunes, maxTitleRunes)
 	}
 	for _, r := range title {
-		if r < 0x20 || r == 0x7f {
+		if r < 0x20 || r == 0x7f || r == '<' || r == '>' {
 			return "", invalid("The name has characters that are not allowed.")
 		}
 	}

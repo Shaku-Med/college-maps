@@ -4,6 +4,7 @@
     "slug": "csi-map",
     "owner": "meddi",
     "version": "1.2.0",
+    "platforms": ["ios", "android"],
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "csimap",
@@ -19,13 +20,19 @@
     "ios": {
       "bundleIdentifier": "com.shakumed.csimap",
       "appleTeamId": "5VH593K857",
-      "supportsTablet": false,
+      "supportsTablet": true,
       "config": {
         "usesNonExemptEncryption": false
       },
       "infoPlist": {
         "CFBundleDisplayName": "CSI Map",
-        "NSSupportsLiveActivities": true
+        "NSSupportsLiveActivities": true,
+        "UISupportedInterfaceOrientations~ipad": [
+          "UIInterfaceOrientationPortrait",
+          "UIInterfaceOrientationPortraitUpsideDown",
+          "UIInterfaceOrientationLandscapeLeft",
+          "UIInterfaceOrientationLandscapeRight"
+        ]
       },
       "privacyManifests": {
         "NSPrivacyAccessedAPITypes": [

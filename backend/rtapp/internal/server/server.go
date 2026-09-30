@@ -70,7 +70,7 @@ func New(cfg config.Config, logger *slog.Logger, h *hub.Hub) *Server {
 	handler := chain(mux,
 		recoverPanics(logger),
 		logRequests(logger),
-		securityHeaders,
+		securityHeaders(cfg.IsProduction()),
 		cors(cfg.AllowedOrigins),
 		rateLimit(general, ip),
 		requireOrigin(cfg.AllowedOrigins),

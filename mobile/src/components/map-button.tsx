@@ -19,6 +19,8 @@ type MapButtonProps = {
   variant?: Variant;
   size?: 'md' | 'lg';
   symbol?: SFSymbol;
+  /** Round icon button with no visible label, like the web nav chrome. */
+  iconOnly?: boolean;
   isDisabled?: boolean;
   style?: StyleProp<ViewStyle>;
 };
@@ -27,11 +29,21 @@ type MapButtonProps = {
  * The buttons that float over the map. They look like HeroUI's, but the press is recognised natively by the
  * gesture handler, so a busy JS thread or the map under them cannot cancel a tap on Android.
  */
-export function MapButton({ label, onPress, variant = 'primary', size = 'md', symbol, isDisabled = false, style }: MapButtonProps) {
+export function MapButton({
+  label,
+  onPress,
+  variant = 'primary',
+  size = 'md',
+  symbol,
+  iconOnly = false,
+  isDisabled = false,
+  style,
+}: MapButtonProps) {
   const colors = useThemeColor(['accent', 'default', 'danger', 'accent-foreground', 'accent-soft-foreground', 'danger-foreground']);
   const [accent, surface, danger, accentForeground, secondaryForeground, dangerForeground] = colors;
   const background = { primary: accent, secondary: surface, danger }[variant];
   const tint = { primary: accentForeground, secondary: secondaryForeground, danger: dangerForeground }[variant];
+  const side = size === 'lg' ? 56 : 48;
 
   return (
     <Pressable
@@ -42,8 +54,9 @@ export function MapButton({ label, onPress, variant = 'primary', size = 'md', sy
       onPress={onPress}
       style={({ pressed }) => [
         {
-          height: size === 'lg' ? 56 : 48,
-          paddingHorizontal: size === 'lg' ? 20 : 16,
+          height: side,
+          width: iconOnly ? side : undefined,
+          paddingHorizontal: iconOnly ? 0 : size === 'lg' ? 20 : 16,
           gap: 8,
           borderRadius: 999,
           flexDirection: 'row',
@@ -55,8 +68,10 @@ export function MapButton({ label, onPress, variant = 'primary', size = 'md', sy
         },
         style,
       ]}>
-      {symbol ? <Icon name={symbol} size={size === 'lg' ? 16 : 13} weight="bold" tintColor={tint} /> : null}
-      <Text className={cn('font-medium', size === 'lg' ? 'text-lg' : 'text-base', LABEL[variant])}>{label}</Text>
+      {symbol ? <Icon name={symbol} size={size === 'lg' ? 16 : iconOnly ? 18 : 13} weight="bold" tintColor={tint} /> : null}
+      {iconOnly ? null : (
+        <Text className={cn('font-medium', size === 'lg' ? 'text-lg' : 'text-base', LABEL[variant])}>{label}</Text>
+      )}
     </Pressable>
   );
 }

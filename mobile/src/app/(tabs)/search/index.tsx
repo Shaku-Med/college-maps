@@ -5,7 +5,10 @@ import { Fragment, useMemo, useState } from 'react';
 import { ScrollView, Text, View } from 'react-native';
 
 import { Icon } from '@/components/icon';
+import { StackLinkedItem } from '@/components/stack-linked-item';
 import { CAMPUS, PLACES, type Place } from '@/data/campus';
+import { useLinkedParam } from '@/hooks/use-linked-row-opacity';
+import { useReadableStyle } from '@/hooks/use-layout';
 import { CATEGORY_SYMBOLS, USED_CATEGORIES, categoryLabel } from '@/lib/categories';
 import { showPlace } from '@/lib/links';
 import { MAX_QUERY_LENGTH, floorLabel, parseRoomCode, searchPlaces } from '@/lib/search';
@@ -20,10 +23,10 @@ function open(place: Place, room?: string) {
   showPlace(place, room);
 }
 
-function PlaceRow({ place }: { place: Place }) {
+function PlaceRow({ place, linked }: { place: Place; linked: boolean }) {
   const muted = useThemeColor('muted');
   return (
-    <ListGroup.Item onPress={() => open(place)}>
+    <StackLinkedItem linked={linked} gestureSync={false} onPress={() => open(place)}>
       <ListGroup.ItemPrefix>
         <View className="size-9 items-center justify-center rounded-xl bg-default">
           <Icon name={CATEGORY_SYMBOLS[place.category]} size={16} tintColor={muted} />
@@ -36,17 +39,17 @@ function PlaceRow({ place }: { place: Place }) {
         </ListGroup.ItemDescription>
       </ListGroup.ItemContent>
       <ListGroup.ItemSuffix />
-    </ListGroup.Item>
+    </StackLinkedItem>
   );
 }
 
-function PlaceList({ places }: { places: readonly Place[] }) {
+function PlaceList({ places, activePlaceId }: { places: readonly Place[]; activePlaceId: string | null }) {
   return (
     <ListGroup>
       {places.map((place, index) => (
         <Fragment key={place.id}>
           {index > 0 ? <Separator className="ml-16 mr-4" /> : null}
-          <PlaceRow place={place} />
+          <PlaceRow place={place} linked={activePlaceId === place.id} />
         </Fragment>
       ))}
     </ListGroup>
@@ -58,8 +61,10 @@ const SectionTitle = ({ children }: { children: string }) => (
 );
 
 export default function SearchScreen() {
+  const readable = useReadableStyle();
   const [query, setQuery] = useState('');
   const accentForeground = useThemeColor('accent-foreground');
+  const activePlaceId = useLinkedParam(/\/place\/([^/?]+)/);
   const trimmed = query.trim();
   const room = useMemo(() => parseRoomCode(trimmed), [trimmed]);
   const results = useMemo(() => searchPlaces(trimmed), [trimmed]);
@@ -76,12 +81,15 @@ export default function SearchScreen() {
       <ScrollView
         contentInsetAdjustmentBehavior="automatic"
         keyboardDismissMode="on-drag"
-        contentContainerClassName="gap-6 px-4 pb-12 pt-2">
+        contentContainerClassName="gap-6 px-4 pb-12 pt-2" contentContainerStyle={readable}>
         {room ? (
           <View>
             <SectionTitle>Room</SectionTitle>
             <ListGroup>
-              <ListGroup.Item onPress={() => open(room.place, room.room)}>
+              <StackLinkedItem
+                linked={activePlaceId === room.place.id}
+                gestureSync={false}
+                onPress={() => open(room.place, room.room)}>
                 <ListGroup.ItemPrefix>
                   <View className="size-9 items-center justify-center rounded-xl bg-accent">
                     <Icon name="door.left.hand.open" size={16} tintColor={accentForeground} />
@@ -94,7 +102,7 @@ export default function SearchScreen() {
                   </ListGroup.ItemDescription>
                 </ListGroup.ItemContent>
                 <ListGroup.ItemSuffix />
-              </ListGroup.Item>
+              </StackLinkedItem>
             </ListGroup>
           </View>
         ) : null}
@@ -103,7 +111,7 @@ export default function SearchScreen() {
           results.length > 0 ? (
             <View>
               <SectionTitle>{room ? 'Places' : 'Results'}</SectionTitle>
-              <PlaceList places={results} />
+              <PlaceList places={results} activePlaceId={activePlaceId} />
             </View>
           ) : room ? null : (
             <View className="items-center gap-2 px-6 pt-10">
@@ -117,7 +125,7 @@ export default function SearchScreen() {
           BROWSE.map(({ category, places }) => (
             <View key={category}>
               <SectionTitle>{categoryLabel(category)}</SectionTitle>
-              <PlaceList places={places} />
+              <PlaceList places={places} activePlaceId={activePlaceId} />
             </View>
           ))
         )}

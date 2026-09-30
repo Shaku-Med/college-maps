@@ -6,6 +6,7 @@ import { Pressable, Text, View } from 'react-native';
 import { CAMPUS } from '@/data/campus';
 import { completeSignIn } from '@/lib/account';
 import { CODE_LENGTH, MAX_EMAIL_LENGTH, accountApi, normalizeEmail, schoolEmailProblem } from '@/lib/api';
+import { openWeb } from '@/lib/links';
 
 /** Sign in with a school email: a one time code arrives by email, and there is no password to remember. */
 export function SignIn() {
@@ -132,6 +133,15 @@ export function SignIn() {
       <Button size="lg" isDisabled={busy || wait > 0} onPress={() => void sendCode()}>
         <Button.Label>{busy ? 'Sending' : wait > 0 ? `Try again in ${wait}s` : 'Email me a code'}</Button.Label>
       </Button>
+      <View className="flex-row items-center justify-center gap-4">
+        <Pressable onPress={() => void openWeb('/privacy')} hitSlop={8} className="active:opacity-60">
+          <Text className="text-sm font-medium text-accent">Privacy</Text>
+        </Pressable>
+        <Text className="text-sm text-muted">·</Text>
+        <Pressable onPress={() => void openWeb('/terms')} hitSlop={8} className="active:opacity-60">
+          <Text className="text-sm font-medium text-accent">Terms</Text>
+        </Pressable>
+      </View>
     </View>
   );
 }

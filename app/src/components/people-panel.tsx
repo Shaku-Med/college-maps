@@ -1,16 +1,32 @@
 "use client";
 
-import { Button, CloseButton, Input, Label, ListBox, SearchField, Spinner, Surface, TextField, ToggleButton, ToggleButtonGroup, toast } from "@heroui/react";
-import { Ban, Check, MapPin, Plus, UserPlus, Users, X } from "lucide-react";
+import {
+  Button,
+  CloseButton,
+  Dropdown,
+  Input,
+  Label,
+  ListBox,
+  SearchField,
+  Spinner,
+  Surface,
+  TextField,
+  ToggleButton,
+  ToggleButtonGroup,
+  toast,
+} from "@heroui/react";
+import { Ban, Check, ChevronLeft, ChevronRight, Flag, MapPin, MoreHorizontal, Plus, Send, UserMinus, UserPlus, Users, X } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { CampusTab } from "@/components/campus-tab";
+import { useConfirmDialog } from "@/components/confirm-dialog";
 import { PlaceItem } from "@/components/place-row";
+import { useReportFlow } from "@/components/report-flow";
 import { CollapseButton, SheetGrabber } from "@/components/sheet-chrome";
 import { getPlace } from "@/data/campus";
 import { MAX_USERNAME_LENGTH, normalizeUsername } from "@/lib/api";
 import { searchPlaces } from "@/lib/search";
-import { MAX_GUESTS, socialApi, type Friend, type FriendsOverview, type Meetup } from "@/lib/social-api";
+import { MAX_GUESTS, socialApi, type Friend, type FriendsOverview, type Meetup, type Person } from "@/lib/social-api";
 
 type PeoplePanelProps = {
   myUsername: string;
@@ -112,7 +128,7 @@ export function PeoplePanel({ myUsername, friends, meetups, campus, isLoading, o
         {tab === "friends" ? (
           <FriendsTab friends={friends} onRefresh={onRefresh} />
         ) : tab === "campus" ? (
-          <CampusTab campus={campus} onMeetupChange={onMeetupChange} onRefresh={onRefresh} />
+          <CampusTab myUsername={myUsername} campus={campus} onMeetupChange={onMeetupChange} onRefresh={onRefresh} />
         ) : isCreating ? (
           <NewMeetupForm
             myUsername={myUsername}
@@ -140,9 +156,26 @@ export function PeoplePanel({ myUsername, friends, meetups, campus, isLoading, o
   );
 }
 
+function countLabel(count: number, empty: string, one: string, many: (n: number) => string) {
+  if (count === 0) return empty;
+  if (count === 1) return one;
+  return many(count);
+}
+
+type PeoplePage = "home" | "friends" | "sent" | "blocked";
+
+function matchesPerson(person: Person, query: string) {
+  const q = query.trim().toLowerCase().replace(/^@/, "");
+  if (!q) return true;
+  return person.username.toLowerCase().includes(q) || person.displayName.toLowerCase().includes(q);
+}
+
 function FriendsTab({ friends, onRefresh }: { friends: FriendsOverview; onRefresh: () => void }) {
   const [username, setUsername] = useState("");
   const [isBusy, setIsBusy] = useState(false);
+  const [page, setPage] = useState<PeoplePage>("home");
+  const report = useReportFlow(onRefresh);
+  const confirm = useConfirmDialog();
 
   async function run(action: () => Promise<{ ok: boolean; message?: string }>, success: string) {
     setIsBusy(true);
@@ -174,8 +207,29 @@ function FriendsTab({ friends, onRefresh }: { friends: FriendsOverview; onRefres
     onRefresh();
   }
 
+  if (page === "friends") {
+    return (
+      <FriendsListPage
+        friends={friends}
+        isBusy={isBusy}
+        report={report}
+        confirm={confirm}
+        onBack={() => setPage("home")}
+        run={run}
+      />
+    );
+  }
+  if (page === "sent") {
+    return <SentPage friends={friends} isBusy={isBusy} onBack={() => setPage("home")} run={run} />;
+  }
+  if (page === "blocked") {
+    return <BlockedPage friends={friends} isBusy={isBusy} onBack={() => setPage("home")} run={run} />;
+  }
+
   return (
     <div className="flex flex-col gap-1">
+      {report.dialog}
+      {confirm.dialog}
       <form
         className="flex items-end gap-2 pt-3"
         onSubmit={(event) => {
@@ -223,67 +277,264 @@ function FriendsTab({ friends, onRefresh }: { friends: FriendsOverview; onRefres
         </>
       ) : null}
 
-      <SectionTitle>Your friends</SectionTitle>
-      {friends.friends.length === 0 ? (
+      <SectionTitle>People</SectionTitle>
+      <div className="flex flex-col gap-2">
+        <NavRow
+          icon={<Users className="size-4" aria-hidden />}
+          title="Your friends"
+          subtitle={countLabel(friends.friends.length, "No friends yet", "1 friend", (n) => `${n} friends`)}
+          onPress={() => setPage("friends")}
+        />
+        <NavRow
+          icon={<Send className="size-4" aria-hidden />}
+          title="Sent"
+          subtitle={countLabel(friends.outgoing.length, "No pending requests", "1 waiting", (n) => `${n} waiting`)}
+          onPress={() => setPage("sent")}
+        />
+        <NavRow
+          icon={<Ban className="size-4" aria-hidden />}
+          title="Blocked"
+          subtitle={countLabel(friends.blocked.length, "Nobody blocked yet", "1 person", (n) => `${n} people`)}
+          onPress={() => setPage("blocked")}
+        />
+      </div>
+    </div>
+  );
+}
+
+function NavRow({
+  icon,
+  title,
+  subtitle,
+  onPress,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  subtitle: string;
+  onPress: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onPress}
+      className="flex w-full items-center gap-3 rounded-2xl border border-separator px-4 py-3.5 text-left outline-none transition-colors hover:bg-surface-secondary focus-visible:ring-2 focus-visible:ring-accent">
+      <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-accent-soft text-accent-soft-foreground">{icon}</span>
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-medium">{title}</p>
+        <p className="text-xs text-muted">{subtitle}</p>
+      </div>
+      <ChevronRight className="size-4 shrink-0 text-muted" aria-hidden />
+    </button>
+  );
+}
+
+function PageHeader({ title, subtitle, onBack }: { title: string; subtitle: string; onBack: () => void }) {
+  return (
+    <div className="flex items-center gap-2">
+      <Button size="sm" variant="ghost" isIconOnly aria-label="Back" onPress={onBack}>
+        <ChevronLeft aria-hidden />
+      </Button>
+      <div className="min-w-0 flex-1">
+        <h3 className="text-base font-semibold leading-tight">{title}</h3>
+        <p className="text-xs text-muted">{subtitle}</p>
+      </div>
+    </div>
+  );
+}
+
+function FriendsListPage({
+  friends,
+  isBusy,
+  report,
+  confirm,
+  onBack,
+  run,
+}: {
+  friends: FriendsOverview;
+  isBusy: boolean;
+  report: ReturnType<typeof useReportFlow>;
+  confirm: ReturnType<typeof useConfirmDialog>;
+  onBack: () => void;
+  run: (action: () => Promise<{ ok: boolean; message?: string }>, success: string) => Promise<void>;
+}) {
+  const [query, setQuery] = useState("");
+  const list = friends.friends;
+  const filtered = useMemo(() => list.filter((person) => matchesPerson(person, query)), [list, query]);
+
+  return (
+    <div className="flex flex-col gap-3 pt-3">
+      {report.dialog}
+      {confirm.dialog}
+      <PageHeader title="Your friends" subtitle="Search friends" onBack={onBack} />
+      <SearchField value={query} onChange={setQuery} aria-label="Search friends" fullWidth>
+        <SearchField.Group>
+          <SearchField.SearchIcon />
+          <SearchField.Input placeholder="Search friends" autoComplete="off" autoCorrect="off" spellCheck={false} />
+          <SearchField.ClearButton aria-label="Clear search" />
+        </SearchField.Group>
+      </SearchField>
+      {list.length === 0 ? (
         <p className="rounded-2xl bg-surface-secondary px-4 py-5 text-sm text-muted">
-          No friends yet. Add someone by username to plan a meetup.
+          No friends yet. Add someone by username on the previous screen.
+        </p>
+      ) : filtered.length === 0 ? (
+        <p className="rounded-2xl bg-surface-secondary px-4 py-5 text-sm text-muted">
+          No matches for &ldquo;{query.trim()}&rdquo;.
         </p>
       ) : (
-        friends.friends.map((person) => (
+        filtered.map((person) => (
+          <Row key={person.username} name={person.displayName} username={person.username}>
+            <Dropdown>
+              <Button size="sm" variant="ghost" isIconOnly aria-label={`${person.displayName} options`} isDisabled={isBusy}>
+                <MoreHorizontal aria-hidden />
+              </Button>
+              <Dropdown.Popover>
+                <Dropdown.Menu
+                  onAction={(key) => {
+                    if (key === "report") {
+                      report.openPerson({
+                        username: person.username,
+                        displayName: person.displayName,
+                        isFriend: true,
+                      });
+                      return;
+                    }
+                    if (key === "unfriend") {
+                      confirm.ask({
+                        title: `Remove @${person.username}?`,
+                        body: "You will no longer see each other as friends. You can add them again later.",
+                        action: "Remove",
+                        onConfirm: () => run(() => socialApi.unfriend(person.username), `Removed @${person.username}`),
+                      });
+                      return;
+                    }
+                    if (key === "block") {
+                      confirm.ask({
+                        title: `Block @${person.username}?`,
+                        body: "They will not be able to find you, add you, or invite you.",
+                        action: "Block",
+                        onConfirm: () => run(() => socialApi.block(person.username), `Blocked @${person.username}`),
+                      });
+                    }
+                  }}>
+                  <Dropdown.Item id="report" textValue="Report">
+                    <Flag className="size-4 shrink-0 text-muted" aria-hidden />
+                    <Label>Report</Label>
+                  </Dropdown.Item>
+                  <Dropdown.Item id="unfriend" textValue="Remove friend" variant="danger">
+                    <UserMinus className="size-4 shrink-0" aria-hidden />
+                    <Label>Remove friend</Label>
+                  </Dropdown.Item>
+                  <Dropdown.Item id="block" textValue="Block" variant="danger">
+                    <Ban className="size-4 shrink-0" aria-hidden />
+                    <Label>Block</Label>
+                  </Dropdown.Item>
+                </Dropdown.Menu>
+              </Dropdown.Popover>
+            </Dropdown>
+          </Row>
+        ))
+      )}
+    </div>
+  );
+}
+
+function SentPage({
+  friends,
+  isBusy,
+  onBack,
+  run,
+}: {
+  friends: FriendsOverview;
+  isBusy: boolean;
+  onBack: () => void;
+  run: (action: () => Promise<{ ok: boolean; message?: string }>, success: string) => Promise<void>;
+}) {
+  const [query, setQuery] = useState("");
+  const list = friends.outgoing;
+  const filtered = useMemo(() => list.filter((person) => matchesPerson(person, query)), [list, query]);
+
+  return (
+    <div className="flex flex-col gap-3 pt-3">
+      <PageHeader title="Sent" subtitle="Search pending requests" onBack={onBack} />
+      <SearchField value={query} onChange={setQuery} aria-label="Search sent requests" fullWidth>
+        <SearchField.Group>
+          <SearchField.SearchIcon />
+          <SearchField.Input placeholder="Search sent requests" autoComplete="off" autoCorrect="off" spellCheck={false} />
+          <SearchField.ClearButton aria-label="Clear search" />
+        </SearchField.Group>
+      </SearchField>
+      {list.length === 0 ? (
+        <p className="rounded-2xl bg-surface-secondary px-4 py-5 text-sm text-muted">
+          No sent requests. When you add someone and they have not answered yet, they show up here.
+        </p>
+      ) : filtered.length === 0 ? (
+        <p className="rounded-2xl bg-surface-secondary px-4 py-5 text-sm text-muted">
+          No matches for &ldquo;{query.trim()}&rdquo;.
+        </p>
+      ) : (
+        filtered.map((person) => (
           <Row key={person.username} name={person.displayName} username={person.username}>
             <Button
               size="sm"
               variant="ghost"
               isDisabled={isBusy}
-              onPress={() => void run(() => socialApi.unfriend(person.username), `Removed @${person.username}`)}>
-              Remove
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              aria-label={`Block ${person.username}`}
-              isIconOnly
-              isDisabled={isBusy}
-              onPress={() => void run(() => socialApi.block(person.username), `Blocked @${person.username}`)}>
-              <Ban aria-hidden />
+              onPress={() => void run(() => socialApi.removeRequest(person.username), "Request cancelled")}>
+              Cancel
             </Button>
           </Row>
         ))
       )}
+    </div>
+  );
+}
 
-      {friends.outgoing.length > 0 ? (
-        <>
-          <SectionTitle>Waiting for an answer</SectionTitle>
-          {friends.outgoing.map((person) => (
-            <Row key={person.username} name={person.displayName} username={person.username}>
-              <Button
-                size="sm"
-                variant="ghost"
-                isDisabled={isBusy}
-                onPress={() => void run(() => socialApi.removeRequest(person.username), "Request cancelled")}>
-                Cancel
-              </Button>
-            </Row>
-          ))}
-        </>
-      ) : null}
+function BlockedPage({
+  friends,
+  isBusy,
+  onBack,
+  run,
+}: {
+  friends: FriendsOverview;
+  isBusy: boolean;
+  onBack: () => void;
+  run: (action: () => Promise<{ ok: boolean; message?: string }>, success: string) => Promise<void>;
+}) {
+  const [query, setQuery] = useState("");
+  const blocked = friends.blocked;
+  const filtered = useMemo(() => blocked.filter((person) => matchesPerson(person, query)), [blocked, query]);
 
-      {friends.blocked.length > 0 ? (
-        <>
-          <SectionTitle>Blocked</SectionTitle>
-          {friends.blocked.map((person) => (
-            <Row key={person.username} name={person.displayName} username={person.username}>
-              <Button
-                size="sm"
-                variant="ghost"
-                isDisabled={isBusy}
-                onPress={() => void run(() => socialApi.unblock(person.username), `Unblocked @${person.username}`)}>
-                Unblock
-              </Button>
-            </Row>
-          ))}
-        </>
-      ) : null}
+  return (
+    <div className="flex flex-col gap-3 pt-3">
+      <PageHeader title="Blocked" subtitle="Search and unblock people" onBack={onBack} />
+      <SearchField value={query} onChange={setQuery} aria-label="Search blocked people" fullWidth>
+        <SearchField.Group>
+          <SearchField.SearchIcon />
+          <SearchField.Input placeholder="Search blocked people" autoComplete="off" autoCorrect="off" spellCheck={false} />
+          <SearchField.ClearButton aria-label="Clear search" />
+        </SearchField.Group>
+      </SearchField>
+      {blocked.length === 0 ? (
+        <p className="rounded-2xl bg-surface-secondary px-4 py-5 text-sm text-muted">
+          Nobody blocked yet. People you block cannot find you, add you, or invite you.
+        </p>
+      ) : filtered.length === 0 ? (
+        <p className="rounded-2xl bg-surface-secondary px-4 py-5 text-sm text-muted">
+          No matches for &ldquo;{query.trim()}&rdquo;.
+        </p>
+      ) : (
+        filtered.map((person) => (
+          <Row key={person.username} name={person.displayName || person.username} username={person.username}>
+            <Button
+              size="sm"
+              variant="secondary"
+              isDisabled={isBusy}
+              onPress={() => void run(() => socialApi.unblock(person.username), `Unblocked @${person.username}`)}>
+              Unblock
+            </Button>
+          </Row>
+        ))
+      )}
     </div>
   );
 }

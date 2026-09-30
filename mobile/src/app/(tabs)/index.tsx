@@ -4,7 +4,6 @@ import {
   Layer,
   Map,
   Marker,
-  NativeUserLocation,
   type CameraRef,
   type MapRef,
 } from '@maplibre/maplibre-react-native';
@@ -14,24 +13,28 @@ import { router, useFocusEffect } from 'expo-router';
 import { useThemeColor, useToast } from 'heroui-native';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Linking, Platform, useColorScheme, useWindowDimensions, View } from 'react-native';
-import { initialWindowMetrics, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Icon } from '@/components/icon';
 import { CategoryBar, type MapFilter } from '@/components/category-bar';
 import { DirectionsPanel } from '@/components/directions-panel';
-import { HeadingBeam } from '@/components/heading-beam';
 import { MeetupBar } from '@/components/meetup-bar';
 import { PersonCard, PersonPin } from '@/components/person-pin';
 import { MapControls, type MapControl } from '@/components/map-controls';
+import { MapButton } from '@/components/map-button';
 import { NavigationBanner, NavigationFooter } from '@/components/navigation-hud';
 import { PlaceMarker } from '@/components/place-marker';
 import { EdgeScrim, TopScrim } from '@/components/top-scrim';
+import { UserPin } from '@/components/user-pin';
 import { CAMPUS, PLACES, contains, getPlace, type Coordinate, type Place } from '@/data/campus';
 import { useMeetupLive } from '@/hooks/use-meetup-live';
+import { mapCameraPadding, PANEL_WIDTH, useMapChromeBottom, useShortViewport, useWide } from '@/hooks/use-layout';
 import { useNavigation, type FollowTarget } from '@/hooks/use-navigation';
 import { useRoutePreview } from '@/hooks/use-route-preview';
 import { useVoiceGuidance } from '@/hooks/use-voice-guidance';
 import { useProfile } from '@/lib/account';
+import { campusActivityByPlace, eventsAtPlace } from '@/lib/campus-activity';
+import { useDevicePrefs } from '@/lib/device-prefs';
 import { useFocusedPlace } from '@/lib/focus';
 import { formatRouteTime } from '@/lib/directions';
 import { formatDistance } from '@/lib/geo';
@@ -53,13 +56,8 @@ const PLACE_ZOOM = 17;
 const BUILDING_PITCH = 52;
 // The first label layer in each OpenFreeMap style, so buildings rise under the street and place names.
 const FIRST_LABEL = { light: 'waterway_line_label', dark: 'water_name' } as const;
-// The map runs under the tab bar, which the app cannot measure, so its height per platform: the iOS glass bar
-// and Android's Material navigation bar, both above the system inset.
-const TAB_BAR_HEIGHT = Platform.OS === 'android' ? 80 : 49;
 // MapLibre keeps the last padding it was given, so every camera move says its own.
 const NO_PADDING = { top: 0, bottom: 0, left: 0, right: 0 };
-// The place sheet opens at 45% of the screen, so a focused place sits in the space above it.
-const SHEET_SHARE = 0.45;
 
 const toLngLat = ({ latitude, longitude }: Coordinate): [number, number] => [longitude, latitude];
 
@@ -82,6 +80,10 @@ export default function MapScreen() {
   const scheme = useColorScheme();
   const insets = useSafeAreaInsets();
   const { height } = useWindowDimensions();
+  const wide = useWide();
+  const short = useShortViewport();
+  // Left column only when there is room vertically; landscape phones stay full-width bottom chrome.
+  const columnChrome = wide && !short;
   const { toast } = useToast();
   const camera = useRef<CameraRef>(null);
   const mapRef = useRef<MapRef>(null);
@@ -93,6 +95,7 @@ export default function MapScreen() {
   const shownMeetupId = useShownMeetup();
   const [filter, setFilter] = useState<MapFilter>('all');
   const [facingUp, setFacingUp] = useState(true);
+  const [isRotated, setIsRotated] = useState(false);
   const [activePerson, setActivePerson] = useState<string | null>(null);
   const [permission, requestPermission] = Location.useForegroundPermissions();
   const [accent, danger, background] = useThemeColor(['accent', 'danger', 'background']);
@@ -100,6 +103,15 @@ export default function MapScreen() {
 
   const meetup =
     social.meetups.find((m) => m.id === shownMeetupId && m.active && m.yourStatus === 'joined') ?? null;
+  const activityCounts = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const row of campusActivityByPlace(social.campus)) map[row.placeId] = row.count;
+    return map;
+  }, [social.campus]);
+  const tripEvents = useMemo(
+    () => (trip.destination ? eventsAtPlace(social.campus, trip.destination.id) : []),
+    [social.campus, trip.destination],
+  );
   const planning = trip.phase === 'preview';
   const navigating = trip.phase === 'navigate';
   const located = permission?.granted ?? false;
@@ -127,13 +139,13 @@ export default function MapScreen() {
           bearing: Number.isFinite(bearing) ? (bearing as number) : 0,
           pitch: 40,
           duration: 900,
-          padding: { top: insets.top + 170, bottom: insets.bottom + 150, left: 0, right: 0 },
+          padding: mapCameraPadding(wide, 'follow', insets),
         });
       } catch {
         // Tried again on the next fix.
       }
     },
-    [insets.bottom, insets.top],
+    [insets, wide],
   );
 
   const navigation = useNavigation({
@@ -187,12 +199,13 @@ export default function MapScreen() {
     if (planning) prepareVoice();
   }, [planning, prepareVoice]);
 
-  // The screen stays on while guiding, like any navigation app.
+  // The screen stays on while guiding when the user leaves Keep awake on (Account → Directions).
+  const keepAwake = useDevicePrefs().keepAwake;
   useEffect(() => {
-    if (!navigating) return;
+    if (!navigating || !keepAwake) return;
     void activateKeepAwakeAsync('navigation');
     return () => void deactivateKeepAwake('navigation');
-  }, [navigating]);
+  }, [navigating, keepAwake]);
 
   useEffect(() => {
     if (!focused || trip.phase !== 'idle') return;
@@ -200,9 +213,9 @@ export default function MapScreen() {
       center: toLngLat(focused.coordinate),
       zoom: PLACE_ZOOM,
       duration: 700,
-      padding: { top: insets.top + 60, bottom: height * SHEET_SHARE, left: 0, right: 0 },
+      padding: mapCameraPadding(wide, 'place', insets, { height }),
     });
-  }, [focused, trip.phase, insets.top, height]);
+  }, [focused, trip.phase, insets, height, wide]);
 
   // A new preview route is fitted into the space above the directions panel.
   const previewRoute = planning ? preview.route : null;
@@ -219,12 +232,12 @@ export default function MapScreen() {
       north = Math.max(north, latitude);
     }
     camera.current?.fitBounds([west, south, east, north], {
-      padding: { top: insets.top + 40, bottom: 380, left: 48, right: 48 },
+      padding: mapCameraPadding(wide, 'preview', insets),
       bearing: 0,
       pitch: 0,
       duration: 700,
     });
-  }, [previewRoute, insets.top]);
+  }, [previewRoute, insets, wide]);
 
   const places = useMemo(() => {
     if (trip.phase !== 'idle' || filter === 'all') return PLACES;
@@ -318,6 +331,8 @@ export default function MapScreen() {
 
   function end() {
     const destination = trip.destination;
+    setFacingUp(true);
+    setIsRotated(false);
     endTrip();
     navigation.end();
     closeTrip();
@@ -333,6 +348,28 @@ export default function MapScreen() {
     }
   }
 
+  function pointNorth() {
+    void (async () => {
+      const center = await mapRef.current?.getCenter().catch(() => undefined);
+      if (!center) return;
+      camera.current?.easeTo({ center, bearing: 0, duration: 500, padding: NO_PADDING });
+      setIsRotated(false);
+    })();
+  }
+
+  function toggleFacing() {
+    const next = !facingUp;
+    setFacingUp(next);
+    if (next) navigation.recenter();
+    else pointNorth();
+  }
+
+  function noteBearing(bearing: number) {
+    setMapBearing(bearing);
+    const turned = ((bearing % 360) + 360) % 360;
+    setIsRotated(turned > 1 && turned < 359);
+  }
+
   function step(index: number) {
     const shown = navigation.showStep(index);
     const route = navigation.route;
@@ -342,7 +379,7 @@ export default function MapScreen() {
       center: toLngLat(shown.point),
       zoom: 18,
       duration: 600,
-      padding: { top: insets.top + 170, bottom: insets.bottom + 200, left: 0, right: 0 },
+      padding: mapCameraPadding(wide, 'step', insets),
     });
   }
 
@@ -376,8 +413,9 @@ export default function MapScreen() {
   const meetupWhere = meetupPlace?.name ?? (meetupHost ? `Wherever ${meetupHost.displayName} is` : 'A pin on the map');
 
   // Inside a tab, Android can report no bottom inset because the tab bar takes it, even though the map runs
-  // under both the bar and the system navigation. The window's own inset is the real one.
-  const bottomInset = Math.max(insets.bottom, Platform.OS === 'android' ? (initialWindowMetrics?.insets.bottom ?? 0) : 0);
+  // under both the bar and the system navigation. Chrome bottom clears the tab bar when it is showing.
+  const tabBarShown = trip.phase === 'idle';
+  const chromeBottom = useMapChromeBottom(tabBarShown);
 
   // Showing a meetup frames everyone in it and the place you meet, and frames again as more people appear,
   // but not on every move, so the map is still free to pan.
@@ -397,7 +435,9 @@ export default function MapScreen() {
     const last = framed.current;
     if (last && last.id === meetup.id && last.count >= framePoints.length) return;
     framed.current = { id: meetup.id, count: framePoints.length };
-    const padding = { top: insets.top + 130, bottom: bottomInset + TAB_BAR_HEIGHT + 120, left: 56, right: 56 };
+    const padding = mapCameraPadding(wide, 'meetup', insets, {
+      bottomChrome: chromeBottom,
+    });
     if (framePoints.length === 1) {
       camera.current?.flyTo({ center: toLngLat(framePoints[0]), zoom: PLACE_ZOOM, duration: 700, padding });
       return;
@@ -412,22 +452,16 @@ export default function MapScreen() {
     });
   });
 
+  const stepping = navigation.manualStep !== null;
+  const navChrome = navigating && !navigation.hasArrived && !stepping;
+
+  // Browse / planning keep the vertical capsule. During navigation the web-style row sits above the footer.
   const controls: MapControl[] = navigating
-    ? [
-        {
-          symbol: facingUp ? 'location.north.line.fill' : 'safari',
-          label: facingUp ? 'Show north up' : 'Turn the map the way you face',
-          active: facingUp,
-          onPress: () => {
-            setFacingUp((value) => !value);
-            navigation.recenter();
-          },
-        },
-        ...(navigation.isFollowing
-          ? []
-          : [{ symbol: 'location.fill' as const, label: 'Follow me again', onPress: navigation.recenter }]),
-      ]
+    ? []
     : [
+        ...(isRotated
+          ? [{ symbol: 'location.north.fill' as const, label: 'Point north', onPress: pointNorth }]
+          : []),
         {
           symbol: buildingView ? 'view.2d' : 'view.3d',
           label: buildingView ? 'Flat map' : '3D buildings',
@@ -443,7 +477,23 @@ export default function MapScreen() {
         },
       ];
 
-  const tabBarShown = trip.phase === 'idle';
+  const navControls = navChrome ? (
+    <View pointerEvents="box-none" className="flex-row items-center justify-end gap-2 px-3">
+      {!facingUp && isRotated ? (
+        <MapButton iconOnly variant="secondary" symbol="location.north.fill" label="Point north" onPress={pointNorth} />
+      ) : null}
+      <MapButton
+        iconOnly
+        variant={facingUp ? 'primary' : 'secondary'}
+        symbol={facingUp ? 'location.north.line.fill' : 'safari'}
+        label={facingUp ? 'Keep north up' : 'Turn the map the way you face'}
+        onPress={toggleFacing}
+      />
+      {!navigation.isFollowing ? (
+        <MapButton variant="secondary" symbol="location.fill" label="Recenter" onPress={navigation.recenter} />
+      ) : null}
+    </View>
+  ) : null;
 
   return (
     <View className="flex-1" style={{ backgroundColor: background }}>
@@ -459,8 +509,11 @@ export default function MapScreen() {
         onRegionWillChange={(event) => {
           if (navigating && event.nativeEvent.userInteraction) navigation.pauseFollowing();
         }}
-        onRegionIsChanging={(event) => setMapBearing(event.nativeEvent.bearing)}
-        onRegionDidChange={(event) => setMapBearing(event.nativeEvent.bearing)}>
+        onRegionIsChanging={(event) => noteBearing(event.nativeEvent.bearing)}
+        onRegionDidChange={(event) => {
+          noteBearing(event.nativeEvent.bearing);
+          if (navigating && event.nativeEvent.userInteraction) navigation.scheduleFollowAgain();
+        }}>
         {buildingView ? (
           <Layer
             id="buildings-3d"
@@ -530,8 +583,36 @@ export default function MapScreen() {
           </GeoJSONSource>
         ) : null}
 
-        {located ? <NativeUserLocation mode={navigating ? 'course' : 'default'} /> : null}
-        {located && location.fix ? <HeadingBeam fix={location.fix} /> : null}
+        {trip.destination && trip.phase !== 'idle' ? (
+          <GeoJSONSource
+            id="destination-point"
+            data={{
+              type: 'Feature',
+              properties: {},
+              geometry: {
+                type: 'Point',
+                coordinates: [trip.destination.coordinate.longitude, trip.destination.coordinate.latitude],
+              },
+            }}>
+            <Layer
+              id="destination-glow"
+              type="circle"
+              paint={{ 'circle-radius': 16, 'circle-color': accent, 'circle-opacity': 0.22 }}
+            />
+            <Layer
+              id="destination-dot"
+              type="circle"
+              paint={{
+                'circle-radius': 7,
+                'circle-color': accent,
+                'circle-stroke-width': 3,
+                'circle-stroke-color': '#ffffff',
+              }}
+            />
+          </GeoJSONSource>
+        ) : null}
+
+        {location.fix ? <UserPin fix={location.fix} /> : null}
 
         {places.map((place) => (
           <PlaceMarker
@@ -539,6 +620,7 @@ export default function MapScreen() {
             place={place}
             selected={place.id === destinationId}
             origin={place.id === originPlace?.id}
+            activity={activityCounts[place.id] ?? 0}
             onPress={openPlace}
           />
         ))}
@@ -572,10 +654,25 @@ export default function MapScreen() {
       {/* Android's tab bar is see through, so the map fades out behind it the same way it does under the chips,
           keeping the tab labels and the buttons above them readable. */}
       {Platform.OS === 'android' && tabBarShown ? (
-        <EdgeScrim edge="bottom" height={bottomInset + TAB_BAR_HEIGHT + 90} dark={scheme === 'dark'} />
+        <EdgeScrim edge="bottom" height={chromeBottom + 90} dark={scheme === 'dark'} />
       ) : null}
 
-      <View pointerEvents="box-none" className="absolute inset-x-0" style={{ top: insets.top + 8 }}>
+      {/* Category chips go full width on tablets so labels like Student Life are not clipped in the left column. */}
+      {wide && trip.phase === 'idle' && !meetup ? (
+        <View pointerEvents="box-none" className="absolute left-0 right-0" style={{ top: insets.top + 8 }}>
+          <CategoryBar value={filter} onChange={setFilter} />
+        </View>
+      ) : null}
+
+      {/* Top chrome: left column on tall wide layouts; full width on phones and landscape. */}
+      <View
+        pointerEvents="box-none"
+        className="absolute"
+        style={{
+          top: insets.top + 8,
+          left: 0,
+          ...(columnChrome ? { width: PANEL_WIDTH, maxWidth: '100%' } : { right: 0 }),
+        }}>
         {navigating && navigation.route && trip.destination ? (
           <NavigationBanner
             route={navigation.route}
@@ -586,6 +683,7 @@ export default function MapScreen() {
             isRiding={navigation.isRiding}
             notice={navigation.notice}
             hasAlternate={navigation.previousPath !== null}
+            weakSignal={(location.fix?.accuracy ?? 0) > 60}
             onUseAlternate={() => {
               if (!navigation.switchToPrevious()) toast.show({ variant: 'danger', label: 'Could not find a way to that route' });
             }}
@@ -620,30 +718,53 @@ export default function MapScreen() {
               onClose={() => setActivePerson(null)}
             />
           </View>
-        ) : trip.phase === 'idle' && !meetup ? (
+        ) : trip.phase === 'idle' && !meetup && !wide ? (
           <CategoryBar value={filter} onChange={setFilter} />
         ) : null}
       </View>
 
-      <View
-        pointerEvents="box-none"
-        className="absolute inset-x-0 gap-3"
-        style={{ bottom: tabBarShown ? bottomInset + TAB_BAR_HEIGHT + 10 : bottomInset + 6 }}>
-        <View pointerEvents="box-none" className="items-end px-4">
+      {/* Browse map buttons stay on the right. During navigation, Point north / facing / Recenter sit in a
+          horizontal row above the footer, like the web app. */}
+      {wide && controls.length > 0 ? (
+        <View
+          pointerEvents="box-none"
+          className="absolute items-end px-4"
+          style={{ right: 0, bottom: chromeBottom }}>
           <MapControls controls={controls} />
         </View>
+      ) : null}
+
+      {/* Bottom chrome: left column on tall tablets; full width on phones and landscape so directions are not crushed. */}
+      <View
+        pointerEvents="box-none"
+        className="absolute gap-3"
+        style={{
+          bottom: chromeBottom,
+          left: 0,
+          ...(columnChrome ? { width: PANEL_WIDTH, maxWidth: '100%' } : { right: 0 }),
+        }}>
+        {columnChrome ? null : controls.length > 0 ? (
+          <View pointerEvents="box-none" className="items-end px-4">
+            <MapControls controls={controls} />
+          </View>
+        ) : null}
+        {navControls}
         {planning ? (
-          <View className="px-3">
-            <DirectionsPanel
-              trip={trip}
-              route={preview.route}
-              issue={preview.issue}
-              isOffCampus={preview.isOffCampus}
-              live={liveStart}
-              onStart={start}
-              onClose={closeTrip}
-              onPickOrigin={() => router.push('/origin')}
-            />
+          <View className="px-3" style={wide && !columnChrome ? { alignItems: 'center' } : undefined}>
+            <View style={{ width: '100%', maxWidth: PANEL_WIDTH }}>
+              <DirectionsPanel
+                trip={trip}
+                route={preview.route}
+                issue={preview.issue}
+                isOffCampus={preview.isOffCampus}
+                live={liveStart}
+                events={tripEvents}
+                onOpenEvent={(meetup) => router.push(`/meetup/${meetup.id}`)}
+                onStart={start}
+                onClose={closeTrip}
+                onPickOrigin={() => router.push('/origin')}
+              />
+            </View>
           </View>
         ) : null}
         {navigating && navigation.route ? (

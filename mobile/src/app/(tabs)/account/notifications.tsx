@@ -1,4 +1,3 @@
-import { Stack } from 'expo-router';
 import type { SFSymbol } from 'expo-symbols';
 import { ListGroup, Separator, Switch, useThemeColor, useToast } from 'heroui-native';
 import { useEffect, useState } from 'react';
@@ -8,6 +7,7 @@ import { Icon } from '@/components/icon';
 import { SectionTitle } from '@/components/section';
 import { useAccount } from '@/lib/account';
 import { settingsApi, type NotifyPrefs } from '@/lib/api';
+import { useReadableStyle } from '@/hooks/use-layout';
 import {
   disableNotifications,
   enableNotifications,
@@ -60,6 +60,7 @@ const ACCOUNT_ROWS: { key: keyof NotifyPrefs; symbol: SFSymbol; title: string; d
 ];
 
 export default function NotificationsScreen() {
+  const readable = useReadableStyle();
   const account = useAccount();
   const { toast } = useToast();
   const [enabled, setEnabled] = useNotificationsEnabled();
@@ -128,11 +129,9 @@ export default function NotificationsScreen() {
   }
 
   return (
-    <>
-      <Stack.Screen options={{ title: 'Notifications', headerLargeTitle: false }} />
-      <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerClassName="gap-6 px-4 pb-16 pt-4">
-        <View>
-          <SectionTitle>This phone</SectionTitle>
+    <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerClassName="gap-6 px-4 pb-16 pt-4" contentContainerStyle={readable}>
+      <View>
+        <SectionTitle>This phone</SectionTitle>
           <ListGroup>
             <ToggleRow
               symbol="bell"
@@ -183,6 +182,5 @@ export default function NotificationsScreen() {
           <Text className="px-1 text-sm leading-5 text-muted">Sign in to choose which notifications you get.</Text>
         )}
       </ScrollView>
-    </>
   );
 }

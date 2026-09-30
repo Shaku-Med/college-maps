@@ -8,7 +8,6 @@ import (
 	"math"
 	"mime"
 	"net/http"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -74,12 +73,6 @@ func decodeJSON(w http.ResponseWriter, r *http.Request, dst any) bool {
 	return true
 }
 
-func (a *authHandlers) domainHint() string {
-	domains := a.service.AllowedDomains()
-	sort.Strings(domains)
-	return "@" + strings.Join(domains, " or @")
-}
-
 func (a *authHandlers) requestCode(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Email string `json:"email"`
@@ -93,19 +86,15 @@ func (a *authHandlers) requestCode(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case err == nil:
 		writeJSON(w, http.StatusAccepted, map[string]bool{"sent": true})
-	case errors.Is(err, auth.ErrInvalidEmail):
-		writeError(w, http.StatusBadRequest, "Enter a valid email address.")
-	case errors.Is(err, auth.ErrDomainNotAllowed):
-		writeError(w, http.StatusBadRequest, fmt.Sprintf("Use your school email ending in %s.", a.domainHint()))
 	case errors.As(err, &limited):
+		// Rate limits are ok to surface: they do not reveal whether an address is valid.
 		seconds := int(math.Ceil(limited.RetryAfter.Seconds()))
 		w.Header().Set("Retry-After", strconv.Itoa(seconds))
 		writeError(w, http.StatusTooManyRequests, fmt.Sprintf("Please wait %d seconds before asking for another code.", seconds))
-	case errors.Is(err, auth.ErrSendFailed):
-		a.logger.Error("sign-in email failed", "error", err)
-		writeError(w, http.StatusBadGateway, "We could not send the code. Try again in a minute.")
 	default:
-		a.fail(w, r, err)
+		// Same body as success so probes cannot learn email format, school domain, or mail status.
+		a.logger.Warn("sign-in code not issued", "path", r.URL.Path, "error", err)
+		writeJSON(w, http.StatusAccepted, map[string]bool{"sent": true})
 	}
 }
 
@@ -144,14 +133,13 @@ func (a *authHandlers) verify(w http.ResponseWriter, r *http.Request, signedIn f
 	case err == nil:
 		signedIn(user, token)
 	case errors.As(err, &wrong):
-		tries := "tries"
-		if wrong.AttemptsLeft == 1 {
-			tries = "try"
-		}
-		writeError(w, http.StatusBadRequest, fmt.Sprintf("That code isn't right. You have %d %s left.", wrong.AttemptsLeft, tries))
+		a.logger.Info("sign-in code rejected", "path", r.URL.Path, "attemptsLeft", wrong.AttemptsLeft)
+		writeError(w, http.StatusBadRequest, "That code is wrong or expired. Ask for a new one if needed.")
 	case errors.Is(err, auth.ErrCodeLocked):
-		writeError(w, http.StatusBadRequest, "Too many wrong tries for that code. Ask for a new one.")
+		a.logger.Info("sign-in code locked", "path", r.URL.Path)
+		writeError(w, http.StatusBadRequest, "That code is wrong or expired. Ask for a new one if needed.")
 	case errors.Is(err, auth.ErrInvalidEmail), errors.Is(err, auth.ErrDomainNotAllowed), errors.Is(err, auth.ErrInvalidCode):
+		a.logger.Info("sign-in verify rejected", "path", r.URL.Path, "error", err)
 		writeError(w, http.StatusBadRequest, "That code is wrong or expired. Ask for a new one if needed.")
 	default:
 		a.fail(w, r, err)
@@ -159,10 +147,12 @@ func (a *authHandlers) verify(w http.ResponseWriter, r *http.Request, signedIn f
 }
 
 // sessionToken reads the session from the phone app's bearer header or the browser's cookie.
+// A present but non-Bearer Authorization header is ignored so a junk proxy header cannot wipe cookie auth.
 func (a *authHandlers) sessionToken(r *http.Request) (string, bool) {
 	if header := r.Header.Get("Authorization"); header != "" {
-		token, found := strings.CutPrefix(header, "Bearer ")
-		return token, found && token != ""
+		if token, found := strings.CutPrefix(header, "Bearer "); found && token != "" {
+			return token, true
+		}
 	}
 	cookie, err := r.Cookie(a.cookie.name)
 	if err != nil {

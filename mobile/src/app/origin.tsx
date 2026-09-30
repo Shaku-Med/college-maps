@@ -17,7 +17,7 @@ export default function OriginSheet() {
   };
 
   return (
-    <View className="flex-1 gap-3 px-4" style={{ paddingTop: sheet.paddingTop }}>
+    <View className="flex-1 gap-3 px-4" style={{ width: '100%', paddingTop: sheet.paddingTop }}>
       <View className="flex-row items-center justify-between px-1">
         <Text className="text-xl font-bold text-foreground">Start from</Text>
         <CloseButton onPress={() => router.back()} />

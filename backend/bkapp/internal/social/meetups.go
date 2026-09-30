@@ -23,7 +23,7 @@ const (
 	maxMeetupsPerDay     = 20
 	maxActiveHosted      = 3
 	maxNoteRunes         = 80
-	ticketTTL            = 10 * time.Minute
+	ticketTTL            = 5 * time.Minute
 
 	DestinationMember = "member"
 	DestinationPlace  = "place"
@@ -106,7 +106,7 @@ func cleanNote(raw string) (string, error) {
 		return "", invalid("Keep the note under %d characters.", maxNoteRunes)
 	}
 	for _, r := range note {
-		if r < 0x20 || r == 0x7f {
+		if r < 0x20 || r == 0x7f || r == '<' || r == '>' {
 			return "", invalid("The note has characters that are not allowed.")
 		}
 	}
@@ -354,8 +354,15 @@ func (s *Service) load(ctx context.Context, tx pgx.Tx, me auth.User, publicID st
 	if err := tx.QueryRow(ctx, `select csimap_meetup_going($1::uuid)`, meetupID).Scan(&m.Going); err != nil {
 		return Meetup{}, err
 	}
+
+	// Public events at a named campus place are discoverable on the map heat layer for every signed-in
+	// student. Exact pins stay hidden until the event has started and you have joined.
+	if m.Visibility == VisibilityPublic && destKind == DestinationPlace && destPlace != nil {
+		m.Destination = &Destination{Kind: DestinationPlace, PlaceID: *destPlace}
+	}
+
 	if joined && m.Visibility == VisibilityPublic {
-		// A public meetup keeps its place hidden until it starts, and never streams positions.
+		// A public meetup never streams live positions. Pins (and full coords) wait until it starts.
 		if m.StartsAt != nil && s.now().Before(*m.StartsAt) {
 			return m, nil
 		}

@@ -25,6 +25,7 @@ import { useSocial } from "@/hooks/use-social";
 import { useVoiceChoice } from "@/hooks/use-voice-choice";
 import { useVoiceGuidance } from "@/hooks/use-voice-guidance";
 import { useWakeLock } from "@/hooks/use-wake-lock";
+import { campusActivityByPlace, eventsAtPlace } from "@/lib/campus-activity";
 import { MAP_FILTERS, type MapFilter } from "@/lib/categories";
 import { fetchStreetRoute } from "@/lib/directions";
 import { bearingDegrees, distanceMeters, turnAngle } from "@/lib/geo";
@@ -240,6 +241,16 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
   const [streetResult, setStreetResult] = useState<{ key: string; route: Route | null; failed: boolean } | null>(null);
 
   const selected = getPlace(selectedId);
+  const placeEvents = useMemo(
+    () => (selectedId && social.signedIn ? eventsAtPlace(social.campus, selectedId) : []),
+    [selectedId, social.signedIn, social.campus],
+  );
+  const activityByPlace = useMemo(() => {
+    if (!social.signedIn) return undefined;
+    const map: Record<string, number> = {};
+    for (const row of campusActivityByPlace(social.campus)) map[row.placeId] = row.count;
+    return Object.keys(map).length ? map : undefined;
+  }, [social.signedIn, social.campus]);
 
   const centerOnFixRef = useRef(false);
   const navRef = useRef({
@@ -1009,6 +1020,7 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
         initialFocus={selected?.coordinate}
         getFocusPadding={meetupSheetOpen || peopleExpanded || scheduleExpanded || accountExpanded || (mode === "directions" && isDirectionsExpanded) ? sheetPadding : hasPeek ? peekPadding : sheetPadding}
         onSelect={selectPlace}
+        activityByPlace={activityByPlace}
         onUserPan={() => {
           if (mode !== "navigate") return;
           clearTimeout(followAgainRef.current);
@@ -1319,6 +1331,8 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
                 key={`${selected.id}-${room ?? ""}`}
                 place={selected}
                 room={room}
+                events={placeEvents}
+                onOpenEvent={(meetup) => openMeetup(meetup.id)}
                 onDirections={openDirections}
                 onCollapse={() => setIsPlaceExpanded(false)}
                 onClose={() => selectPlace(undefined)}
@@ -1340,6 +1354,8 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
             issue={routeIssue}
             located={geo.located}
             travel={isOffCampus ? travelMode : null}
+            events={placeEvents}
+            onOpenEvent={(meetup) => openMeetup(meetup.id)}
             onTravelChange={setTravelMode}
             onOriginChange={handleOriginChange}
             onAvoidStairsChange={setAvoidStairs}

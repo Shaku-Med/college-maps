@@ -8,13 +8,14 @@ import { isLiquidGlassAvailable } from 'expo-glass-effect';
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
 import { HeroUINativeProvider, useThemeColor } from 'heroui-native';
 import { useEffect } from 'react';
-import { AppState, useColorScheme } from 'react-native';
+import { AppState, Platform, useColorScheme } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { refreshAccount } from '@/lib/account';
 import { useNotificationTaps } from '@/lib/notifications';
 // Registers the background location task at startup, as iOS requires.
 import '@/lib/location';
+import { OfflineBanner } from '@/components/offline-banner';
 
 // iOS 26 draws sheets in Liquid Glass when they are see through. Older versions get a solid sheet.
 const GLASS_SHEETS = isLiquidGlassAvailable();
@@ -28,14 +29,20 @@ function Navigation() {
     colors: { ...base.colors, background, card: background, text: foreground, primary: accent, border },
   };
   const sheetBackground = { backgroundColor: GLASS_SHEETS ? 'transparent' : background };
-  // Forms open as the standard iOS page sheet: full width over most of the screen, with the page behind pushed
-  // back. The adjustable sheets float with side margins on iOS 26 and squeeze layouts that fill their height.
-  const pageSheet = { presentation: 'modal', contentStyle: { backgroundColor: background } } as const;
+
+  // Floating bottom sheets (place, meetup, class, account forms) — side margins on iPad, grabber, detents.
   const formSheet = {
-    presentation: 'formSheet',
+    presentation: 'formSheet' as const,
     sheetGrabberVisible: true,
     contentStyle: sheetBackground,
-  } as const;
+  };
+  const sheetMedium = { ...formSheet, sheetAllowedDetents: [0.55, 0.92] as number[] };
+  const sheetTall = { ...formSheet, sheetAllowedDetents: [0.7, 0.95] as number[] };
+  const sheetCompact = { ...formSheet, sheetAllowedDetents: [0.45, 0.85] as number[] };
+
+  // Nested stack inside a sheet works on iOS; Android form sheets do not host nested navigators.
+  const pageSheet = { presentation: 'modal' as const, contentStyle: { backgroundColor: background } };
+  const nestedFormSheet = Platform.OS === 'ios' ? sheetTall : pageSheet;
 
   useNotificationTaps();
 
@@ -56,18 +63,22 @@ function Navigation() {
           name="place/[id]"
           options={{
             ...formSheet,
-            sheetAllowedDetents: [0.45, 0.92],
+            sheetAllowedDetents: [0.42, 0.88],
             // The map stays usable behind the smaller detent, like Apple Maps.
             sheetLargestUndimmedDetentIndex: 0,
           }}
         />
-        <Stack.Screen name="origin" options={pageSheet} />
-        <Stack.Screen name="class/[id]" options={pageSheet} />
-        <Stack.Screen name="class-import" options={pageSheet} />
-        <Stack.Screen name="profile" options={pageSheet} />
-        <Stack.Screen name="delete-account" options={pageSheet} />
-        <Stack.Screen name="meetup/[id]" options={{ ...formSheet, sheetAllowedDetents: [0.6, 0.95] }} />
-        <Stack.Screen name="meetup/new" options={pageSheet} />
+        <Stack.Screen name="origin" options={sheetCompact} />
+        <Stack.Screen name="class/[id]" options={sheetTall} />
+        <Stack.Screen name="class-import" options={sheetTall} />
+        <Stack.Screen name="profile" options={sheetMedium} />
+        <Stack.Screen name="download-data" options={sheetMedium} />
+        <Stack.Screen name="voice" options={sheetMedium} />
+        <Stack.Screen name="delete-account" options={sheetMedium} />
+        <Stack.Screen name="report-reason" options={sheetCompact} />
+        <Stack.Screen name="report" options={sheetTall} />
+        <Stack.Screen name="meetup/[id]" options={{ ...formSheet, sheetAllowedDetents: [0.55, 0.92] }} />
+        <Stack.Screen name="meetup/new" options={nestedFormSheet} />
       </Stack>
     </ThemeProvider>
   );
@@ -78,6 +89,7 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <HeroUINativeProvider>
         <Navigation />
+        <OfflineBanner />
       </HeroUINativeProvider>
     </GestureHandlerRootView>
   );

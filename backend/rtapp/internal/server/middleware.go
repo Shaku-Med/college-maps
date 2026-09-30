@@ -17,16 +17,21 @@ func chain(h http.Handler, middlewares ...func(http.Handler) http.Handler) http.
 	return h
 }
 
-func securityHeaders(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		h := w.Header()
-		h.Set("X-Content-Type-Options", "nosniff")
-		h.Set("X-Frame-Options", "DENY")
-		h.Set("Referrer-Policy", "no-referrer")
-		h.Set("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'")
-		h.Set("Cross-Origin-Resource-Policy", "same-site")
-		next.ServeHTTP(w, r)
-	})
+func securityHeaders(production bool) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			h := w.Header()
+			h.Set("X-Content-Type-Options", "nosniff")
+			h.Set("X-Frame-Options", "DENY")
+			h.Set("Referrer-Policy", "no-referrer")
+			h.Set("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'")
+			h.Set("Cross-Origin-Resource-Policy", "same-site")
+			if production {
+				h.Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
 }
 
 // Tickets travel in headers or the stream URL, never cookies, so CORS stays without credentials.

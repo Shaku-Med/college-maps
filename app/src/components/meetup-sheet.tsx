@@ -1,10 +1,12 @@
 "use client";
 
-import { Button, CloseButton, Separator, Surface, toast } from "@heroui/react";
-import { LogOut, MapPin, Navigation, Radio, Square, UserPlus } from "lucide-react";
+import { Button, CloseButton, Dropdown, Label, Separator, Surface, toast } from "@heroui/react";
+import { Ban, Flag, LogOut, MapPin, MoreHorizontal, Navigation, Radio, Square, UserPlus } from "lucide-react";
 import { useState } from "react";
 
 import { Avatar, meetupWhere } from "@/components/people-panel";
+import { useConfirmDialog } from "@/components/confirm-dialog";
+import { useReportFlow } from "@/components/report-flow";
 import { CollapseButton, SheetGrabber, SheetPeek } from "@/components/sheet-chrome";
 import { getPlace, type Coordinate, type Place } from "@/data/campus";
 import type { LiveState } from "@/hooks/use-meetup-live";
@@ -49,6 +51,8 @@ export function MeetupSheet({
   onClose,
 }: MeetupSheetProps) {
   const [isBusy, setIsBusy] = useState(false);
+  const report = useReportFlow();
+  const confirm = useConfirmDialog();
   const destination = meetup.destination;
   const place = destination?.kind === "place" ? getPlace(destination.placeId) : undefined;
   const headingToYou = destination?.kind === "member" && destination.username === myUsername;
@@ -88,12 +92,27 @@ export function MeetupSheet({
   }
 
   const canInvite = meetup.yourRole === "host" && meetup.visibility === "private" && meetup.active;
+  const canModerate = meetup.yourRole !== "host" && meetup.host.username !== myUsername;
+
+  async function blockHost() {
+    setIsBusy(true);
+    const res = await socialApi.block(meetup.host.username);
+    setIsBusy(false);
+    if (!res.ok) {
+      toast.danger(res.message);
+      return;
+    }
+    toast.success(`Blocked @${meetup.host.username}`);
+    onClose();
+  }
 
   return (
     <Surface
       role="region"
       aria-label="Meetup"
       className="animate-sheet-in flex max-h-[70dvh] flex-col rounded-t-[28px] shadow-2xl md:max-h-[calc(100dvh-2rem)] md:rounded-3xl">
+      {report.dialog}
+      {confirm.dialog}
       <SheetGrabber onCollapse={onCollapse} />
 
       <div className="flex items-center gap-3 px-5 pb-2 pt-3">
@@ -107,6 +126,39 @@ export function MeetupSheet({
             {elsewhere ? "Sharing from your other device" : stateLabel[state]}
           </p>
         </div>
+        {canModerate ? (
+          <Dropdown>
+            <Button size="sm" variant="ghost" isIconOnly aria-label="Report or block" isDisabled={isBusy}>
+              <MoreHorizontal aria-hidden />
+            </Button>
+            <Dropdown.Popover>
+              <Dropdown.Menu
+                onAction={(key) => {
+                  if (key === "report") {
+                    report.openMeetup(meetup);
+                    return;
+                  }
+                  if (key === "block") {
+                    confirm.ask({
+                      title: `Block @${meetup.host.username}?`,
+                      body: "Their events disappear for you, and they cannot add you or invite you.",
+                      action: "Block",
+                      onConfirm: () => blockHost(),
+                    });
+                  }
+                }}>
+                <Dropdown.Item id="report" textValue="Report this event">
+                  <Flag className="size-4 shrink-0 text-muted" aria-hidden />
+                  <Label>Report this event</Label>
+                </Dropdown.Item>
+                <Dropdown.Item id="block" textValue={`Block @${meetup.host.username}`} variant="danger">
+                  <Ban className="size-4 shrink-0" aria-hidden />
+                  <Label>Block @{meetup.host.username}</Label>
+                </Dropdown.Item>
+              </Dropdown.Menu>
+            </Dropdown.Popover>
+          </Dropdown>
+        ) : null}
         <CollapseButton onCollapse={onCollapse} />
         <CloseButton aria-label="Stop sharing" onPress={onClose} />
       </div>
@@ -195,7 +247,14 @@ export function MeetupSheet({
           <Button
             variant="secondary"
             isPending={isBusy}
-            onPress={() => void run(() => socialApi.endMeetup(meetup.id), "Meetup ended")}
+            onPress={() =>
+              confirm.ask({
+                title: "End this meetup?",
+                body: "Everyone stops sharing their location.",
+                action: "End meetup",
+                onConfirm: () => run(() => socialApi.endMeetup(meetup.id), "Meetup ended"),
+              })
+            }
             fullWidth>
             <Square aria-hidden />
             End for everyone
@@ -214,7 +273,14 @@ export function MeetupSheet({
               <Button
                 variant="ghost"
                 isDisabled={isBusy}
-                onPress={() => void run(() => socialApi.leaveMeetup(meetup.id, true), "You left for good")}
+                onPress={() =>
+                  confirm.ask({
+                    title: "Leave for good?",
+                    body: "The host will not be able to invite you back to this meetup.",
+                    action: "Leave for good",
+                    onConfirm: () => run(() => socialApi.leaveMeetup(meetup.id, true), "You left for good"),
+                  })
+                }
                 fullWidth>
                 Leave and don&apos;t invite me back
               </Button>

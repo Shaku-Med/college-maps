@@ -48,8 +48,8 @@ func Load() (Config, error) {
 	}
 
 	secret := os.Getenv("TICKET_SECRET")
-	if len(secret) < minSecretLength {
-		errs = append(errs, fmt.Errorf("TICKET_SECRET must be at least %d characters of random text", minSecretLength))
+	if len(secret) < minSecretLength || distinctBytes(secret) < 16 {
+		errs = append(errs, fmt.Errorf("TICKET_SECRET must be at least %d characters of random text, like the output of openssl rand -base64 48", minSecretLength))
 	}
 	cfg.TicketSecret = []byte(secret)
 
@@ -83,6 +83,14 @@ func origins(raw string, production bool) (map[string]struct{}, error) {
 		list[parsed.Scheme+"://"+parsed.Host] = struct{}{}
 	}
 	return list, nil
+}
+
+func distinctBytes(value string) int {
+	seen := map[byte]struct{}{}
+	for i := 0; i < len(value); i++ {
+		seen[value[i]] = struct{}{}
+	}
+	return len(seen)
 }
 
 // isLocalHost covers this computer and addresses on the home or campus network, so a phone on the

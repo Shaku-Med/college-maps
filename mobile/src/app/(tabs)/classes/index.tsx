@@ -6,7 +6,10 @@ import { ScrollView, Text, View } from 'react-native';
 
 import { Icon } from '@/components/icon';
 import { EmptyState, SectionTitle } from '@/components/section';
+import { StackLinkedItem } from '@/components/stack-linked-item';
 import { CAMPUS, getPlace } from '@/data/campus';
+import { useLinkedParam } from '@/hooks/use-linked-row-opacity';
+import { useReadableStyle } from '@/hooks/use-layout';
 import { useClasses } from '@/lib/classes';
 import { DAYS, classesOn, dayKey, findUpcoming, formatClock, type ClassEntry, type Day } from '@/lib/schedule';
 import { floorForRoom, floorLabel } from '@/lib/search';
@@ -37,9 +40,11 @@ function whenText(daysAhead: number, start: number) {
 }
 
 export default function ClassesScreen() {
+  const readable = useReadableStyle();
   const classes = useClasses();
   const [accentForeground, muted] = useThemeColor(['accent-foreground', 'muted']);
   const [now, setNow] = useState(() => new Date());
+  const activeClassId = useLinkedParam(/\/class\/([^/?]+)/);
 
   // The next class moves on as the day goes by.
   useEffect(() => {
@@ -55,7 +60,7 @@ export default function ClassesScreen() {
   return (
     <>
       <Stack.Title large>Classes</Stack.Title>
-      <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerClassName="gap-6 px-4 pb-16 pt-2">
+      <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerClassName="gap-6 px-4 pb-16 pt-2" contentContainerStyle={readable}>
         {upcoming ? (
           <Card className="gap-4 rounded-3xl bg-accent p-5">
             <View className="flex-row items-center gap-2">
@@ -108,7 +113,10 @@ export default function ClassesScreen() {
                   return (
                     <Fragment key={entry.id}>
                       {index > 0 ? <Separator className="mx-4" /> : null}
-                      <ListGroup.Item onPress={() => router.push({ pathname: '/class/[id]', params: { id: entry.id } })}>
+                      <StackLinkedItem
+                        linked={activeClassId === entry.id}
+                        gestureSync={false}
+                        onPress={() => router.push({ pathname: '/class/[id]', params: { id: entry.id } })}>
                         <ListGroup.ItemContent>
                           <ListGroup.ItemTitle numberOfLines={1}>{entry.name}</ListGroup.ItemTitle>
                           <ListGroup.ItemDescription numberOfLines={1}>
@@ -118,7 +126,7 @@ export default function ClassesScreen() {
                           </ListGroup.ItemDescription>
                         </ListGroup.ItemContent>
                         <ListGroup.ItemSuffix />
-                      </ListGroup.Item>
+                      </StackLinkedItem>
                     </Fragment>
                   );
                 })}

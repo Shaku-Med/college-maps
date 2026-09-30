@@ -1,11 +1,13 @@
 import { NativeTabs } from 'expo-router/unstable-native-tabs';
-import { useThemeColor } from 'heroui-native';
+import { router, usePathname } from 'expo-router';
+import { useThemeColor, useToast } from 'heroui-native';
 import { useQuickActionRouting } from 'expo-quick-actions/router';
 import { useEffect } from 'react';
 import { DynamicColorIOS, Platform } from 'react-native';
 
 import { useProfile } from '@/lib/account';
 import { useClasses } from '@/lib/classes';
+import { useOnline } from '@/lib/online';
 import { updateQuickActions } from '@/lib/quick-actions';
 import { useRecentPlaces } from '@/lib/recent-places';
 import { useSocial } from '@/lib/social';
@@ -24,6 +26,9 @@ export default function TabLayout() {
   const accent = iosAccent ?? themeAccent;
   const classes = useClasses();
   const recent = useRecentPlaces();
+  const online = useOnline();
+  const pathname = usePathname();
+  const { toast } = useToast();
 
   useEffect(() => updateQuickActions(classes, recent), [classes, recent]);
 
@@ -43,15 +48,36 @@ export default function TabLayout() {
     updateUpNextWidget(classes, meetups);
   }, [classes, social.meetups, social.campus]);
 
+  // If the connection drops while already on Friends or Account, move back to the map.
+  useEffect(() => {
+    if (online) return;
+    if (pathname.startsWith('/friends') || pathname.startsWith('/account')) {
+      router.replace('/');
+    }
+  }, [online, pathname]);
+
   return (
     // Directions and navigation take the whole screen, so the tab bar steps aside for them.
+    // On iPad / macOS, tabs move into the system sidebar instead of a bottom bar.
     <NativeTabs
       tintColor={accent}
+      sidebarAdaptable
       minimizeBehavior="onScrollDown"
       hidden={trip.phase !== 'idle'}
       // Android's bar is a solid Material surface by default. Clear, it sits on the map's fade the way the chips
       // at the top do, and on the page background everywhere else. iOS draws its own Liquid Glass.
-      backgroundColor={Platform.OS === 'android' ? 'transparent' : undefined}>
+      backgroundColor={Platform.OS === 'android' ? 'transparent' : undefined}
+      screenListeners={{
+        tabPress: (e) => {
+          if (!online && e.data.isPrevented) {
+            toast.show({
+              variant: 'warning',
+              label: "You're offline",
+              description: 'Friends and account need an internet connection.',
+            });
+          }
+        },
+      }}>
       {/* The map fills the whole screen, under the tab bar. */}
       <NativeTabs.Trigger name="index" disableAutomaticContentInsets>
         <NativeTabs.Trigger.Label>Map</NativeTabs.Trigger.Label>
@@ -61,12 +87,12 @@ export default function TabLayout() {
         <NativeTabs.Trigger.Label>Classes</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon sf={{ default: 'calendar', selected: 'calendar' }} md="calendar_month" />
       </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="friends">
+      <NativeTabs.Trigger name="friends" disabled={!online} accessibilityLabel={online ? undefined : 'Friends, unavailable offline'}>
         <NativeTabs.Trigger.Label>Friends</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon sf={{ default: 'person.2', selected: 'person.2.fill' }} md="group" />
-        {social.waiting > 0 ? <NativeTabs.Trigger.Badge>{String(social.waiting)}</NativeTabs.Trigger.Badge> : null}
+        {online && social.waiting > 0 ? <NativeTabs.Trigger.Badge>{String(social.waiting)}</NativeTabs.Trigger.Badge> : null}
       </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="account">
+      <NativeTabs.Trigger name="account" disabled={!online} accessibilityLabel={online ? undefined : 'Account, unavailable offline'}>
         <NativeTabs.Trigger.Label>Account</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon sf={{ default: 'person.crop.circle', selected: 'person.crop.circle.fill' }} md="account_circle" />
       </NativeTabs.Trigger>

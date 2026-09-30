@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"errors"
+	"log/slog"
 	"net/http"
 
 	"csimap/bkapp/internal/auth"
@@ -10,6 +11,7 @@ import (
 
 type settingsHandlers struct {
 	service *settings.Service
+	logger  *slog.Logger
 }
 
 func (h *settingsHandlers) get(w http.ResponseWriter, r *http.Request, user auth.User) {
@@ -56,6 +58,7 @@ func (h *settingsHandlers) fail(w http.ResponseWriter, err error) {
 	case errors.Is(err, auth.ErrUnauthorized):
 		writeError(w, http.StatusUnauthorized, "Sign in first.")
 	default:
+		h.logger.Error("settings request failed", "error", err)
 		writeError(w, http.StatusInternalServerError, "Something went wrong. Try again.")
 	}
 }

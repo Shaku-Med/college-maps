@@ -160,7 +160,7 @@ func TestRejectsBadBodies(t *testing.T) {
 		{"unknown field", "application/json", `{"email":"` + student + `","admin":true}`, http.StatusBadRequest},
 		{"two objects", "application/json", `{"email":"a"}{"email":"b"}`, http.StatusBadRequest},
 		{"too large", "application/json", `{"email":"` + strings.Repeat("a", 4000) + `"}`, http.StatusBadRequest},
-		{"other domain", "application/json", `{"email":"jane@gmail.com"}`, http.StatusBadRequest},
+		{"other domain", "application/json", `{"email":"jane@gmail.com"}`, http.StatusAccepted},
 	}
 	for _, tc := range cases {
 		req := jsonRequest(http.MethodPost, "/v1/auth/code", tc.body)

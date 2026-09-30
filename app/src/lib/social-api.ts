@@ -93,6 +93,13 @@ export const socialApi = {
   unfriend: (username: string) => apiCall<void>(`/v1/friends/${handle(username)}`, "DELETE"),
   block: (username: string) => apiCall<void>("/v1/blocks", "POST", { username }),
   unblock: (username: string) => apiCall<void>(`/v1/blocks/${handle(username)}`, "DELETE"),
+  report: (body: {
+    kind: "meetup" | "user";
+    meetupId?: string;
+    username?: string;
+    reason: string;
+    details?: string;
+  }) => apiCall<void>("/v1/reports", "POST", body),
 
   meetups: async (): Promise<ApiResult<Meetup[]>> => {
     const res = await apiCall<{ meetups: Meetup[] }>("/v1/meetups", "GET");

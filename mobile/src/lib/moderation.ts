@@ -1,50 +1,70 @@
-import { Alert, Linking } from 'react-native';
+import { router } from 'expo-router';
 
-import { showActionSheet } from '@/lib/action-sheet';
-
-import { SUPPORT_EMAIL } from '@/lib/config';
-import { refreshSocial } from '@/lib/social';
 import { socialApi, type Meetup } from '@/lib/social-api';
 
-// Other students write event titles and notes, so every event from someone else can be reported, and its
-// host blocked, right where it is shown.
-export function moderateMeetup(meetup: Meetup, me: string, onBlocked?: () => void) {
-  const host = meetup.host;
-  const report = () => {
-    const subject = encodeURIComponent('Report: CSI Map event');
-    const body = encodeURIComponent(
-      `Event: ${meetup.title ?? 'meetup'}
-Event id: ${meetup.id}
-Host: @${host.username}
-Reported by: @${me}
+export const REPORT_REASONS = [
+  { id: 'spam', label: 'Spam or fake account' },
+  { id: 'harassment', label: 'Harassment or bullying' },
+  { id: 'inappropriate', label: 'Inappropriate behavior' },
+  { id: 'other', label: 'Something else' },
+] as const;
 
-What's wrong:
-`,
-    );
-    void Linking.openURL(`mailto:${SUPPORT_EMAIL}?subject=${subject}&body=${body}`).catch(() =>
-      Alert.alert('No mail app', `Send your report to ${SUPPORT_EMAIL}.`),
-    );
-  };
-  const block = () =>
-    Alert.alert(`Block @${host.username}?`, 'Their events disappear for you, and they cannot add you or invite you.', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Block',
-        style: 'destructive',
-        onPress: async () => {
-          const res = await socialApi.block(host.username);
-          if (!res.ok) return Alert.alert('Could not block', res.message);
-          void refreshSocial(me);
-          onBlocked?.();
-        },
-      },
-    ]);
+export type ReportReason = (typeof REPORT_REASONS)[number]['id'];
 
-  showActionSheet({
-    title: meetup.title ?? `${host.displayName}'s meetup`,
-    actions: [
-      ...(SUPPORT_EMAIL ? [{ label: 'Report this event', onPress: report }] : []),
-      { label: `Block @${host.username}`, destructive: true, onPress: block },
-    ],
+export function reasonLabel(id: string) {
+  return REPORT_REASONS.find((reason) => reason.id === id)?.label ?? 'Something else';
+}
+
+export type ReportTarget = {
+  kind?: 'user' | 'meetup';
+  username: string;
+  displayName: string;
+  isFriend?: boolean;
+  meetupId?: string;
+};
+
+/** Opens the report reason page for another student. */
+export function reportPerson(person: ReportTarget) {
+  router.push({
+    pathname: '/report-reason',
+    params: {
+      kind: 'user',
+      username: person.username,
+      name: person.displayName,
+      friend: person.isFriend ? '1' : '0',
+    },
   });
+}
+
+/** Opens the report reason page for a campus event. */
+export function reportMeetup(meetup: Meetup) {
+  router.push({
+    pathname: '/report-reason',
+    params: {
+      kind: 'meetup',
+      meetupId: meetup.id,
+      username: meetup.host.username,
+      name: meetup.host.displayName,
+      friend: '0',
+    },
+  });
+}
+
+export async function sendReport(body: {
+  kind: 'meetup' | 'user';
+  meetupId?: string;
+  username?: string;
+  reason: ReportReason;
+  details?: string;
+}) {
+  const { apiCall } = await import('@/lib/api');
+  return apiCall<void>('/v1/reports', 'POST', body);
+}
+
+export async function blockPerson(username: string) {
+  return socialApi.block(username);
+}
+
+export async function unfriendPerson(username: string) {
+  return socialApi.unfriend(username);
 }

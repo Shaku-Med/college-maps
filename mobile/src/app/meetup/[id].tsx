@@ -2,14 +2,15 @@ import * as Haptics from 'expo-haptics';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Button, Chip, CloseButton, ListGroup, Separator, Spinner, useThemeColor, useToast } from 'heroui-native';
 import { Fragment, useEffect, useState } from 'react';
-import { Alert, Pressable, ScrollView, Text, View } from 'react-native';
+import { ScrollView, Text, View } from 'react-native';
 
 import { Icon } from '@/components/icon';
-import { showActionSheet } from '@/lib/action-sheet';
+import { NativeMenu } from '@/components/native-menu';
 import { getPlace } from '@/data/campus';
 import { useProfile } from '@/lib/account';
+import { confirmDangerous } from '@/lib/confirm';
 import { showMeetupOnMap, useShownMeetup } from '@/lib/meetup-focus';
-import { moderateMeetup } from '@/lib/moderation';
+import { reportMeetup } from '@/lib/moderation';
 import { updateMeetup, useSocial } from '@/lib/social';
 import { MAX_GUESTS, socialApi, type Meetup, type MeetupMember, type MeetupStatus } from '@/lib/social-api';
 import { planTrip } from '@/lib/trip';
@@ -89,47 +90,6 @@ export default function MeetupSheet() {
     router.back();
   };
 
-  function leave() {
-    if (host) {
-      Alert.alert('End this meetup?', 'Everyone stops sharing their location.', [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'End meetup', style: 'destructive', onPress: () => void act(socialApi.endMeetup(meetup!.id), closeAfter) },
-      ]);
-      return;
-    }
-    // A public event can be joined again any time, so only a private meetup needs the "for good" choice.
-    if (meetup!.visibility === 'public') {
-      void act(socialApi.leaveMeetup(meetup!.id), closeAfter);
-      return;
-    }
-    showActionSheet({
-      title: 'Leave this meetup?',
-      message: 'You stop sharing your location. The host can invite you back if you left by mistake.',
-      actions: [
-        { label: 'Leave', destructive: true, onPress: () => void act(socialApi.leaveMeetup(meetup!.id), closeAfter) },
-        {
-          label: "Leave, don't invite me back",
-          destructive: true,
-          onPress: () => void act(socialApi.leaveMeetup(meetup!.id, true), closeAfter),
-        },
-      ],
-    });
-  }
-
-  function decline() {
-    showActionSheet({
-      title: 'Decline this meetup?',
-      actions: [
-        { label: 'Not this time', onPress: () => void act(socialApi.respond(meetup!.id, false), () => router.back()) },
-        {
-          label: "Don't invite me again",
-          destructive: true,
-          onPress: () => void act(socialApi.respond(meetup!.id, false, true), () => router.back()),
-        },
-      ],
-    });
-  }
-
   const canInvite = host && meetup.visibility === 'private' && meetup.active;
   const inMeetup = new Set(meetup.members.map((m) => m.username));
   const guests = meetup.members.filter((m) => m.role === 'guest' && (m.status === 'invited' || m.status === 'joined')).length;
@@ -139,7 +99,7 @@ export default function MeetupSheet() {
     canInvite && member.role === 'guest' && (member.status === 'left' || member.status === 'declined') && !member.staysOut;
 
   return (
-    <ScrollView contentContainerClassName="gap-5 px-5 pb-12 pt-5">
+    <ScrollView contentContainerClassName="gap-5 px-5 pb-12 pt-5" contentContainerStyle={{ width: '100%' }}>
       <View className="flex-row items-start gap-3">
         <View className="min-w-0 flex-1 gap-1">
           <Text className="text-xs font-semibold uppercase tracking-wide text-muted">
@@ -157,14 +117,36 @@ export default function MeetupSheet() {
         </View>
         <View className="flex-row items-center gap-1">
           {host || !profile ? null : (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Report or block"
-              hitSlop={8}
-              onPress={() => moderateMeetup(meetup, profile.username, () => router.back())}
-              className="size-9 items-center justify-center rounded-full active:opacity-60">
-              <Icon name="ellipsis.circle" size={22} tintColor={muted} />
-            </Pressable>
+            <NativeMenu
+              label="Report or block"
+              actions={[
+                {
+                  id: 'report',
+                  title: 'Report this event',
+                  onPress: () => reportMeetup(meetup),
+                },
+                {
+                  id: 'block',
+                  title: `Block @${meetup.host.username}`,
+                  destructive: true,
+                  onPress: () =>
+                    confirmDangerous({
+                      title: `Block @${meetup.host.username}?`,
+                      message: 'Their events disappear for you, and they cannot add you or invite you.',
+                      confirmLabel: 'Block',
+                      onConfirm: async () => {
+                        const res = await socialApi.block(meetup.host.username);
+                        if (!res.ok) return toast.show({ variant: 'danger', label: res.message });
+                        toast.show({ variant: 'success', label: 'Blocked' });
+                        router.back();
+                      },
+                    }),
+                },
+              ]}>
+              <View className="size-9 items-center justify-center">
+                <Icon name="ellipsis.circle" size={22} tintColor={muted} />
+              </View>
+            </NativeMenu>
           )}
           <CloseButton onPress={() => router.back()} />
         </View>
@@ -174,9 +156,27 @@ export default function MeetupSheet() {
 
       {meetup.yourStatus === 'invited' ? (
         <View className="flex-row gap-3">
-          <Button className="flex-1" variant="secondary" isDisabled={busy} onPress={decline}>
-            <Button.Label>Decline</Button.Label>
-          </Button>
+          <NativeMenu
+            label="Decline options"
+            actions={[
+              {
+                id: 'decline',
+                title: 'Not this time',
+                onPress: () => void act(socialApi.respond(meetup.id, false), () => router.back()),
+              },
+              {
+                id: 'decline-forever',
+                title: "Don't invite me again",
+                destructive: true,
+                onPress: () => void act(socialApi.respond(meetup.id, false, true), () => router.back()),
+              },
+            ]}>
+            <View className="flex-1">
+              <Button className="w-full" variant="secondary" isDisabled={busy}>
+                <Button.Label>Decline</Button.Label>
+              </Button>
+            </View>
+          </NativeMenu>
           <Button className="flex-1" isDisabled={busy} onPress={() => void act(socialApi.respond(meetup.id, true))}>
             <Button.Label>Join</Button.Label>
           </Button>
@@ -266,9 +266,54 @@ export default function MeetupSheet() {
       ) : null}
 
       {joined ? (
-        <Button variant="danger-soft" isDisabled={busy} onPress={leave}>
-          <Button.Label>{host ? 'End meetup' : 'Leave meetup'}</Button.Label>
-        </Button>
+        host || meetup.visibility === 'public' ? (
+          <Button
+            variant="danger-soft"
+            isDisabled={busy}
+            onPress={() => {
+              if (host) {
+                confirmDangerous({
+                  title: 'End this meetup?',
+                  message: 'Everyone stops sharing their location.',
+                  confirmLabel: 'End meetup',
+                  onConfirm: () => void act(socialApi.endMeetup(meetup.id), closeAfter),
+                });
+                return;
+              }
+              void act(socialApi.leaveMeetup(meetup.id), closeAfter);
+            }}>
+            <Button.Label>{host ? 'End meetup' : 'Leave meetup'}</Button.Label>
+          </Button>
+        ) : (
+          <NativeMenu
+            label="Leave options"
+            actions={[
+              {
+                id: 'leave',
+                title: 'Leave',
+                destructive: true,
+                onPress: () => void act(socialApi.leaveMeetup(meetup.id), closeAfter),
+              },
+              {
+                id: 'leave-forever',
+                title: "Leave, don't invite me back",
+                destructive: true,
+                onPress: () =>
+                  confirmDangerous({
+                    title: "Leave for good?",
+                    message: 'The host will not be able to invite you back to this meetup.',
+                    confirmLabel: 'Leave for good',
+                    onConfirm: () => void act(socialApi.leaveMeetup(meetup.id, true), closeAfter),
+                  }),
+              },
+            ]}>
+            <View>
+              <Button variant="danger-soft" isDisabled={busy}>
+                <Button.Label>Leave meetup</Button.Label>
+              </Button>
+            </View>
+          </NativeMenu>
+        )
       ) : null}
     </ScrollView>
   );

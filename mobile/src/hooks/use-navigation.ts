@@ -396,14 +396,20 @@ export function useNavigation({ destination, avoidStairs, follow, facingUp }: Op
     reset();
   }, []);
 
-  /** Someone moved the map: stop following, and pick it back up once the map has sat still for a while. */
+  /** Someone moved the map: stop following until they recenter or the map sits still. */
   const pauseFollowing = useCallback(() => {
     if (!nav.current.active || nav.current.arrived) return;
     nav.current = { ...nav.current, following: false };
     setIsFollowing(false);
     clearTimeout(followTimer.current);
+  }, []);
+
+  /** After a pan settles, pick following back up once the map has sat still for a while. */
+  const scheduleFollowAgain = useCallback(() => {
+    if (!nav.current.active || nav.current.arrived || nav.current.following) return;
+    clearTimeout(followTimer.current);
     followTimer.current = setTimeout(() => {
-      if (!nav.current.active) return;
+      if (!nav.current.active || nav.current.arrived) return;
       nav.current = { ...nav.current, following: true };
       setIsFollowing(true);
       const at = latestFix.current?.position;
@@ -467,6 +473,7 @@ export function useNavigation({ destination, avoidStairs, follow, facingUp }: Op
     start,
     end,
     pauseFollowing,
+    scheduleFollowAgain,
     recenter,
     switchToPrevious,
     showStep,

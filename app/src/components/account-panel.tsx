@@ -1,7 +1,7 @@
 "use client";
 
 import { AlertDialog, Button, CloseButton, Input, InputOTP, Label, Spinner, Surface, Switch, TextField, toast } from "@heroui/react";
-import { ArrowLeft, AtSign, Bell, ChevronRight, Download, Lock, LogOut, Mail, MonitorSmartphone, Pencil, Shield, Trash2, UserRound } from "lucide-react";
+import { ArrowLeft, AtSign, Bell, ChevronRight, Download, FileText, Lock, LogOut, Mail, MonitorSmartphone, Pencil, Shield, Trash2, UserRound } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 
@@ -652,18 +652,32 @@ function SignOutConfirm({
 
 function PrivacyRow() {
   return (
-    <Link
-      href="/privacy"
-      className="flex items-center gap-3 rounded-2xl border border-separator px-4 py-3.5 text-left outline-none transition-colors hover:bg-surface-secondary focus-visible:ring-2 focus-visible:ring-accent">
-      <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-accent-soft text-accent-soft-foreground">
-        <Shield className="size-4" aria-hidden />
-      </span>
-      <div className="min-w-0 flex-1">
-        <p className="text-sm font-medium">Privacy</p>
-        <p className="text-sm text-muted">What we keep, and what we never store</p>
-      </div>
-      <ChevronRight className="size-4 shrink-0 text-muted" aria-hidden />
-    </Link>
+    <div className="flex flex-col gap-2">
+      <Link
+        href="/privacy"
+        className="flex items-center gap-3 rounded-2xl border border-separator px-4 py-3.5 text-left outline-none transition-colors hover:bg-surface-secondary focus-visible:ring-2 focus-visible:ring-accent">
+        <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-accent-soft text-accent-soft-foreground">
+          <Shield className="size-4" aria-hidden />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-medium">Privacy</p>
+          <p className="text-sm text-muted">What we keep, and what we never store</p>
+        </div>
+        <ChevronRight className="size-4 shrink-0 text-muted" aria-hidden />
+      </Link>
+      <Link
+        href="/terms"
+        className="flex items-center gap-3 rounded-2xl border border-separator px-4 py-3.5 text-left outline-none transition-colors hover:bg-surface-secondary focus-visible:ring-2 focus-visible:ring-accent">
+        <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-accent-soft text-accent-soft-foreground">
+          <FileText className="size-4" aria-hidden />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-medium">Terms of use</p>
+          <p className="text-sm text-muted">Rules for the map, friends, and meetups</p>
+        </div>
+        <ChevronRight className="size-4 shrink-0 text-muted" aria-hidden />
+      </Link>
+    </div>
   );
 }
 

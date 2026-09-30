@@ -2,16 +2,20 @@ import * as Haptics from 'expo-haptics';
 import { router, Stack } from 'expo-router';
 import { Button, Card, Chip, FieldError, Input, ListGroup, Separator, TextField, useThemeColor, useToast } from 'heroui-native';
 import { Fragment, useState } from 'react';
-import { Alert, Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
+import { RefreshControl, ScrollView, Text, View } from 'react-native';
 
 import { Icon } from '@/components/icon';
+import { NativeMenu } from '@/components/native-menu';
 import { EmptyState, SectionTitle } from '@/components/section';
+import { StackLinkedItem } from '@/components/stack-linked-item';
 import { getPlace } from '@/data/campus';
+import { useLinkedParam, useLinkedSuffix } from '@/hooks/use-linked-row-opacity';
+import { useReadableStyle } from '@/hooks/use-layout';
 import { useProfile } from '@/lib/account';
 import { MAX_USERNAME_LENGTH, normalizeUsername } from '@/lib/api';
+import { confirmDangerous } from '@/lib/confirm';
+import { reportMeetup } from '@/lib/moderation';
 import { refreshSocial, updateMeetup, useSocial } from '@/lib/social';
-import { showActionSheet } from '@/lib/action-sheet';
-import { moderateMeetup } from '@/lib/moderation';
 import { socialApi, type Meetup, type Person } from '@/lib/social-api';
 
 function timeLeft(expiresAt: string) {
@@ -53,7 +57,14 @@ function Avatar({ person }: { person: Person }) {
   );
 }
 
+function countLabel(count: number, empty: string, one: string, many: (n: number) => string) {
+  if (count === 0) return empty;
+  if (count === 1) return one;
+  return many(count);
+}
+
 export default function FriendsScreen() {
+  const readable = useReadableStyle();
   const profile = useProfile();
   const social = useSocial(profile?.username ?? null);
   const { toast } = useToast();
@@ -62,12 +73,15 @@ export default function FriendsScreen() {
   const [addError, setAddError] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [pulling, setPulling] = useState(false);
+  const activePeople = useLinkedSuffix('/list', '/sent', '/blocked');
+  const activeMeetupId = useLinkedParam(/\/meetup\/([^/?]+)/);
+  const meetupLinked = activeMeetupId && activeMeetupId !== 'new' ? activeMeetupId : null;
 
   if (!profile) {
     return (
       <>
         <Stack.Title large>Friends</Stack.Title>
-        <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerClassName="px-4 pt-6">
+        <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerClassName="px-4 pt-6" contentContainerStyle={readable}>
           <EmptyState
             title="See friends on the map"
             description="Sign in with your school email to add friends, plan meetups, and find each other on campus.">
@@ -113,29 +127,6 @@ export default function FriendsScreen() {
     reload();
   }
 
-  function friendActions(person: Person) {
-    showActionSheet({
-      title: person.displayName,
-      message: `@${person.username}`,
-      actions: [
-        {
-          label: 'Invite to a meetup',
-          onPress: () => router.push({ pathname: '/meetup/new', params: { kind: 'private', friend: person.username } }),
-        },
-        { label: 'Remove friend', destructive: true, onPress: () => void run(socialApi.unfriend(person.username), 'Removed') },
-        {
-          label: 'Block',
-          destructive: true,
-          onPress: () =>
-            Alert.alert(`Block @${person.username}?`, 'They will not be able to find you, add you, or invite you.', [
-              { text: 'Cancel', style: 'cancel' },
-              { text: 'Block', style: 'destructive', onPress: () => void run(socialApi.block(person.username), 'Blocked') },
-            ]),
-        },
-      ],
-    });
-  }
-
   async function join(meetup: Meetup) {
     const res = await socialApi.joinPublicMeetup(meetup.id);
     if (!res.ok) return toast.show({ variant: 'danger', label: res.message });
@@ -155,7 +146,8 @@ export default function FriendsScreen() {
         contentInsetAdjustmentBehavior="automatic"
         keyboardShouldPersistTaps="handled"
         refreshControl={<RefreshControl refreshing={pulling} onRefresh={() => void reload()} />}
-        contentContainerClassName="gap-6 px-4 pb-16 pt-2">
+        contentContainerClassName="gap-6 px-4 pb-16 pt-2"
+        contentContainerStyle={readable}>
         <View className="flex-row gap-3">
           <Button className="flex-1" onPress={() => router.push({ pathname: '/meetup/new', params: { kind: 'private' } })}>
             <Icon name="person.2.fill" size={14} tintColor={accentForeground} />
@@ -174,7 +166,10 @@ export default function FriendsScreen() {
               {[...invitations, ...going].map((meetup, index) => (
                 <Fragment key={meetup.id}>
                   {index > 0 ? <Separator className="mx-4" /> : null}
-                  <ListGroup.Item onPress={() => router.push({ pathname: '/meetup/[id]', params: { id: meetup.id } })}>
+                  <StackLinkedItem
+                    linked={meetupLinked === meetup.id}
+                    gestureSync={false}
+                    onPress={() => router.push({ pathname: '/meetup/[id]', params: { id: meetup.id } })}>
                     <ListGroup.ItemContent>
                       <ListGroup.ItemTitle numberOfLines={1}>
                         {meetup.title ?? (meetup.yourRole === 'host' ? 'Your meetup' : `${meetup.host.displayName}'s meetup`)}
@@ -190,7 +185,7 @@ export default function FriendsScreen() {
                     ) : (
                       <ListGroup.ItemSuffix />
                     )}
-                  </ListGroup.Item>
+                  </StackLinkedItem>
                 </Fragment>
               ))}
             </ListGroup>
@@ -209,14 +204,31 @@ export default function FriendsScreen() {
                         {meetup.title}
                       </Text>
                       {meetup.yourRole === 'host' ? null : (
-                        <Pressable
-                          accessibilityRole="button"
-                          accessibilityLabel="Report or block"
-                          hitSlop={10}
-                          onPress={() => moderateMeetup(meetup, me)}
-                          className="active:opacity-60">
-                          <Icon name="ellipsis" size={18} tintColor={muted} />
-                        </Pressable>
+                        <NativeMenu
+                          label="Event options"
+                          actions={[
+                            {
+                              id: 'report',
+                              title: 'Report this event',
+                              onPress: () => reportMeetup(meetup),
+                            },
+                            {
+                              id: 'block',
+                              title: `Block @${meetup.host.username}`,
+                              destructive: true,
+                              onPress: () =>
+                                confirmDangerous({
+                                  title: `Block @${meetup.host.username}?`,
+                                  message: 'Their events disappear for you, and they cannot add you or invite you.',
+                                  confirmLabel: 'Block',
+                                  onConfirm: () => void run(socialApi.block(meetup.host.username), 'Blocked'),
+                                }),
+                            },
+                          ]}>
+                          <View className="p-1">
+                            <Icon name="ellipsis" size={18} tintColor={muted} />
+                          </View>
+                        </NativeMenu>
                       )}
                     </View>
                     <Text className="text-sm text-muted" numberOfLines={1}>
@@ -294,78 +306,39 @@ export default function FriendsScreen() {
         ) : null}
 
         <View>
-          <SectionTitle>{friends.length > 0 ? `Friends · ${friends.length}` : 'Friends'}</SectionTitle>
-          {friends.length === 0 ? (
-            <Card className="rounded-3xl p-5">
-              <Text className="text-center text-sm leading-5 text-muted">
-                No friends yet. Ask for their username and add them above. Yours is @{me}.
-              </Text>
-            </Card>
-          ) : (
-            <ListGroup>
-              {friends.map((person, index) => (
-                <Fragment key={person.username}>
-                  {index > 0 ? <Separator className="ml-16 mr-4" /> : null}
-                  <ListGroup.Item onPress={() => friendActions(person)}>
-                    <ListGroup.ItemPrefix>
-                      <Avatar person={person} />
-                    </ListGroup.ItemPrefix>
-                    <ListGroup.ItemContent>
-                      <ListGroup.ItemTitle numberOfLines={1}>{person.displayName}</ListGroup.ItemTitle>
-                      <ListGroup.ItemDescription>@{person.username}</ListGroup.ItemDescription>
-                    </ListGroup.ItemContent>
-                    <ListGroup.ItemSuffix>
-                      <Icon name="ellipsis" size={16} tintColor={muted} />
-                    </ListGroup.ItemSuffix>
-                  </ListGroup.Item>
-                </Fragment>
-              ))}
-            </ListGroup>
-          )}
+          <SectionTitle>People</SectionTitle>
+          <ListGroup>
+            <StackLinkedItem linked={activePeople === '/list'} onPress={() => router.push('/friends/list')}>
+              <ListGroup.ItemContent>
+                <ListGroup.ItemTitle>Your friends</ListGroup.ItemTitle>
+                <ListGroup.ItemDescription>
+                  {countLabel(friends.length, 'No friends yet', '1 friend', (n) => `${n} friends`)}
+                </ListGroup.ItemDescription>
+              </ListGroup.ItemContent>
+              <ListGroup.ItemSuffix />
+            </StackLinkedItem>
+            <Separator className="mx-4" />
+            <StackLinkedItem linked={activePeople === '/sent'} onPress={() => router.push('/friends/sent')}>
+              <ListGroup.ItemContent>
+                <ListGroup.ItemTitle>Sent</ListGroup.ItemTitle>
+                <ListGroup.ItemDescription>
+                  {countLabel(outgoing.length, 'No pending requests', '1 waiting', (n) => `${n} waiting`)}
+                </ListGroup.ItemDescription>
+              </ListGroup.ItemContent>
+              <ListGroup.ItemSuffix />
+            </StackLinkedItem>
+            <Separator className="mx-4" />
+            <StackLinkedItem linked={activePeople === '/blocked'} onPress={() => router.push('/friends/blocked')}>
+              <ListGroup.ItemContent>
+                <ListGroup.ItemTitle>Blocked</ListGroup.ItemTitle>
+                <ListGroup.ItemDescription>
+                  {countLabel(blocked.length, 'Nobody blocked yet', '1 person', (n) => `${n} people`)}
+                </ListGroup.ItemDescription>
+              </ListGroup.ItemContent>
+              <ListGroup.ItemSuffix />
+            </StackLinkedItem>
+          </ListGroup>
         </View>
-
-        {outgoing.length > 0 ? (
-          <View>
-            <SectionTitle>Sent</SectionTitle>
-            <ListGroup>
-              {outgoing.map((person, index) => (
-                <Fragment key={person.username}>
-                  {index > 0 ? <Separator className="mx-4" /> : null}
-                  <ListGroup.Item disabled>
-                    <ListGroup.ItemContent>
-                      <ListGroup.ItemTitle numberOfLines={1}>{person.displayName}</ListGroup.ItemTitle>
-                      <ListGroup.ItemDescription>@{person.username} · waiting</ListGroup.ItemDescription>
-                    </ListGroup.ItemContent>
-                    <Button size="sm" variant="ghost" onPress={() => void run(socialApi.removeRequest(person.username))}>
-                      <Button.Label>Cancel</Button.Label>
-                    </Button>
-                  </ListGroup.Item>
-                </Fragment>
-              ))}
-            </ListGroup>
-          </View>
-        ) : null}
-
-        {blocked.length > 0 ? (
-          <View>
-            <SectionTitle>Blocked</SectionTitle>
-            <ListGroup>
-              {blocked.map((person, index) => (
-                <Fragment key={person.username}>
-                  {index > 0 ? <Separator className="mx-4" /> : null}
-                  <ListGroup.Item disabled>
-                    <ListGroup.ItemContent>
-                      <ListGroup.ItemTitle numberOfLines={1}>@{person.username}</ListGroup.ItemTitle>
-                    </ListGroup.ItemContent>
-                    <Button size="sm" variant="ghost" onPress={() => void run(socialApi.unblock(person.username), 'Unblocked')}>
-                      <Button.Label>Unblock</Button.Label>
-                    </Button>
-                  </ListGroup.Item>
-                </Fragment>
-              ))}
-            </ListGroup>
-          </View>
-        ) : null}
       </ScrollView>
     </>
   );

@@ -1,23 +1,41 @@
 "use client";
 
 import { Button, CloseButton, Surface, toast } from "@heroui/react";
-import { Navigation, Share2 } from "lucide-react";
+import { CalendarClock, Navigation, Share2 } from "lucide-react";
 
 import { CollapseButton, SheetGrabber } from "@/components/sheet-chrome";
 import { CATEGORY_LABELS, type Place } from "@/data/campus";
 import { CATEGORY_ICONS } from "@/lib/categories";
+import type { Meetup } from "@/lib/social-api";
 import { placeUrl } from "@/lib/share-url";
 import { floorForRoom, floorLabel } from "@/lib/search";
 
 type PlaceSheetProps = {
   place: Place;
   room?: string;
+  events?: Meetup[];
+  onOpenEvent?: (meetup: Meetup) => void;
   onDirections: () => void;
   onCollapse: () => void;
   onClose: () => void;
 };
 
-export function PlaceSheet({ place, room, onDirections, onCollapse, onClose }: PlaceSheetProps) {
+function whenLabel(meetup: Meetup) {
+  if (!meetup.startsAt) return "Happening now";
+  const at = new Date(meetup.startsAt);
+  if (at.getTime() <= Date.now()) return "Happening now";
+  return at.toLocaleString(undefined, { weekday: "short", hour: "numeric", minute: "2-digit" });
+}
+
+export function PlaceSheet({
+  place,
+  room,
+  events = [],
+  onOpenEvent,
+  onDirections,
+  onCollapse,
+  onClose,
+}: PlaceSheetProps) {
   const Icon = CATEGORY_ICONS[place.category];
   const floor = room ? floorLabel(floorForRoom(room)) : undefined;
 
@@ -72,6 +90,31 @@ export function PlaceSheet({ place, room, onDirections, onCollapse, onClose }: P
               ? `Enter ${place.name}, then head to the ${floor.toLowerCase()}.`
               : `Enter ${place.name} and follow the room signs.`}
           </p>
+        </div>
+      ) : null}
+
+      {events.length > 0 ? (
+        <div className="mt-4">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">Campus events here</p>
+          <ul className="flex flex-col gap-1.5">
+            {events.slice(0, 4).map((meetup) => (
+              <li key={meetup.id}>
+                <button
+                  type="button"
+                  className="flex w-full items-start gap-2.5 rounded-2xl bg-surface-secondary px-3.5 py-2.5 text-left transition-colors hover:bg-accent-soft"
+                  onClick={() => onOpenEvent?.(meetup)}>
+                  <CalendarClock className="mt-0.5 size-4 shrink-0 text-accent" aria-hidden />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-semibold">{meetup.title ?? "Campus event"}</span>
+                    <span className="block text-xs text-muted">
+                      {whenLabel(meetup)}
+                      {meetup.going > 0 ? ` · ${meetup.going} going` : ""}
+                    </span>
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
         </div>
       ) : null}
 

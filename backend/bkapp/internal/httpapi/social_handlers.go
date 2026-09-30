@@ -45,6 +45,8 @@ func (h *socialHandlers) fail(w http.ResponseWriter, r *http.Request, err error)
 		writeError(w, http.StatusConflict, "You're already in a meetup at that time. Leave it first to join this one.")
 	case errors.Is(err, social.ErrNotJoined):
 		writeError(w, http.StatusForbidden, "Join the meetup to see where everyone is.")
+	case errors.Is(err, social.ErrReportLimit):
+		writeError(w, http.StatusTooManyRequests, "You've sent too many reports. Try again later.")
 	default:
 		h.logger.Error("request failed", "path", r.URL.Path, "error", err)
 		writeError(w, http.StatusInternalServerError, "Something went wrong. Try again.")
@@ -115,6 +117,30 @@ func (h *socialHandlers) block(w http.ResponseWriter, r *http.Request, me auth.U
 
 func (h *socialHandlers) unblock(w http.ResponseWriter, r *http.Request, me auth.User) {
 	if err := h.service.Unblock(r.Context(), me, r.PathValue("username")); err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *socialHandlers) report(w http.ResponseWriter, r *http.Request, me auth.User) {
+	var body struct {
+		Kind     string `json:"kind"`
+		MeetupID string `json:"meetupId"`
+		Username string `json:"username"`
+		Reason   string `json:"reason"`
+		Details  string `json:"details"`
+	}
+	if !decodeJSON(w, r, &body) {
+		return
+	}
+	if err := h.service.FileReport(r.Context(), me, social.Report{
+		Kind:     body.Kind,
+		MeetupID: body.MeetupID,
+		Username: body.Username,
+		Reason:   body.Reason,
+		Details:  body.Details,
+	}); err != nil {
 		h.fail(w, r, err)
 		return
 	}

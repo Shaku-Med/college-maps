@@ -6,7 +6,7 @@ export const REALTIME_ORIGIN = 'https://college-maps-rt.onrender.com';
 // and a page on another site cannot add this header, so it stands in for the web's same origin check.
 export const APP_CLIENT_HEADERS = { 'X-CSIMap-Client': 'app' } as const;
 
-// Where reports about other people's events go. Apple requires a way to report content and a way to reach
-// the developer, so it is set per build in eas.json. Without it, the Report option is hidden.
+// Optional contact address for App Review notes. Reports themselves go to the API; this is not required
+// for the Report button to work, and must not be committed with a real inbox if you prefer.
 const supportEmail = (process.env.EXPO_PUBLIC_SUPPORT_EMAIL ?? '').trim();
 export const SUPPORT_EMAIL = /^[^\s@]{1,64}@[^\s@]{1,190}\.[a-z]{2,}$/i.test(supportEmail) ? supportEmail : '';

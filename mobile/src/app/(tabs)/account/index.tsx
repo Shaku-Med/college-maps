@@ -1,16 +1,20 @@
 import Constants from 'expo-constants';
 import { router, Stack } from 'expo-router';
 import type { SFSymbol } from 'expo-symbols';
-import { Card, ListGroup, Separator, Spinner, useThemeColor, useToast } from 'heroui-native';
+import { Card, ListGroup, Separator, Spinner, Switch, useThemeColor, useToast } from 'heroui-native';
 import { Alert, ScrollView, Text, View } from 'react-native';
 
 import { Icon } from '@/components/icon';
 import { ProfileForm } from '@/components/profile-form';
 import { SectionTitle } from '@/components/section';
 import { SignIn } from '@/components/sign-in';
+import { StackLinkedItem } from '@/components/stack-linked-item';
 import { UpdatesSection } from '@/components/updates-section';
 import { CAMPUS } from '@/data/campus';
+import { useLinkedSuffix } from '@/hooks/use-linked-row-opacity';
+import { useReadableStyle } from '@/hooks/use-layout';
 import { signOut, useAccount } from '@/lib/account';
+import { setDevicePref, useDevicePrefs } from '@/lib/device-prefs';
 import { openWeb } from '@/lib/links';
 
 const VERSION = Constants.expoConfig?.version ?? '1.0.0';
@@ -20,17 +24,21 @@ function Row({
   title,
   description,
   onPress,
+  linked = false,
+  gestureSync = true,
   danger = false,
 }: {
   symbol: SFSymbol;
   title: string;
   description?: string;
   onPress?: () => void;
+  linked?: boolean;
+  gestureSync?: boolean;
   danger?: boolean;
 }) {
   const [muted, dangerColor] = useThemeColor(['muted', 'danger']);
   return (
-    <ListGroup.Item onPress={onPress} disabled={!onPress}>
+    <StackLinkedItem linked={linked} gestureSync={gestureSync} onPress={onPress} disabled={!onPress}>
       <ListGroup.ItemPrefix>
         <Icon name={symbol} size={20} tintColor={danger ? dangerColor : muted} />
       </ListGroup.ItemPrefix>
@@ -39,6 +47,34 @@ function Row({
         {description ? <ListGroup.ItemDescription>{description}</ListGroup.ItemDescription> : null}
       </ListGroup.ItemContent>
       {onPress && !danger ? <ListGroup.ItemSuffix /> : null}
+    </StackLinkedItem>
+  );
+}
+
+function ToggleRow({
+  symbol,
+  title,
+  description,
+  value,
+  onChange,
+}: {
+  symbol: SFSymbol;
+  title: string;
+  description?: string;
+  value: boolean;
+  onChange: (next: boolean) => void;
+}) {
+  const muted = useThemeColor('muted');
+  return (
+    <ListGroup.Item disabled>
+      <ListGroup.ItemPrefix>
+        <Icon name={symbol} size={20} tintColor={muted} />
+      </ListGroup.ItemPrefix>
+      <ListGroup.ItemContent>
+        <ListGroup.ItemTitle>{title}</ListGroup.ItemTitle>
+        {description ? <ListGroup.ItemDescription>{description}</ListGroup.ItemDescription> : null}
+      </ListGroup.ItemContent>
+      <Switch isSelected={value} onSelectedChange={onChange} />
     </ListGroup.Item>
   );
 }
@@ -55,8 +91,17 @@ function initials(name: string) {
 }
 
 export default function AccountScreen() {
+  const readable = useReadableStyle();
   const account = useAccount();
   const { toast } = useToast();
+  const device = useDevicePrefs();
+  const linked = useLinkedSuffix(
+    '/notifications',
+    '/profile',
+    '/voice',
+    '/download-data',
+    '/delete-account',
+  );
 
   function confirmSignOutEverywhere() {
     Alert.alert('Sign out everywhere?', 'This signs you out on every phone and browser, including this one.', [
@@ -72,7 +117,6 @@ export default function AccountScreen() {
     ]);
   }
 
-  // A stray tap on Sign out should not end the session, so it asks first.
   function confirmSignOut() {
     Alert.alert('Sign out?', 'You can sign back in any time with your school email.', [
       { text: 'Cancel', style: 'cancel' },
@@ -86,7 +130,8 @@ export default function AccountScreen() {
       <ScrollView
         contentInsetAdjustmentBehavior="automatic"
         keyboardShouldPersistTaps="handled"
-        contentContainerClassName="gap-6 px-4 pb-16 pt-2">
+        contentContainerClassName="gap-6 px-4 pb-16 pt-2"
+        contentContainerStyle={readable}>
         {account.status === 'loading' ? (
           <View className="items-center py-16">
             <Spinner />
@@ -117,7 +162,13 @@ export default function AccountScreen() {
             <View>
               <SectionTitle>Profile</SectionTitle>
               <ListGroup>
-                <Row symbol="pencil" title="Edit profile" onPress={() => router.push('/profile')} />
+                <Row
+                  symbol="pencil"
+                  title="Edit profile"
+                  linked={linked === '/profile'}
+                  gestureSync={false}
+                  onPress={() => router.push('/profile')}
+                />
                 <Separator className="mx-4" />
                 <Row symbol="lock" title="Email, only visible to you" description={account.user.email} />
                 <Separator className="mx-4" />
@@ -125,7 +176,21 @@ export default function AccountScreen() {
                   symbol="bell"
                   title="Notifications"
                   description="Alerts, badge, and what you hear about"
+                  linked={linked === '/notifications'}
                   onPress={() => router.push('/account/notifications')}
+                />
+              </ListGroup>
+            </View>
+            <View>
+              <SectionTitle>Your data</SectionTitle>
+              <ListGroup>
+                <Row
+                  symbol="square.and.arrow.down"
+                  title="Download my information"
+                  description="JSON, HTML, text, or PDF"
+                  linked={linked === '/download-data'}
+                  gestureSync={false}
+                  onPress={() => router.push('/download-data')}
                 />
               </ListGroup>
             </View>
@@ -136,7 +201,14 @@ export default function AccountScreen() {
                 <Separator className="mx-4" />
                 <Row symbol="iphone.slash" title="Sign out everywhere" onPress={confirmSignOutEverywhere} />
                 <Separator className="mx-4" />
-                <Row symbol="trash" title="Delete account" onPress={() => router.push('/delete-account')} danger />
+                <Row
+                  symbol="trash"
+                  title="Delete account"
+                  linked={linked === '/delete-account'}
+                  gestureSync={false}
+                  onPress={() => router.push('/delete-account')}
+                  danger
+                />
               </ListGroup>
             </View>
           </>
@@ -152,11 +224,45 @@ export default function AccountScreen() {
         )}
 
         <View>
-          <SectionTitle>On the web</SectionTitle>
+          <SectionTitle>Directions</SectionTitle>
           <ListGroup>
-            <Row symbol="safari" title="Open CSI Map on the web" onPress={() => void openWeb('/')} />
+            <ToggleRow
+              symbol="sun.max"
+              title="Keep screen on"
+              description="While turn-by-turn is running, like other navigation apps"
+              value={device.keepAwake}
+              onChange={(next) => setDevicePref('keepAwake', next)}
+            />
             <Separator className="mx-4" />
-            <Row symbol="hand.raised" title="Privacy" onPress={() => void openWeb('/privacy')} />
+            <Row
+              symbol="speaker.wave.2"
+              title="Directions voice"
+              description="Which voice speaks each turn"
+              linked={linked === '/voice'}
+              gestureSync={false}
+              onPress={() => router.push('/voice')}
+            />
+          </ListGroup>
+        </View>
+
+        <View>
+          <SectionTitle>Legal</SectionTitle>
+          <ListGroup>
+            <Row
+              symbol="hand.raised"
+              title="Privacy policy"
+              description="What we store and how location is used"
+              onPress={() => void openWeb('/privacy')}
+            />
+            <Separator className="mx-4" />
+            <Row
+              symbol="doc.text"
+              title="Terms of use"
+              description="Rules for the map, friends, and meetups"
+              onPress={() => void openWeb('/terms')}
+            />
+            <Separator className="mx-4" />
+            <Row symbol="safari" title="Open CSI Map on the web" onPress={() => void openWeb('/')} />
           </ListGroup>
         </View>
 

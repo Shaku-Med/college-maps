@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 
 import { CAMPUS } from "@/data/campus";
 
@@ -44,6 +45,10 @@ export default function PrivacyPage() {
             </li>
             <li>The name and username you pick, which friends and people in a meetup with you can see.</li>
             <li>Friend requests, friendships, and people you have blocked.</li>
+            <li>
+              Reports you send about another student or a campus event (reason and optional note), so we can
+              review them.
+            </li>
             <li>
               Meetups you host or join, including the place or pin, until they end. Hosting a campus
               meetup posts the title to the public board for signed-in students.
@@ -131,7 +136,11 @@ export default function PrivacyPage() {
 
         <p className="text-xs leading-relaxed text-muted">
           {app.name} is a student-built campus map for {college.name}. It is not an official{" "}
-          {college.shortName} service.
+          {college.shortName} service. See also the{" "}
+          <Link href="/terms" className="font-medium text-accent underline-offset-2 hover:underline">
+            terms of use
+          </Link>
+          .
         </p>
       </article>
     </main>

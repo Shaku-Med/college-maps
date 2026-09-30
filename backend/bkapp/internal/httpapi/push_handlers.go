@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"errors"
+	"log/slog"
 	"net/http"
 
 	"csimap/bkapp/internal/auth"
@@ -10,6 +11,7 @@ import (
 
 type pushHandlers struct {
 	service *push.Service
+	logger  *slog.Logger
 }
 
 func (h *pushHandlers) config(w http.ResponseWriter, _ *http.Request) {
@@ -109,6 +111,7 @@ func (h *pushHandlers) fail(w http.ResponseWriter, err error) {
 	case errors.Is(err, auth.ErrUnauthorized):
 		writeError(w, http.StatusUnauthorized, "Sign in first.")
 	default:
+		h.logger.Error("push request failed", "error", err)
 		writeError(w, http.StatusInternalServerError, "Something went wrong. Try again.")
 	}
 }

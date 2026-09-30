@@ -43,6 +43,7 @@ type TopProps = {
   isRiding: boolean;
   notice?: RouteNotice;
   hasAlternate: boolean;
+  weakSignal?: boolean;
   onUseAlternate: () => void;
 };
 
@@ -56,6 +57,7 @@ export function NavigationBanner({
   isRiding,
   notice,
   hasAlternate,
+  weakSignal = false,
   onUseAlternate,
 }: TopProps) {
   const [accentForeground, dangerForeground] = useThemeColor(['accent-foreground', 'danger-foreground']);
@@ -106,6 +108,8 @@ export function NavigationBanner({
         <Pressable onPress={onUseAlternate} className="items-center active:opacity-70">
           <Pill symbol="arrow.uturn.backward" text="Tap to take your earlier route" />
         </Pressable>
+      ) : weakSignal && !hasArrived ? (
+        <Pill symbol="location" text="Weak GPS signal, position may jump" />
       ) : null}
     </View>
   );
