@@ -16,6 +16,7 @@ import { useReadableStyle } from '@/hooks/use-layout';
 import { signOut, useAccount } from '@/lib/account';
 import { setDevicePref, useDevicePrefs } from '@/lib/device-prefs';
 import { openWeb } from '@/lib/links';
+import { HEADER_ICONS } from '@/lib/header-icons';
 
 const VERSION = Constants.expoConfig?.version ?? '1.0.0';
 
@@ -127,6 +128,15 @@ export default function AccountScreen() {
   return (
     <>
       <Stack.Title large>Account</Stack.Title>
+      {account.status === 'signed-in' && !account.user.needsProfile ? (
+        <Stack.Toolbar placement="right">
+          <Stack.Toolbar.Button
+            icon={HEADER_ICONS.notifications}
+            accessibilityLabel="Notifications"
+            onPress={() => router.push('/account/notifications')}
+          />
+        </Stack.Toolbar>
+      ) : null}
       <ScrollView
         contentInsetAdjustmentBehavior="automatic"
         keyboardShouldPersistTaps="handled"

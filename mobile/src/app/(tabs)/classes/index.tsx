@@ -14,6 +14,7 @@ import { useClasses } from '@/lib/classes';
 import { DAYS, classesOn, dayKey, findUpcoming, formatClock, type ClassEntry, type Day } from '@/lib/schedule';
 import { floorForRoom, floorLabel } from '@/lib/search';
 import { planTrip } from '@/lib/trip';
+import { HEADER_ICONS } from '@/lib/header-icons';
 
 const DAY_NAMES: Record<Day, string> = {
   mon: 'Monday',
@@ -60,6 +61,16 @@ export default function ClassesScreen() {
   return (
     <>
       <Stack.Title large>Classes</Stack.Title>
+      <Stack.Toolbar placement="right">
+        <Stack.Toolbar.Menu icon={HEADER_ICONS.add} accessibilityLabel="Add classes">
+          <Stack.Toolbar.MenuAction icon="plus" onPress={() => router.push({ pathname: '/class/[id]', params: { id: 'new' } })}>
+            Add a class
+          </Stack.Toolbar.MenuAction>
+          <Stack.Toolbar.MenuAction icon="doc.on.clipboard" onPress={() => router.push('/class-import')}>
+            Paste schedule
+          </Stack.Toolbar.MenuAction>
+        </Stack.Toolbar.Menu>
+      </Stack.Toolbar>
       <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerClassName="gap-6 px-4 pb-16 pt-2" contentContainerStyle={readable}>
         {upcoming ? (
           <Card className="gap-4 rounded-3xl bg-accent p-5">

@@ -1,10 +1,10 @@
 import { router, Stack } from 'expo-router';
 import { ListGroup, useThemeColor } from 'heroui-native';
-import { Platform } from 'react-native';
 
 import { Icon } from '@/components/icon';
 import { PlacePicker } from '@/components/place-picker';
 import { MY_LOCATION, setTripOrigin, useTrip } from '@/lib/trip';
+import { HEADER_ICONS } from '@/lib/header-icons';
 
 export default function OriginModal() {
   const trip = useTrip();
@@ -17,10 +17,7 @@ export default function OriginModal() {
   return (
     <>
       <Stack.Toolbar placement="right">
-        {/* Android header buttons only take image icons, so it shows the word there. */}
-        <Stack.Toolbar.Button icon={Platform.OS === 'ios' ? 'xmark' : undefined} onPress={() => router.back()}>
-          Close
-        </Stack.Toolbar.Button>
+        <Stack.Toolbar.Button icon={HEADER_ICONS.close} accessibilityLabel="Close" onPress={() => router.back()} />
       </Stack.Toolbar>
       <PlacePicker
         selectedId={trip.origin}

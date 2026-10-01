@@ -15,6 +15,7 @@ import { useProfile } from '@/lib/account';
 import { MAX_USERNAME_LENGTH, normalizeUsername } from '@/lib/api';
 import { refreshSocial, useSocial } from '@/lib/social';
 import { socialApi, type Meetup, type Person } from '@/lib/social-api';
+import { HEADER_ICONS } from '@/lib/header-icons';
 
 function timeLeft(expiresAt: string) {
   const minutes = Math.round((new Date(expiresAt).getTime() - Date.now()) / 60000);
@@ -125,6 +126,23 @@ export default function FriendsScreen() {
   return (
     <>
       <Stack.Title large>Friends</Stack.Title>
+      <Stack.Toolbar placement="right">
+        <Stack.Toolbar.Menu icon={HEADER_ICONS.add} accessibilityLabel="Start something">
+          <Stack.Toolbar.MenuAction
+            icon="person.2"
+            onPress={() => router.push({ pathname: '/meetup/new', params: { kind: 'private' } })}>
+            New meetup
+          </Stack.Toolbar.MenuAction>
+          <Stack.Toolbar.MenuAction
+            icon="megaphone"
+            onPress={() => router.push({ pathname: '/meetup/new', params: { kind: 'public' } })}>
+            Post a campus event
+          </Stack.Toolbar.MenuAction>
+          <Stack.Toolbar.MenuAction icon="calendar" onPress={() => router.push('/friends/campus')}>
+            Happening on campus
+          </Stack.Toolbar.MenuAction>
+        </Stack.Toolbar.Menu>
+      </Stack.Toolbar>
       <ScrollView
         contentInsetAdjustmentBehavior="automatic"
         keyboardShouldPersistTaps="handled"
