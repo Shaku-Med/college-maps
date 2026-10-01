@@ -1,7 +1,7 @@
 import { GlassView, isLiquidGlassAvailable } from 'expo-glass-effect';
 import { cn } from 'heroui-native';
 import type { ReactNode } from 'react';
-import { View, type StyleProp, type ViewStyle } from 'react-native';
+import { View, type ColorValue, type StyleProp, type ViewStyle } from 'react-native';
 import { withUniwind } from 'uniwind';
 
 const LIQUID_GLASS = isLiquidGlassAvailable();
@@ -16,20 +16,24 @@ type GlassProps = {
   interactive?: boolean;
   /** Corner radius. The native glass reads it from the style to shape itself. */
   radius?: number;
+  /** Colors the glass, like a warning. Without Liquid Glass it becomes a solid fill of that color. */
+  tint?: ColorValue;
 };
 
 /** Liquid Glass on iOS 26, and a solid floating surface on anything older. */
-export function Glass({ children, className, style, interactive = false, radius }: GlassProps) {
+export function Glass({ children, className, style, interactive = false, radius, tint }: GlassProps) {
   const shape = radius === undefined ? style : [{ borderRadius: radius, overflow: 'hidden' as const }, style];
   if (LIQUID_GLASS) {
     return (
-      <StyledGlassView isInteractive={interactive} className={className} style={shape}>
+      <StyledGlassView isInteractive={interactive} tintColor={tint} className={className} style={shape}>
         {children}
       </StyledGlassView>
     );
   }
   return (
-    <View className={cn('border border-border bg-overlay shadow-md', className)} style={shape}>
+    <View
+      className={cn('border border-border bg-overlay shadow-md', tint !== undefined && 'border-transparent', className)}
+      style={[shape, tint !== undefined ? { backgroundColor: tint } : null]}>
       {children}
     </View>
   );

@@ -1,7 +1,16 @@
 import type { SFSymbol } from 'expo-symbols';
+import * as Haptics from 'expo-haptics';
 import { useThemeColor } from 'heroui-native';
-import { Pressable, Text, View } from 'react-native';
-import Animated, { FadeInUp, FadeOutUp } from 'react-native-reanimated';
+import { useState } from 'react';
+import { Pressable, ScrollView, Text, useWindowDimensions, View } from 'react-native';
+import Animated, {
+  FadeIn,
+  FadeInUp,
+  FadeOut,
+  FadeOutUp,
+  LinearTransition,
+  useReducedMotion,
+} from 'react-native-reanimated';
 
 import { Icon } from '@/components/icon';
 import { Glass } from '@/components/glass';
@@ -47,7 +56,30 @@ type TopProps = {
   onUseAlternate: () => void;
 };
 
-/** The next turn, big and at the top, the way every navigation app shows it. */
+// Within this of the coming turn, the one after it shows too, the way Apple Maps says "Then".
+const THEN_WITHIN_METERS = 60;
+// The open list stops short of the footer, so the map and End stay in view.
+const STEPS_MAX_SHARE = 0.45;
+
+function StepRow({ step, away, destinationName }: { step: Route['steps'][number]; away: number; destinationName: string }) {
+  const foreground = useThemeColor('foreground');
+  return (
+    <View className="flex-row items-center gap-3 py-2.5">
+      <View className="size-9 items-center justify-center rounded-full bg-default">
+        <StepIcon step={step} size={16} color={foreground} />
+      </View>
+      <Text className="min-w-0 flex-1 text-base leading-5 text-foreground" numberOfLines={2}>
+        {stepText(step, destinationName)}
+      </Text>
+      <Text className="text-sm font-medium text-muted">{formatDistance(away)}</Text>
+    </View>
+  );
+}
+
+/**
+ * The next turn, big and at the top, on glass like Apple Maps. Tapping it opens every turn still ahead with how
+ * far each one is; tapping again folds it back. Arriving and going the wrong way tint the glass so they stand out.
+ */
 export function NavigationBanner({
   route,
   progress,
@@ -60,45 +92,121 @@ export function NavigationBanner({
   weakSignal = false,
   onUseAlternate,
 }: TopProps) {
-  const [accentForeground, dangerForeground] = useThemeColor(['accent-foreground', 'danger-foreground']);
+  const [accent, accentForeground, danger, dangerForeground, foreground, muted] = useThemeColor([
+    'accent',
+    'accent-foreground',
+    'danger',
+    'danger-foreground',
+    'foreground',
+    'muted',
+  ]);
+  const { height } = useWindowDimensions();
+  const reduceMotion = useReducedMotion();
+  const [expanded, setExpanded] = useState(false);
+  const along = progress?.distanceAlong ?? 0;
   const index = Math.min((progress?.stepIndex ?? 0) + 1, route.steps.length - 1);
   const step = route.steps[index];
-  const toStep = Math.max(0, step.startDistance - (progress?.distanceAlong ?? 0));
+  const toStep = Math.max(0, step.startDistance - along);
+  const then = route.steps[index + 1];
   const wrong = isWrongWay && !hasArrived;
+  const canExpand = !hasArrived && !wrong && index < route.steps.length - 1;
+  const open = expanded && canExpand;
+  const ahead = route.steps.slice(index + 1);
+  const layout = reduceMotion ? undefined : LinearTransition.springify().damping(18).stiffness(180);
+
+  function toggle() {
+    if (!canExpand) return;
+    void Haptics.selectionAsync();
+    setExpanded((value) => !value);
+  }
 
   return (
     <View pointerEvents="box-none" className="gap-2.5 px-3">
-      <View className={wrong ? 'rounded-[28px] bg-danger p-4' : 'rounded-[28px] bg-accent p-4'}>
-        {hasArrived ? (
-          <View className="flex-row items-center gap-3.5">
-            <Icon name="flag.checkered" size={30} weight="semibold" tintColor={accentForeground} />
-            <View className="min-w-0 flex-1">
-              <Text className="text-2xl font-bold text-accent-foreground">You have arrived</Text>
-              <Text className="text-base text-accent-foreground opacity-80" numberOfLines={1}>
-                {destinationName}
-              </Text>
-            </View>
-          </View>
-        ) : wrong ? (
-          <View className="flex-row items-center gap-3.5">
-            <Icon name="arrow.uturn.down" size={30} weight="semibold" tintColor={dangerForeground} />
-            <View className="min-w-0 flex-1">
-              <Text className="text-2xl font-bold text-danger-foreground">Wrong way</Text>
-              <Text className="text-base text-danger-foreground opacity-80">Turn around when it is safe</Text>
-            </View>
-          </View>
-        ) : (
-          <View className="flex-row items-center gap-3.5">
-            <StepIcon step={step} size={34} color={accentForeground} />
-            <View className="min-w-0 flex-1">
-              <Text className="text-3xl font-bold text-accent-foreground">{formatDistance(toStep)}</Text>
-              <Text className="text-lg font-medium leading-6 text-accent-foreground" numberOfLines={2}>
-                {stepText(step, destinationName)}
-              </Text>
-            </View>
-          </View>
-        )}
-      </View>
+      <Animated.View layout={layout}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityState={{ expanded: open, disabled: !canExpand }}
+          accessibilityLabel={
+            hasArrived
+              ? `You have arrived at ${destinationName}`
+              : wrong
+                ? 'Wrong way. Turn around when it is safe'
+                : `In ${formatDistance(toStep)}, ${stepText(step, destinationName)}`
+          }
+          accessibilityHint={canExpand ? (open ? 'Hides the turns ahead' : 'Shows every turn still ahead') : undefined}
+          onPress={toggle}>
+          <Glass radius={28} tint={wrong ? danger : hasArrived ? accent : undefined} className="p-4">
+            {hasArrived ? (
+              <View className="flex-row items-center gap-3.5">
+                <Icon name="flag.checkered" size={30} weight="semibold" tintColor={accentForeground} />
+                <View className="min-w-0 flex-1">
+                  <Text className="text-2xl font-bold text-accent-foreground">You have arrived</Text>
+                  <Text className="text-base text-accent-foreground opacity-80" numberOfLines={1}>
+                    {destinationName}
+                  </Text>
+                </View>
+              </View>
+            ) : wrong ? (
+              <View className="flex-row items-center gap-3.5">
+                <Icon name="arrow.uturn.down" size={30} weight="semibold" tintColor={dangerForeground} />
+                <View className="min-w-0 flex-1">
+                  <Text className="text-2xl font-bold text-danger-foreground">Wrong way</Text>
+                  <Text className="text-base text-danger-foreground opacity-80">Turn around when it is safe</Text>
+                </View>
+              </View>
+            ) : (
+              <>
+                <View className="flex-row items-center gap-3.5">
+                  <StepIcon step={step} size={34} color={accent} />
+                  <View className="min-w-0 flex-1">
+                    <Text className="text-3xl font-bold text-foreground">{formatDistance(toStep)}</Text>
+                    <Text className="text-lg font-medium leading-6 text-foreground" numberOfLines={2}>
+                      {stepText(step, destinationName)}
+                    </Text>
+                  </View>
+                  {canExpand ? (
+                    <Icon name={open ? 'chevron.up' : 'chevron.down'} size={14} weight="semibold" tintColor={muted} />
+                  ) : null}
+                </View>
+
+                {then && !open && toStep <= THEN_WITHIN_METERS ? (
+                  <Animated.View
+                    entering={reduceMotion ? undefined : FadeIn.duration(180)}
+                    className="mt-3 flex-row items-center gap-2 border-t border-border pt-3">
+                    <Text className="text-sm font-semibold text-muted">Then</Text>
+                    <StepIcon step={then} size={15} color={foreground} />
+                    <Text className="min-w-0 flex-1 text-sm text-foreground" numberOfLines={1}>
+                      {stepText(then, destinationName)}
+                    </Text>
+                  </Animated.View>
+                ) : null}
+
+                {open ? (
+                  <Animated.View
+                    entering={reduceMotion ? undefined : FadeIn.duration(220).delay(60)}
+                    exiting={reduceMotion ? undefined : FadeOut.duration(120)}
+                    className="mt-3 border-t border-border pt-1">
+                    <ScrollView style={{ maxHeight: height * STEPS_MAX_SHARE }} showsVerticalScrollIndicator={false}>
+                      {ahead.map((next, offset) => (
+                        <StepRow
+                          key={index + 1 + offset}
+                          step={next}
+                          away={Math.max(0, next.startDistance - along)}
+                          destinationName={destinationName}
+                        />
+                      ))}
+                    </ScrollView>
+                    <Text className="pt-2 text-center text-xs text-muted">
+                      {ahead.length} more {ahead.length === 1 ? 'turn' : 'turns'} ·{' '}
+                      {formatDistance(progress?.remaining ?? route.distance)} to go
+                    </Text>
+                  </Animated.View>
+                ) : null}
+              </>
+            )}
+          </Glass>
+        </Pressable>
+      </Animated.View>
 
       {isRiding && !hasArrived ? (
         <Pill symbol="bus.fill" text="Riding. Directions pick up when you get off" />
