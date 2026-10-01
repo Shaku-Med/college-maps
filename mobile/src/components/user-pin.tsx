@@ -1,3 +1,4 @@
+import type * as GeoJSON from 'geojson';
 import { GeoJSONSource, Layer, Marker } from '@maplibre/maplibre-react-native';
 import { useThemeColor } from 'heroui-native';
 import { useEffect, useMemo, useRef, useState } from 'react';

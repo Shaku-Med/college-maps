@@ -5,7 +5,7 @@
   "dependencies": {
     "@expo/ui": "~57.0.21",
     "@gorhom/bottom-sheet": "^5.2.14",
-    "@maplibre/maplibre-react-native": "^11.4.0",
+    "@maplibre/maplibre-react-native": "^11.4.1",
     "expo": "~57.0.26",
     "expo-asset": "~57.0.18",
     "expo-audio": "~57.0.5",
@@ -56,7 +56,7 @@
     "@types/react": "~19.2.2",
     "eslint": "^9.0.0",
     "eslint-config-expo": "~57.0.2",
-    "typescript": "~5.9.3"
+    "typescript": "~6.0.3"
   },
   "scripts": {
     "start": "expo start",
@@ -65,5 +65,8 @@
     "typecheck": "tsc --noEmit",
     "doctor": "expo-doctor"
   },
-  "private": true
+  "private": true,
+  "allowScripts": {
+    "unrs-resolver": false
+  }
 }

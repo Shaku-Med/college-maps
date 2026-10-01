@@ -1,5 +1,6 @@
 "use client";
 
+import type * as GeoJSON from "geojson";
 import type {
   ExpressionSpecification,
   GeoJSONSource,
