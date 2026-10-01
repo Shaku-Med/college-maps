@@ -1,7 +1,7 @@
 "use client";
 
 import { AlertDialog, Button, CloseButton, Input, InputOTP, Label, Spinner, Surface, Switch, TextField, toast } from "@heroui/react";
-import { ArrowLeft, AtSign, Bell, ChevronRight, Download, FileText, Lock, LogOut, Mail, MonitorSmartphone, Pencil, Shield, Trash2, UserRound } from "lucide-react";
+import { ArrowLeft, AtSign, Bell, ChevronRight, Download, FileText, Layers, Lock, LogOut, Mail, MonitorSmartphone, Pencil, Shield, Trash2, UserRound } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 
@@ -9,6 +9,7 @@ import { CAMPUS } from "@/data/campus";
 import { CollapseButton, SheetGrabber } from "@/components/sheet-chrome";
 import { VoicePicker } from "@/components/voice-picker";
 import type { AccountState } from "@/hooks/use-account";
+import { useLiquidGlass } from "@/hooks/use-liquid-glass";
 import {
   CODE_LENGTH,
   MAX_EMAIL_LENGTH,
@@ -59,8 +60,13 @@ export function AccountPanel({
 }: AccountPanelProps) {
   const subtitle =
     state.status === "signed-in" ? "Signed in" : `Sign in with your ${CAMPUS.college.shortName} email`;
-  // Everyone can pick a voice, signed in or not. Signed in, it is kept with the account.
-  const voiceRow = <VoicePicker voice={voice} savedTo={voiceSavedTo} onChoose={onChooseVoice} />;
+  // Everyone can pick a voice and the look, signed in or not. Signed in, the voice is kept with the account.
+  const settingRows = (
+    <>
+      <VoicePicker voice={voice} savedTo={voiceSavedTo} onChoose={onChooseVoice} />
+      <LiquidGlassSetting />
+    </>
+  );
 
   return (
     <Surface
@@ -94,7 +100,7 @@ export function AccountPanel({
                 Try again
               </Button>
             </div>
-            {voiceRow}
+            {settingRows}
           </div>
         ) : state.status === "signed-in" && state.user.needsProfile ? (
           <div className="flex flex-col gap-5">
@@ -104,18 +110,42 @@ export function AccountPanel({
               submitLabel="Continue"
               onSaved={onUser}
             />
-            {voiceRow}
+            {settingRows}
             <PrivacyRow />
             <DownloadData />
             <DangerZone user={state.user} onDeleted={onDeleted} onUser={onUser} />
           </div>
         ) : state.status === "signed-in" ? (
-          <Profile user={state.user} onUser={onUser} onDeleted={onDeleted} voiceRow={voiceRow} />
+          <Profile user={state.user} onUser={onUser} onDeleted={onDeleted} settingRows={settingRows} />
         ) : state.status === "signed-out" ? (
-          <SignIn onUser={onUser} voiceRow={voiceRow} />
+          <SignIn onUser={onUser} settingRows={settingRows} />
         ) : null}
       </div>
     </Surface>
+  );
+}
+
+/** Only on iOS 26 and later, and off until someone turns it on, since the blur behind it costs battery. */
+function LiquidGlassSetting() {
+  const glass = useLiquidGlass();
+  if (!glass.available) return null;
+  return (
+    <div className="flex items-center gap-3 rounded-2xl border border-separator px-4 py-3.5">
+      <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-accent-soft text-accent-soft-foreground">
+        <Layers className="size-4" aria-hidden />
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-medium">Liquid Glass</p>
+        <p className="text-sm text-muted">See through controls like iOS 26. Uses a bit more battery.</p>
+      </div>
+      <Switch isSelected={glass.on} onChange={glass.setOn} aria-label="Liquid Glass">
+        <Switch.Content>
+          <Switch.Control>
+            <Switch.Thumb />
+          </Switch.Control>
+        </Switch.Content>
+      </Switch>
+    </div>
   );
 }
 
@@ -128,7 +158,7 @@ function ErrorText({ message, className = "" }: { message?: string; className?: 
   );
 }
 
-function SignIn({ onUser, voiceRow }: { onUser: (user: AccountUser) => void; voiceRow: ReactNode }) {
+function SignIn({ onUser, settingRows }: { onUser: (user: AccountUser) => void; settingRows: ReactNode }) {
   const [email, setEmail] = useState("");
   const [sentTo, setSentTo] = useState<string>();
   const [code, setCode] = useState("");
@@ -221,7 +251,7 @@ function SignIn({ onUser, voiceRow }: { onUser: (user: AccountUser) => void; voi
           <Lock className="mt-0.5 size-3.5 shrink-0" aria-hidden />
           Your email is encrypted and never shown to other students.
         </p>
-        {voiceRow}
+        {settingRows}
         <PrivacyRow />
       </form>
     );
@@ -412,12 +442,12 @@ function Profile({
   user,
   onUser,
   onDeleted,
-  voiceRow,
+  settingRows,
 }: {
   user: AccountUser;
   onUser: (user: AccountUser | null) => void;
   onDeleted?: () => void;
-  voiceRow: ReactNode;
+  settingRows: ReactNode;
 }) {
   const [isEditing, setIsEditing] = useState(false);
   const [pending, setPending] = useState<"one" | "all">();
@@ -484,7 +514,7 @@ function Profile({
       </div>
 
       <NotificationsRow />
-      {voiceRow}
+      {settingRows}
 
       <div className="flex flex-col gap-2">
         <SignOutConfirm

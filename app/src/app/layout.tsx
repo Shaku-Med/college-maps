@@ -7,6 +7,7 @@ import { CoverViewport } from "@/components/cover-viewport";
 import { OfflineSupport } from "@/components/offline-support";
 import { CAMPUS } from "@/data/campus";
 import iconBuild from "@/data/icon-version.json";
+import { APPEARANCE_SCRIPT } from "@/lib/appearance";
 import { COVER_SCRIPT } from "@/lib/cover-viewport";
 
 import "./globals.css";
@@ -121,6 +122,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
         {nonce ? <meta name="csp-nonce" content={nonce} /> : null}
         <script nonce={nonce} dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
         <script nonce={nonce} dangerouslySetInnerHTML={{ __html: COVER_SCRIPT }} />
+        <script nonce={nonce} dangerouslySetInnerHTML={{ __html: APPEARANCE_SCRIPT }} />
         {THEME_OVERRIDES ? <style nonce={nonce}>{THEME_OVERRIDES}</style> : null}
         <script nonce={nonce} type="application/ld+json" dangerouslySetInnerHTML={{ __html: STRUCTURED_DATA }} />
       </head>

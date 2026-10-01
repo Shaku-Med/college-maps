@@ -2,7 +2,7 @@
 
 import { Button, SearchField, Surface } from "@heroui/react";
 import { ArrowLeft } from "lucide-react";
-import { useRef, type KeyboardEvent } from "react";
+import { useRef, type KeyboardEvent, type RefObject } from "react";
 
 import { PlaceSearchList, useCampusSearch } from "@/components/place-search-list";
 import { CAMPUS, type Place } from "@/data/campus";
@@ -14,10 +14,13 @@ type SearchPanelProps = {
   onQueryChange: (query: string) => void;
   onOpenChange: (open: boolean) => void;
   onSelect: (place: Place, room?: string) => void;
+  /** Lets the Search tab put the cursor in the field straight from the tap, so the keyboard opens. */
+  inputRef?: RefObject<HTMLInputElement | null>;
 };
 
-export function SearchPanel({ query, isOpen, onQueryChange, onOpenChange, onSelect }: SearchPanelProps) {
-  const inputRef = useRef<HTMLInputElement>(null);
+export function SearchPanel({ query, isOpen, onQueryChange, onOpenChange, onSelect, inputRef: givenRef }: SearchPanelProps) {
+  const ownRef = useRef<HTMLInputElement>(null);
+  const inputRef = givenRef ?? ownRef;
   const { room: roomMatch, results } = useCampusSearch(query);
   const hasQuery = query.trim().length > 0;
 
@@ -45,7 +48,7 @@ export function SearchPanel({ query, isOpen, onQueryChange, onOpenChange, onSele
       className={
         isOpen
           ? "flex max-h-[calc(100dvh-var(--map-safe-top)-var(--map-safe-bottom))] flex-col overflow-hidden rounded-3xl shadow-xl"
-          : "rounded-3xl shadow-lg"
+          : "glass-chrome rounded-3xl shadow-lg"
       }>
       <div className="flex items-center gap-1 p-1.5">
         {isOpen ? (

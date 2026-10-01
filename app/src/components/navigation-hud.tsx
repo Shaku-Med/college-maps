@@ -128,8 +128,8 @@ export function NavigationHud({
         <div
           className={
             isWrongWay && !hasArrived
-              ? "animate-sheet-in pointer-events-auto overflow-hidden rounded-3xl bg-danger/90 text-danger-foreground shadow-xl backdrop-blur-xl transition-colors duration-300"
-              : "animate-sheet-in pointer-events-auto overflow-hidden rounded-3xl bg-accent/90 text-accent-foreground shadow-xl backdrop-blur-xl transition-colors duration-300"
+              ? "glass-chrome animate-sheet-in pointer-events-auto overflow-hidden rounded-3xl bg-danger/90 text-danger-foreground shadow-xl backdrop-blur-xl transition-colors duration-300 [--glass-strength:80%] [--glass-tint:var(--danger)]"
+              : "glass-chrome animate-sheet-in pointer-events-auto overflow-hidden rounded-3xl bg-accent/90 text-accent-foreground shadow-xl backdrop-blur-xl transition-colors duration-300 [--glass-strength:80%] [--glass-tint:var(--accent)]"
           }>
         <p role="status" aria-live="polite" className="sr-only">
           {hasArrived
@@ -270,7 +270,7 @@ export function NavigationHud({
             ) : null}
           </div>
         ) : null}
-        <Surface className="rounded-t-[28px] px-5 pb-[max(1rem,var(--map-safe-bottom))] pt-4 shadow-2xl md:rounded-3xl md:pb-4">
+        <Surface className="glass-chrome rounded-t-[28px] px-5 pb-[max(1rem,var(--map-safe-bottom))] pt-4 shadow-2xl md:rounded-3xl md:pb-4">
           {tripOpen ? (
             <div className="animate-fade-in mb-3 border-b border-separator pb-2">
               <p className="pb-1 text-xs font-semibold uppercase tracking-wide text-muted">

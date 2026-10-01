@@ -8,6 +8,23 @@
   --animate-fade-in: fade-in 160ms ease-out;
 }
 
+/* The page matches the app someone would install. Set before paint by APPEARANCE_SCRIPT. */
+@custom-variant phone {
+  @media (width < 48rem) {
+    &:where([data-device="phone"] *) {
+      @slot;
+    }
+  }
+}
+/* iOS 26 and later on a phone: the floating tab bar. */
+@custom-variant floating {
+  @media (width < 48rem) {
+    &:where([data-device="phone"][data-liquid] *) {
+      @slot;
+    }
+  }
+}
+
 @keyframes sheet-in {
   from {
     transform: translateY(20px);
@@ -50,7 +67,8 @@
 
   :root {
     --map-safe-top: max(0.75rem, env(safe-area-inset-top, 0px));
-    --map-safe-bottom: max(0.75rem, env(safe-area-inset-bottom, 0px), var(--standalone-home, 0px));
+    --device-safe-bottom: max(0.75rem, env(safe-area-inset-bottom, 0px), var(--standalone-home, 0px));
+    --map-safe-bottom: var(--device-safe-bottom);
     --map-safe-left: max(0.75rem, env(safe-area-inset-left, 0px));
     --map-safe-right: max(0.75rem, env(safe-area-inset-right, 0px));
   }
@@ -104,6 +122,33 @@
   width: 100%;
   height: var(--app-height, 100dvh);
   overflow: hidden;
+}
+
+/* With the tab bar showing, everything that sits on the bottom edge clears it, the way content does under a native
+   tab bar. Sheets still reach the edge behind it. */
+@media (width < 48rem) {
+  [data-device="phone"] .map-bleed[data-tabbar] {
+    --map-safe-bottom: calc(var(--device-safe-bottom) + 4.5rem);
+  }
+
+  [data-device="phone"] .map-bleed[data-tabbar] :is(.maplibregl-ctrl-bottom-left, .maplibregl-ctrl-bottom-right) {
+    bottom: calc(var(--map-safe-bottom) - 0.75rem);
+  }
+}
+
+/* Liquid Glass, only on iOS 26 and later and only once someone turns it on. Blur, saturation, and a lit rim, with
+   no SVG refraction: WebKit cannot run SVG filters behind an element, and this stays light on the GPU. */
+@media not (prefers-reduced-transparency: reduce) {
+  [data-glass] .glass-chrome {
+    background-color: color-mix(in oklab, var(--glass-tint, var(--overlay)) var(--glass-strength, 45%), transparent);
+    -webkit-backdrop-filter: blur(14px) saturate(1.8);
+    backdrop-filter: blur(14px) saturate(1.8);
+    border-color: color-mix(in oklab, var(--snow) 22%, transparent);
+    box-shadow:
+      inset 0 1px 0.5px color-mix(in oklab, var(--snow) 60%, transparent),
+      inset 0 -0.5px 1px color-mix(in oklab, var(--snow) 18%, transparent),
+      0 12px 32px -12px rgb(0 0 0 / 0.3);
+  }
 }
 
 /* Dropdowns, popovers, dialogs, and toasts stay inside the safe area. The map does not. */

@@ -210,7 +210,7 @@ export function SheetPeek({
   onExpand: () => void;
 }) {
   return (
-    <Surface className="animate-sheet-in overflow-hidden rounded-t-[28px] pb-[var(--map-safe-bottom)] shadow-2xl md:rounded-[28px] md:pb-0">
+    <Surface className="glass-chrome animate-sheet-in overflow-hidden rounded-t-[28px] pb-[var(--map-safe-bottom)] shadow-2xl md:rounded-[28px] md:pb-0">
       <div data-sheet-grab className="flex cursor-grab touch-none justify-center pt-2.5 md:hidden">
         <div className="h-1 w-10 shrink-0 rounded-full bg-separator" aria-hidden />
       </div>

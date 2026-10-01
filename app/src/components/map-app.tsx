@@ -16,6 +16,7 @@ import { PlaceSheet } from "@/components/place-sheet";
 import { SchedulePanel } from "@/components/schedule-panel";
 import { SearchPanel } from "@/components/search-panel";
 import { SHEET_FULL_WRAP, SHEET_PEEK_WRAP, SheetLayer, SheetPeek } from "@/components/sheet-chrome";
+import { TabBar, type TabId } from "@/components/tab-bar";
 import { CAMPUS, CAMPUS_CENTER, CATEGORY_LABELS, PLACES, getPlace, type Coordinate, type Place } from "@/data/campus";
 import { useAccount } from "@/hooks/use-account";
 import { useGeolocation, type GeoFix } from "@/hooks/use-geolocation";
@@ -157,7 +158,7 @@ function MapViewControls({
   onPointNorth: () => void;
 }) {
   return (
-    <Surface className="flex flex-col overflow-hidden rounded-2xl p-1 shadow-lg">
+    <Surface className="glass-chrome flex flex-col overflow-hidden rounded-2xl p-1 shadow-lg">
       {rotated ? (
         <>
           <Button isIconOnly variant="ghost" aria-label="Point north" onPress={onPointNorth}>
@@ -199,6 +200,7 @@ function MapViewControls({
 
 export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
   const mapRef = useRef<CampusMapHandle>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   const [mode, setMode] = useState<Mode>("browse");
   const [selectedId, setSelectedId] = useState(initialPlaceId);
@@ -825,6 +827,33 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
   const peopleExpanded = isPeopleOpen && isPeopleExpanded;
   const accountExpanded = isAccountOpen && isAccountExpanded;
   const mapChromeOpen = mode === "browse" && !scheduleExpanded && !peopleExpanded && !accountExpanded && !meetupSheetOpen;
+  // Directions and navigation take the whole screen, so the tab bar steps aside for them, as it does in the app.
+  const showTabBar = mode === "browse" && !meetupSheetOpen;
+  const selectedTab: TabId = isSearchOpen
+    ? "search"
+    : isScheduleOpen
+      ? "classes"
+      : isPeopleOpen
+        ? "friends"
+        : isAccountOpen
+          ? "account"
+          : "map";
+
+  function selectTab(tab: TabId) {
+    if (tab === "classes") openSchedule();
+    else if (tab === "friends") openPeople();
+    else if (tab === "account") openAccount();
+    else {
+      setIsScheduleOpen(false);
+      setIsPeopleOpen(false);
+      setIsAccountOpen(false);
+      if (tab === "map") setIsSearchOpen(false);
+      // Focusing inside the tap is what lets a phone open its keyboard. With a sheet covering the field, the
+      // field opens on its own and a second tap types.
+      else if (searchInputRef.current) searchInputRef.current.focus();
+      else setIsSearchOpen(true);
+    }
+  }
 
   // Friends who are sharing right now, labelled with their initials. You already have a location
   // dot, so you are never a person pin to find.
@@ -1121,7 +1150,7 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
   const hasPeek = peopleOpenPeeked || scheduleOpenPeeked || accountOpenPeeked || directionsPeeked || placePeeked || meetupPeeked;
 
   return (
-    <main className="map-bleed bg-background">
+    <main className="map-bleed bg-background" data-tabbar={showTabBar || undefined}>
       <CampusMap
         ref={mapRef}
         places={visiblePlaces}
@@ -1333,10 +1362,11 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
                   onQueryChange={setQuery}
                   onOpenChange={setIsSearchOpen}
                   onSelect={selectPlace}
+                  inputRef={searchInputRef}
                 />
               </div>
               {isSearchOpen ? null : (
-                <Surface className="flex size-[52px] shrink-0 items-center justify-center rounded-3xl shadow-lg">
+                <Surface className="glass-chrome flex size-[52px] shrink-0 items-center justify-center rounded-3xl shadow-lg phone:hidden">
                   <Button
                     isIconOnly
                     variant="ghost"
@@ -1348,7 +1378,7 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
                 </Surface>
               )}
               {isSearchOpen || !social.signedIn ? null : (
-                <Surface className="relative flex size-[52px] shrink-0 items-center justify-center rounded-3xl shadow-lg">
+                <Surface className="glass-chrome relative flex size-[52px] shrink-0 items-center justify-center rounded-3xl shadow-lg phone:hidden">
                   <Button isIconOnly variant="ghost" aria-label="Friends" onPress={openPeople} className="rounded-full">
                     <Users aria-hidden />
                   </Button>
@@ -1361,7 +1391,7 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
                 </Surface>
               )}
               {isSearchOpen || !meetup || !selected ? null : (
-                <Surface className="flex size-[52px] shrink-0 items-center justify-center rounded-3xl shadow-lg">
+                <Surface className="glass-chrome flex size-[52px] shrink-0 items-center justify-center rounded-3xl shadow-lg">
                   <Button
                     isIconOnly
                     variant="ghost"
@@ -1373,7 +1403,7 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
                 </Surface>
               )}
               {isSearchOpen || account.state.status === "disabled" ? null : (
-                <Surface className="flex size-[52px] shrink-0 items-center justify-center rounded-3xl shadow-lg">
+                <Surface className="glass-chrome flex size-[52px] shrink-0 items-center justify-center rounded-3xl shadow-lg phone:hidden">
                   <Button
                     isIconOnly
                     variant="ghost"
@@ -1410,7 +1440,7 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
                     <ToggleButton
                       key={option}
                       id={option}
-                      className="shrink-0 rounded-full bg-overlay px-3.5 shadow-sm data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground">
+                      className="glass-chrome shrink-0 rounded-full bg-overlay px-3.5 shadow-sm data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground data-[selected=true]:[--glass-strength:85%] data-[selected=true]:[--glass-tint:var(--accent)]">
                       {option === "all" ? "All" : CATEGORY_LABELS[option]}
                     </ToggleButton>
                   ))}
@@ -1424,7 +1454,7 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
               selected && isPlaceExpanded
                 ? "absolute bottom-12 z-10 max-md:hidden right-[var(--map-safe-right)] md:right-4"
                 : hasPeek
-                  ? "absolute bottom-[7.25rem] z-10 right-[var(--map-safe-right)] md:bottom-[calc(5.5rem+var(--map-safe-bottom))] md:right-4"
+                  ? "absolute bottom-[calc(6.5rem+var(--map-safe-bottom))] z-10 right-[var(--map-safe-right)] md:bottom-[calc(5.5rem+var(--map-safe-bottom))] md:right-4"
                   : "absolute bottom-[calc(3rem+var(--map-safe-bottom))] z-10 right-[var(--map-safe-right)] md:right-4"
             }>
             <MapViewControls
@@ -1499,7 +1529,7 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
       ) : null}
 
       {directionsPeeked ? (
-        <div className="absolute bottom-[7.25rem] z-10 right-[var(--map-safe-right)] md:bottom-[calc(5.5rem+var(--map-safe-bottom))] md:right-4">
+        <div className="absolute bottom-[calc(6.5rem+var(--map-safe-bottom))] z-10 right-[var(--map-safe-right)] md:bottom-[calc(5.5rem+var(--map-safe-bottom))] md:right-4">
           <MapViewControls
             buildingView={buildingView}
             locating={geo.status === "locating"}
@@ -1511,6 +1541,16 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
             onPointNorth={() => mapRef.current?.resetNorth()}
           />
         </div>
+      ) : null}
+
+      {showTabBar ? (
+        <TabBar
+          selected={selectedTab}
+          showFriends={social.signedIn}
+          showAccount={account.state.status !== "disabled"}
+          friendsWaiting={social.waiting}
+          onSelect={selectTab}
+        />
       ) : null}
 
       {mode === "navigate" && target && navRoute ? (
