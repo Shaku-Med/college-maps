@@ -45,6 +45,22 @@ function Navigation() {
   const pageSheet = { presentation: 'modal' as const, contentStyle: { backgroundColor: background } };
   const nestedFormSheet = Platform.OS === 'ios' ? sheetTall : pageSheet;
 
+  const pickerSheet = {
+    // A page sheet: full width, swipe down to close, and it does not squeeze the list on iPad the way
+    // the floating form sheets do. Its header carries the title and the system search bar.
+    ...pageSheet,
+    headerShown: true,
+    headerLargeTitle: true,
+    headerLargeTitleShadowVisible: false,
+    ...(Platform.OS === 'ios'
+      ? {
+          headerTransparent: true,
+          headerBlurEffect: 'systemChromeMaterial' as const,
+          headerLargeStyle: { backgroundColor: 'transparent' },
+        }
+      : { headerShadowVisible: false }),
+  };
+
   useNotificationTaps();
 
   useEffect(() => {
@@ -71,25 +87,8 @@ function Navigation() {
             sheetLargestUndimmedDetentIndex: 0,
           }}
         />
-        <Stack.Screen
-          name="origin"
-          options={{
-            // A page sheet: full width, swipe down to close, and it does not squeeze the list on iPad the way
-            // the floating form sheets do. Its header carries the title and the system search bar.
-            ...pageSheet,
-            headerShown: true,
-            title: 'Start from',
-            headerLargeTitle: true,
-            headerLargeTitleShadowVisible: false,
-            ...(Platform.OS === 'ios'
-              ? {
-                  headerTransparent: true,
-                  headerBlurEffect: 'systemChromeMaterial' as const,
-                  headerLargeStyle: { backgroundColor: 'transparent' },
-                }
-              : { headerShadowVisible: false }),
-          }}
-        />
+        <Stack.Screen name="origin" options={{ ...pickerSheet, title: 'Start from' }} />
+        <Stack.Screen name="stop" options={{ ...pickerSheet, title: 'Add a stop' }} />
         <Stack.Screen name="class/[id]" options={sheetTall} />
         <Stack.Screen name="class-import" options={sheetTall} />
         <Stack.Screen name="profile" options={sheetMedium} />

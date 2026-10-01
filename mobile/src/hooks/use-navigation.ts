@@ -54,6 +54,9 @@ const MAX_BELIEVABLE_MPS: Record<TravelMode, number> = { walk: 12, bike: 20, dri
 // A walk or bike ride that started on streets switches to the campus paths once the traveller is on them.
 const ON_CAMPUS_WALKWAY_METERS = 15;
 const ON_CAMPUS_FIXES = 2;
+// Following the steps by hand, a fix only takes over once it is this close to the route. Anywhere else (off
+// campus while reading directions from a building) it would be matched to the wrong part of the route.
+const TAKEOVER_METERS = 40;
 
 function offRouteLimit(accuracy: number) {
   return Math.min(45, Math.max(20, accuracy * 1.5));
@@ -100,6 +103,8 @@ export function useNavigation({ destination, avoidStairs, follow, facingUp }: Op
     following: true,
     arrived: false,
     facingUp,
+    /** Following the steps by hand, without a live location. */
+    manual: false,
   });
   const motion = useRef(createMotionTracker());
   const motionState = useRef<MotionState>({ speed: 0, motion: 'still' });
@@ -241,6 +246,13 @@ export function useNavigation({ destination, avoidStairs, follow, facingUp }: Op
 
       const current = nav.current;
       if (!current.active || !current.route || !current.destination || current.arrived) return;
+      if (current.manual) {
+        const probe = trackProgress(current.route, position, hint.current);
+        if (accuracy > UNTRUSTED_ACCURACY_METERS || probe.distanceFromRoute > TAKEOVER_METERS) return;
+        // On the route for real now: guidance follows the location from here.
+        nav.current = { ...current, manual: false, following: true };
+        setIsFollowing(true);
+      }
       setManualStep(null);
 
       let active = current.route;
@@ -382,9 +394,11 @@ export function useNavigation({ destination, avoidStairs, follow, facingUp }: Op
 
       const reachedEntrance =
         next.distanceAlong >= active.arrivalDistance - (travel ? STREET_ARRIVAL_METERS[travel] : ARRIVAL_METERS);
+      // Only someone on the route reaches its end; being near its line from far off is not arriving.
+      const onTheRoute = next.distanceFromRoute <= limit;
       const nearDestination =
         accuracy <= ARRIVAL_ACCURACY_METERS && distanceMeters(position, target.coordinate) <= NEAR_DESTINATION_METERS;
-      arrivalCount.current = trusted && !holding && (reachedEntrance || nearDestination) ? arrivalCount.current + 1 : 0;
+      arrivalCount.current = trusted && !holding && ((reachedEntrance && onTheRoute) || nearDestination) ? arrivalCount.current + 1 : 0;
       const arrived = arrivalCount.current >= ARRIVAL_FIXES;
       if (arrived) {
         nav.current = { ...nav.current, arrived: true, previous: null };
@@ -427,7 +441,15 @@ export function useNavigation({ destination, avoidStairs, follow, facingUp }: Op
     (chosen: Route, from: Coordinate | null) => {
       reset();
       lastPoint.current = from ?? chosen.path[0];
-      nav.current = { ...nav.current, active: true, route: chosen, previous: null, arrived: false, following: !!from };
+      nav.current = {
+        ...nav.current,
+        active: true,
+        route: chosen,
+        previous: null,
+        arrived: false,
+        following: !!from,
+        manual: !from,
+      };
       setRoute(chosen);
       if (!from) {
         setManualStep(0);

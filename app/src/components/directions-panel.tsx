@@ -27,7 +27,7 @@ import { PLACE_SECTIONS } from "@/lib/search";
 import type { Meetup } from "@/lib/social-api";
 import type { Route, TravelMode } from "@/lib/routing";
 
-export const MY_LOCATION = "me";
+export { MY_LOCATION } from "@/lib/stops";
 
 export type RouteIssue =
   | "loading"

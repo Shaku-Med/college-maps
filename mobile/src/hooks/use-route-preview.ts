@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 
-import { CAMPUS, contains, getPlace, type Coordinate } from '@/data/campus';
+import { CAMPUS, contains, type Coordinate } from '@/data/campus';
 import { walkGraph } from '@/data/walk-graph';
 import { fetchStreetRoute } from '@/lib/directions';
 import { distanceMeters } from '@/lib/geo';
 import type { LocationStatus } from '@/lib/location';
 import { findRoute, matchWalkway, type Route } from '@/lib/routing';
+import { tripPlan, type TripPlan } from '@/lib/stops';
 import { MY_LOCATION, type Trip } from '@/lib/trip';
 
 // Street routes come from a free shared server, so a preview is only refreshed after moving this far.
@@ -36,9 +37,21 @@ const onCampusPaths = (point: Coordinate) =>
   contains(CAMPUS.map.walkingArea, point) ||
   (matchWalkway(walkGraph(), point, { avoidStairs: false })?.distance ?? Infinity) <= NEAR_CAMPUS_PATH_METERS;
 
-type Preview = { route: Route | null; issue?: RouteIssue; isOffCampus: boolean };
+type Preview = {
+  /** The first leg: to the first stop, or straight to the destination. */
+  route: Route | null;
+  /** The legs after the first stop, on the campus paths. Empty without stops. */
+  later: Route[];
+  /** Every place the walk visits in order; the last is the destination. */
+  plan: TripPlan | null;
+  issue?: RouteIssue;
+  isOffCampus: boolean;
+};
 
-/** The route to show before starting: campus paths on campus, or the street network from anywhere else. */
+/**
+ * The route to show before starting: campus paths on campus, or the street network from anywhere else, then on
+ * from stop to stop along the campus paths.
+ */
 export function useRoutePreview(
   trip: Trip,
   position: Coordinate | undefined,
@@ -47,16 +60,39 @@ export function useRoutePreview(
 ): Preview {
   const planning = trip.phase === 'preview' && trip.destination !== null;
   const fromMe = trip.origin === MY_LOCATION;
-  const originCoordinate = fromMe ? position : getPlace(trip.origin)?.coordinate;
+  const plan = useMemo(
+    () =>
+      planning && trip.destination
+        ? tripPlan({ origin: trip.origin, stops: trip.stops, destination: trip.destination, here: position })
+        : null,
+    [planning, trip.origin, trip.stops, trip.destination, position],
+  );
+  const first = plan?.targets[0];
+  const start = plan?.start ?? undefined;
   // Checked once per fix, not on every render: it looks through every campus walkway.
-  const isOffCampus = useMemo(() => fromMe && position !== undefined && !onCampusPaths(position), [fromMe, position]);
+  const isOffCampus = useMemo(
+    () => !!plan?.live && start !== undefined && !onCampusPaths(start),
+    [plan?.live, start],
+  );
 
   const campusRoute = useMemo(() => {
-    if (!planning || !trip.destination || !originCoordinate || isOffCampus) return null;
-    return findRoute(walkGraph(), originCoordinate, trip.destination.coordinate, { avoidStairs: trip.avoidStairs });
-  }, [planning, trip.destination, originCoordinate, isOffCampus, trip.avoidStairs]);
+    if (!first || !start || isOffCampus) return null;
+    return findRoute(walkGraph(), start, first.coordinate, { avoidStairs: trip.avoidStairs });
+  }, [first, start, isOffCampus, trip.avoidStairs]);
 
-  const streetKey = planning && isOffCampus && trip.destination ? `${trip.destination.id}|${trip.travelMode}|${trip.avoidStairs}` : null;
+  // Stops are campus places, so every leg after the first follows the campus paths.
+  const later = useMemo(() => {
+    const targets = plan?.targets ?? [];
+    const legs: Route[] = [];
+    for (let i = 1; i < targets.length; i++) {
+      const leg = findRoute(walkGraph(), targets[i - 1].coordinate, targets[i].coordinate, { avoidStairs: trip.avoidStairs });
+      if (!leg) return null;
+      legs.push(leg);
+    }
+    return legs;
+  }, [plan?.targets, trip.avoidStairs]);
+
+  const streetKey = planning && isOffCampus && first ? `${first.id}|${trip.travelMode}|${trip.avoidStairs}` : null;
   // Roughly a 100 m grid, so the preview is reconsidered as someone moves but not on every fix.
   const streetCell = position ? `${position.latitude.toFixed(3)},${position.longitude.toFixed(3)}` : '';
   const [street, setStreet] = useState<{ key: string; route: Route | null; failed: boolean } | null>(null);
@@ -68,15 +104,14 @@ export function useRoutePreview(
 
   useEffect(() => {
     const from = positionRef.current;
-    const target = trip.destination;
-    if (!streetKey || !target || !from) return;
+    if (!streetKey || !first || !from) return;
     const last = lastFetch.current;
     if (last && last.key === streetKey && distanceMeters(last.origin, from) < STREET_REFRESH_METERS) return;
     lastFetch.current = { key: streetKey, origin: from };
 
     const controller = new AbortController();
     let settled = false;
-    fetchStreetRoute(from, target.coordinate, trip.travelMode, {
+    fetchStreetRoute(from, first.coordinate, trip.travelMode, {
       avoidStairs: trip.avoidStairs,
       heading: heading(),
       signal: controller.signal,
@@ -96,16 +131,18 @@ export function useRoutePreview(
       controller.abort();
       if (lastFetch.current?.key === streetKey) lastFetch.current = null;
     };
-  }, [streetKey, streetCell, trip.destination, trip.travelMode, trip.avoidStairs, heading]);
+  }, [streetKey, streetCell, first, trip.travelMode, trip.avoidStairs, heading]);
 
-  if (!planning) return { route: null, isOffCampus };
+  const none = { route: null, later: [], plan, isOffCampus };
+  if (!planning) return none;
+  if (!later) return { ...none, issue: trip.avoidStairs ? 'no-step-free' : 'no-route' };
   if (isOffCampus) {
-    if (!street || street.key !== streetKey) return { route: null, issue: 'finding', isOffCampus };
-    if (street.failed) return { route: null, issue: 'street-failed', isOffCampus };
-    return street.route ? { route: street.route, isOffCampus } : { route: null, issue: 'no-street-route', isOffCampus };
+    if (!street || street.key !== streetKey) return { ...none, issue: 'finding' };
+    if (street.failed) return { ...none, issue: 'street-failed' };
+    return street.route ? { route: street.route, later, plan, isOffCampus } : { ...none, issue: 'no-street-route' };
   }
-  if (fromMe && status === 'denied') return { route: null, issue: 'denied', isOffCampus };
-  if (fromMe && !position) return { route: null, issue: 'locating', isOffCampus };
-  if (!campusRoute) return { route: null, issue: trip.avoidStairs ? 'no-step-free' : 'no-route', isOffCampus };
-  return { route: campusRoute, isOffCampus };
+  if (fromMe && status === 'denied') return { ...none, issue: 'denied' };
+  if (!start) return { ...none, issue: 'locating' };
+  if (!campusRoute) return { ...none, issue: trip.avoidStairs ? 'no-step-free' : 'no-route' };
+  return { route: campusRoute, later, plan, isOffCampus };
 }

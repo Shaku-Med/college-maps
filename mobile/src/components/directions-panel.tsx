@@ -13,10 +13,11 @@ import { PANEL_WIDTH } from '@/hooks/use-layout';
 import { useNow } from '@/hooks/use-now';
 import { ISSUE_TEXT, type RouteIssue } from '@/hooks/use-route-preview';
 import { formatRouteTime } from '@/lib/directions';
-import { formatDistance } from '@/lib/geo';
+import { formatDistance, formatSeconds } from '@/lib/geo';
 import { stepText } from '@/lib/instructions';
 import type { Route, TravelMode } from '@/lib/routing';
 import type { Meetup } from '@/lib/social-api';
+import { MAX_STOPS, tripTotals, type TripPlan } from '@/lib/stops';
 import { MY_LOCATION, setAvoidStairs, setTravelMode, type Trip } from '@/lib/trip';
 
 const MODES: { id: TravelMode; label: string; symbol: SFSymbol }[] = [
@@ -24,6 +25,8 @@ const MODES: { id: TravelMode; label: string; symbol: SFSymbol }[] = [
   { id: 'walk', label: 'Walk', symbol: 'figure.walk' },
   { id: 'bike', label: 'Bike', symbol: 'bicycle' },
 ];
+
+const clockAt = (ms: number) => new Date(ms).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
 
 function arrivalTime(route: Route, now: number) {
   const seconds = route.duration ?? route.distance / 1.3;
@@ -35,12 +38,17 @@ type DirectionsPanelProps = {
   route: Route | null;
   issue?: RouteIssue;
   isOffCampus: boolean;
+  /** The legs after the first stop. Empty without stops. */
+  later: Route[];
+  plan: TripPlan | null;
   live: boolean;
   events?: Meetup[];
   onOpenEvent?: (meetup: Meetup) => void;
   onStart: () => void;
   onClose: () => void;
   onPickOrigin: () => void;
+  onAddStop: () => void;
+  onRemoveStop: (id: string) => void;
 };
 
 export function DirectionsPanel({
@@ -48,12 +56,16 @@ export function DirectionsPanel({
   route,
   issue,
   isOffCampus,
+  later,
+  plan,
   live,
   events = [],
   onOpenEvent,
   onStart,
   onClose,
   onPickOrigin,
+  onAddStop,
+  onRemoveStop,
 }: DirectionsPanelProps) {
   const [showSteps, setShowSteps] = useState(false);
   const now = useNow();
@@ -63,6 +75,8 @@ export function DirectionsPanel({
   if (!destination) return null;
   const originName = trip.origin === MY_LOCATION ? 'My location' : (getPlace(trip.origin)?.name ?? 'My location');
   const waiting = issue === 'locating' || issue === 'finding';
+  const stops = plan ? plan.targets.slice(0, -1) : [];
+  const totals = route ? tripTotals([route, ...later]) : null;
   // Landscape / short windows: scroll instead of crushing Drive/Walk/Bike and the Start row.
   const maxHeight = Math.min(height * 0.72, Math.max(220, height - 96));
 
@@ -95,6 +109,51 @@ export function DirectionsPanel({
           </Text>
           <Icon name="chevron.up.chevron.down" size={12} tintColor={muted} />
         </Pressable>
+
+        {stops.length > 0 ? (
+          <View className="gap-2">
+            {stops.map((stop, index) => {
+              // A starting building the traveller is not at yet comes first, as a stop of its own.
+              const isStart = stop.id === trip.origin && !trip.stops.includes(stop.id);
+              return (
+                <View key={stop.id} className="flex-row items-center gap-3 rounded-2xl bg-default px-3.5 py-2.5">
+                  <View className="size-6 items-center justify-center rounded-full bg-accent">
+                    <Text className="text-xs font-bold text-accent-foreground">{index + 1}</Text>
+                  </View>
+                  <View className="min-w-0 flex-1">
+                    <Text className="text-sm text-foreground" numberOfLines={1}>
+                      {stop.name}
+                    </Text>
+                    {isStart ? <Text className="text-xs text-muted">On the way, since you are not there yet</Text> : null}
+                  </View>
+                  {isStart ? null : (
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={`Remove the stop at ${stop.name}`}
+                      hitSlop={8}
+                      onPress={() => {
+                        void Haptics.selectionAsync();
+                        onRemoveStop(stop.id);
+                      }}
+                      className="size-7 items-center justify-center rounded-full active:opacity-60">
+                      <Icon name="xmark" size={12} weight="semibold" tintColor={muted} />
+                    </Pressable>
+                  )}
+                </View>
+              );
+            })}
+          </View>
+        ) : null}
+
+        {trip.stops.length < MAX_STOPS ? (
+          <Pressable
+            accessibilityRole="button"
+            onPress={onAddStop}
+            className="flex-row items-center gap-2 self-start rounded-full px-1 py-1 active:opacity-60">
+            <Icon name="plus.circle.fill" size={16} tintColor={accent} />
+            <Text className="text-sm font-semibold text-accent">Add a stop</Text>
+          </Pressable>
+        ) : null}
 
         {isOffCampus ? (
           <View className="flex-row gap-2" accessibilityRole="radiogroup">
@@ -153,9 +212,13 @@ export function DirectionsPanel({
         {route ? (
           <View className="flex-row items-end justify-between px-1">
             <View className="min-w-0 flex-1">
-              <Text className="text-3xl font-bold text-foreground">{formatRouteTime(route)}</Text>
+              <Text className="text-3xl font-bold text-foreground">
+                {later.length > 0 && totals ? formatSeconds(totals.seconds) : formatRouteTime(route)}
+              </Text>
               <Text className="text-sm text-muted">
-                {formatDistance(route.distance)} · Arrive {arrivalTime(route, now)}
+                {formatDistance(totals?.meters ?? route.distance)} · Arrive{' '}
+                {later.length > 0 && totals ? clockAt(now + totals.seconds * 1000) : arrivalTime(route, now)}
+                {stops.length > 0 ? ` · ${stops.length} ${stops.length === 1 ? 'stop' : 'stops'}` : ''}
                 {trip.avoidStairs && (!isOffCampus || trip.travelMode === 'walk') ? ' · step-free' : ''}
                 {route.hasStairs ? ' · Stairs' : ''}
               </Text>

@@ -1,7 +1,9 @@
 import type { SFSymbol } from 'expo-symbols';
 import * as Haptics from 'expo-haptics';
 import { cn, useThemeColor } from 'heroui-native';
-import { Platform, Pressable, ScrollView, StyleSheet, Switch, Text, useWindowDimensions, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { Platform, ScrollView, StyleSheet, Switch, Text, useWindowDimensions, View } from 'react-native';
+import { Pressable } from 'react-native-gesture-handler';
 import Animated, {
   Easing,
   FadeIn,
@@ -53,6 +55,8 @@ type TopProps = {
   notice?: RouteNotice;
   hasAlternate: boolean;
   weakSignal?: boolean;
+  /** The place after this one, when this one is a stop on the way. */
+  nextStopName?: string;
   /** The list of turns ahead is open. Only one of this and the trip panel is open at a time. */
   expanded: boolean;
   onExpandedChange: (expanded: boolean) => void;
@@ -65,6 +69,26 @@ const THEN_WITHIN_METERS = 60;
 const STEPS_MAX_SHARE = 0.45;
 // Opening and closing ease like a system sheet: smooth, with no overshoot.
 const PANEL_MOTION = LinearTransition.duration(240).easing(Easing.out(Easing.cubic));
+const PANEL_MOTION_MS = 400;
+
+/**
+ * Animates the card's size only around opening or closing. Running it all the time made the glass resize on
+ * every text change, like the instruction wrapping to a second line, and squeeze the content while it did.
+ */
+function usePanelMotion(open: boolean, reduceMotion: boolean) {
+  const [moving, setMoving] = useState(false);
+  const [seen, setSeen] = useState(open);
+  if (seen !== open) {
+    setSeen(open);
+    setMoving(true);
+  }
+  useEffect(() => {
+    if (!moving) return;
+    const timer = setTimeout(() => setMoving(false), PANEL_MOTION_MS);
+    return () => clearTimeout(timer);
+  }, [moving]);
+  return moving && !reduceMotion ? PANEL_MOTION : undefined;
+}
 
 /**
  * The touch feel each platform expects: iOS 26 glass reacts by itself, Android gets the system ripple, and older
@@ -120,6 +144,7 @@ export function NavigationBanner({
   notice,
   hasAlternate,
   weakSignal = false,
+  nextStopName,
   expanded,
   onExpandedChange,
   onUseAlternate,
@@ -143,7 +168,7 @@ export function NavigationBanner({
   const open = expanded && canExpand;
   const ahead = route.steps.slice(index + 1);
   const ink = wrong ? dangerForeground : accentForeground;
-  const layout = reduceMotion ? undefined : PANEL_MOTION;
+  const layout = usePanelMotion(open, reduceMotion);
 
   function toggle() {
     if (!canExpand) return;
@@ -174,10 +199,10 @@ export function NavigationBanner({
                 <Icon name="flag.checkered" size={30} weight="semibold" tintColor={ink} />
                 <View className="min-w-0 flex-1">
                   <Text className="text-2xl font-bold" style={{ color: ink }}>
-                    You have arrived
+                    {nextStopName ? 'Stop reached' : 'You have arrived'}
                   </Text>
                   <Text className="text-base opacity-80" style={{ color: ink }} numberOfLines={1}>
-                    {destinationName}
+                    {nextStopName ? `${destinationName} · Next: ${nextStopName}` : destinationName}
                   </Text>
                 </View>
               </View>
@@ -289,6 +314,9 @@ type BottomProps = {
   onToggleVoice: () => void;
   onAvoidStairs: (avoid: boolean) => void;
   onFacingUp: (facingUp: boolean) => void;
+  /** The place after this stop. With it, arriving offers to go on instead of finishing. */
+  nextStopName?: string;
+  onContinue?: () => void;
   onStep: (index: number) => void;
   onEnd: () => void;
 };
@@ -344,6 +372,8 @@ export function NavigationFooter({
   onToggleVoice,
   onAvoidStairs,
   onFacingUp,
+  nextStopName,
+  onContinue,
   onStep,
   onEnd,
 }: BottomProps) {
@@ -354,11 +384,11 @@ export function NavigationFooter({
   const seconds = route.duration !== undefined && route.distance > 0 ? route.duration * (remaining / route.distance) : remaining / 1.3;
   const arrive = new Date(now + seconds * 1000).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
   const open = expanded && !hasArrived;
-  const layout = reduceMotion ? undefined : PANEL_MOTION;
   const stepNumber = Math.min((progress?.stepIndex ?? 0) + 1, route.steps.length);
 
+  // No layout animation on the footer: it sits on `bottom`, and Reanimated would grow it downward off the screen.
   return (
-    <Animated.View layout={layout} style={{ marginHorizontal: 12 }}>
+    <View style={{ marginHorizontal: 12 }}>
       <Glass radius={28} interactive>
         <View className="gap-3 p-4">
           {manualStep !== null && !hasArrived ? (
@@ -374,29 +404,31 @@ export function NavigationFooter({
             </View>
           ) : null}
           <View className="flex-row items-center gap-3">
-            <Pressable
-              accessibilityRole="button"
-              accessibilityState={{ expanded: open, disabled: hasArrived }}
-              accessibilityHint={hasArrived ? undefined : open ? 'Hides trip settings' : 'Shows trip settings'}
-              disabled={hasArrived}
-            {...nativePress}
-              onPress={() => {
-                void Haptics.selectionAsync();
-                onExpandedChange(!open);
-              }}
-              className={cn('min-w-0 flex-1 flex-row items-center gap-2', PRESS_DIM)}>
-              <View className="min-w-0 flex-1">
-                <Text className="text-2xl font-bold text-foreground">
-                  {hasArrived ? 'Arrived' : formatRouteTime(route, remaining)}
-                </Text>
-                <Text className="text-sm text-muted">
-                  {hasArrived ? "You're here" : `${formatDistance(remaining)} · ${arrive}`}
-                </Text>
-              </View>
-              {hasArrived ? null : (
-                <Icon name={open ? 'chevron.down' : 'chevron.up'} size={14} weight="semibold" tintColor={muted} />
-              )}
-            </Pressable>
+            <View className="min-w-0 flex-1">
+              <Pressable
+                accessibilityRole="button"
+                accessibilityState={{ expanded: open, disabled: hasArrived }}
+                accessibilityHint={hasArrived ? undefined : open ? 'Hides trip settings' : 'Shows trip settings'}
+                disabled={hasArrived}
+                {...nativePress}
+                onPress={() => {
+                  void Haptics.selectionAsync();
+                  onExpandedChange(!open);
+                }}
+                className={cn('flex-row items-center gap-2', PRESS_DIM)}>
+                <View className="min-w-0 flex-1">
+                  <Text className="text-2xl font-bold text-foreground">
+                    {hasArrived ? 'Arrived' : formatRouteTime(route, remaining)}
+                  </Text>
+                  <Text className="text-sm text-muted">
+                    {hasArrived ? "You're here" : `${formatDistance(remaining)} · ${arrive}`}
+                  </Text>
+                </View>
+                {hasArrived ? null : (
+                  <Icon name={open ? 'chevron.down' : 'chevron.up'} size={14} weight="semibold" tintColor={muted} />
+                )}
+              </Pressable>
+            </View>
             <Pressable
               accessibilityRole="switch"
               accessibilityLabel="Spoken directions"
@@ -405,7 +437,16 @@ export function NavigationFooter({
               className="size-12 items-center justify-center rounded-full bg-default active:opacity-70">
               <Icon name={voiceOn ? 'speaker.wave.2.fill' : 'speaker.slash.fill'} size={18} tintColor={foreground} />
             </Pressable>
-            <MapButton variant="danger" symbol="xmark" label={hasArrived ? 'Done' : 'End'} onPress={onEnd} />
+            {hasArrived && nextStopName && onContinue ? (
+              <MapButton symbol="arrow.right" label="Continue" onPress={onContinue} />
+            ) : null}
+            <MapButton
+              variant="danger"
+              symbol="xmark"
+              label={hasArrived && !nextStopName ? 'Done' : 'End'}
+              iconOnly={hasArrived && !!nextStopName}
+              onPress={onEnd}
+            />
           </View>
 
           {open ? (
@@ -425,6 +466,6 @@ export function NavigationFooter({
           ) : null}
         </View>
       </Glass>
-    </Animated.View>
+    </View>
   );
 }

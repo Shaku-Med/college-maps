@@ -5,6 +5,7 @@ import { SymbolView, type AndroidSymbol, type SFSymbol, type SymbolViewProps } f
 const MATERIAL: Partial<Record<SFSymbol, AndroidSymbol>> = {
 
   'app.badge': 'app_badging',
+  'arrow.right': 'arrow_forward',
   'arrow.triangle.2.circlepath': 'sync',
   'arrow.triangle.branch': 'call_split',
   'arrow.turn.up.left': 'turn_left',
@@ -73,6 +74,7 @@ const MATERIAL: Partial<Record<SFSymbol, AndroidSymbol>> = {
   'person.crop.circle.fill': 'account_circle',
   'play.fill': 'play_arrow',
   plus: 'add',
+  'plus.circle.fill': 'add_circle',
   'point.3.connected.trianglepath.dotted': 'hub',
   'rectangle.portrait.and.arrow.right': 'logout',
   'rectangle.stack': 'web_stories',

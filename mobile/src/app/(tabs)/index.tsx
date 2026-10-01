@@ -28,6 +28,7 @@ import { PlaceMarker } from '@/components/place-marker';
 import { EdgeScrim, TopScrim } from '@/components/top-scrim';
 import { UserPin } from '@/components/user-pin';
 import { CAMPUS, PLACES, contains, getPlace, type Coordinate, type Place } from '@/data/campus';
+import { walkGraph } from '@/data/walk-graph';
 import { useMeetupLive } from '@/hooks/use-meetup-live';
 import { mapCameraPadding, PANEL_WIDTH, useMapChromeBottom, useShortViewport, useWide } from '@/hooks/use-layout';
 import { useNavigation, type FollowTarget } from '@/hooks/use-navigation';
@@ -46,9 +47,18 @@ import { setMapBearing } from '@/lib/map-bearing';
 import { createCameraMemory, createSmoothHeading, shortestTurn } from '@/lib/smooth-heading';
 import { markReady } from '@/lib/splash';
 import { showMeetupOnMap, useShownMeetup } from '@/lib/meetup-focus';
-import { remainingPath } from '@/lib/routing';
+import { findRoute, remainingPath } from '@/lib/routing';
 import { useSocial } from '@/lib/social';
-import { MY_LOCATION, closeTrip, planTrip, setAvoidStairs, startNavigating, useTrip } from '@/lib/trip';
+import {
+  MY_LOCATION,
+  closeTrip,
+  nextLeg,
+  planTrip,
+  removeStop,
+  setAvoidStairs,
+  startNavigating,
+  useTrip,
+} from '@/lib/trip';
 
 const { center, zoom, bounds, styles } = CAMPUS.map;
 const CAMPUS_CENTER: [number, number] = [center.longitude, center.latitude];
@@ -175,8 +185,12 @@ export default function MapScreen() {
     [cameraMemory, insets, smoothHeading, wide],
   );
 
+  // While guiding, the place being walked to now: the next stop, or the destination after the last one.
+  const target = navigating ? (getPlace(trip.legs[trip.leg]) ?? trip.destination) : trip.destination;
+  const nextTarget = navigating ? getPlace(trip.legs[trip.leg + 1]) : undefined;
+
   const navigation = useNavigation({
-    destination: trip.destination,
+    destination: target,
     avoidStairs: trip.avoidStairs,
     follow,
     facingUp,
@@ -232,7 +246,7 @@ export default function MapScreen() {
   const voice = useVoiceGuidance({
     route: navigating ? navigation.route : null,
     progress: navigation.progress,
-    destinationName: trip.destination?.name,
+    destinationName: target?.name,
     isWrongWay: navigation.isWrongWay,
     hasArrived: navigation.hasArrived,
     notice: navigation.notice,
@@ -243,7 +257,7 @@ export default function MapScreen() {
   const people = useMeetupLive(live, meetup ? location.fix : null);
 
   // The Lock Screen and Dynamic Island follow the trip, including with the app in the background.
-  const destinationName = trip.destination?.name;
+  const destinationName = target?.name;
   useEffect(() => {
     const route = navigation.route;
     if (!navigating || !route || !destinationName) return;
@@ -370,7 +384,8 @@ export default function MapScreen() {
     camera.current?.flyTo({ center: toLngLat(here), zoom: PLACE_ZOOM, duration: 700, padding: NO_PADDING });
   }, [located, permission, requestPermission, showCampus, toast]);
 
-  const liveStart = trip.origin === MY_LOCATION && location.fix !== null;
+  // Live from here, or by hand from a starting building when there is no location yet.
+  const liveStart = preview.plan?.live ?? false;
 
   function start() {
     const route = preview.route;
@@ -385,7 +400,7 @@ export default function MapScreen() {
     }
     try {
       navigation.start(route, from);
-      startNavigating();
+      startNavigating(preview.plan?.targets.map((place) => place.id) ?? (trip.destination ? [trip.destination.id] : []));
     } catch (error) {
       toast.show({
         variant: 'danger',
@@ -401,6 +416,26 @@ export default function MapScreen() {
         // The map stays where it is.
       }
     }
+  }
+
+  // Arrived at a stop: on to the next place, from wherever the traveller is now.
+  function continueTrip() {
+    const next = nextTarget;
+    if (!next || !target) return;
+    const here = location.fix?.position;
+    const route = findRoute(walkGraph(), here ?? target.coordinate, next.coordinate, { avoidStairs: trip.avoidStairs });
+    if (!route) {
+      toast.show({ variant: 'danger', label: `Could not find a way to ${next.name}` });
+      return;
+    }
+    setHudPanel(null);
+    nextLeg();
+    try {
+      voice.begin(route, navigation.facing());
+    } catch {
+      // Guidance still shows the turns.
+    }
+    navigation.start(route, here ?? null);
   }
 
   // Changing stairs mid walk finds the way again from here; if there is no step free way, the walk stays as is.
@@ -475,7 +510,9 @@ export default function MapScreen() {
     ? navigation.route && navigation.progress
       ? remainingPath(navigation.route, navigation.progress)
       : navigation.route?.path
-    : previewRoute?.path;
+    : previewRoute
+      ? [...previewRoute.path, ...preview.later.flatMap((leg) => leg.path)]
+      : undefined;
   const routeLine = line(routePath);
   const previousLine = navigating ? line(navigation.previousPath) : null;
   const originPlace = planning && trip.origin !== MY_LOCATION ? getPlace(trip.origin) : undefined;
@@ -773,7 +810,8 @@ export default function MapScreen() {
           <NavigationBanner
             route={navigation.route}
             progress={navigation.progress}
-            destinationName={trip.destination.name}
+            destinationName={target?.name ?? trip.destination.name}
+            nextStopName={nextTarget?.name}
             isWrongWay={navigation.isWrongWay}
             hasArrived={navigation.hasArrived}
             isRiding={navigation.isRiding}
@@ -855,12 +893,16 @@ export default function MapScreen() {
                 route={preview.route}
                 issue={preview.issue}
                 isOffCampus={preview.isOffCampus}
+                later={preview.later}
+                plan={preview.plan}
                 live={liveStart}
                 events={tripEvents}
                 onOpenEvent={(meetup) => router.push(`/meetup/${meetup.id}`)}
                 onStart={start}
                 onClose={closeTrip}
                 onPickOrigin={() => router.push('/origin')}
+                onAddStop={() => router.push('/stop')}
+                onRemoveStop={removeStop}
               />
             </View>
           </View>
@@ -882,6 +924,8 @@ export default function MapScreen() {
               if (next !== facingUp) toggleFacing();
             }}
             onToggleVoice={voice.toggle}
+            nextStopName={nextTarget?.name}
+            onContinue={continueTrip}
             onStep={step}
             onEnd={end}
           />
