@@ -1,18 +1,15 @@
 import type { SFSymbol } from 'expo-symbols';
 import * as Haptics from 'expo-haptics';
-import { useThemeColor } from 'heroui-native';
-import { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { cn, useThemeColor } from 'heroui-native';
+import { Platform, Pressable, ScrollView, StyleSheet, Switch, Text, useWindowDimensions, View } from 'react-native';
 import Animated, {
+  Easing,
   FadeIn,
   FadeInUp,
   FadeOut,
   FadeOutUp,
   LinearTransition,
-  useAnimatedStyle,
   useReducedMotion,
-  useSharedValue,
-  withSpring,
 } from 'react-native-reanimated';
 
 import { Icon } from '@/components/icon';
@@ -56,6 +53,9 @@ type TopProps = {
   notice?: RouteNotice;
   hasAlternate: boolean;
   weakSignal?: boolean;
+  /** The list of turns ahead is open. Only one of this and the trip panel is open at a time. */
+  expanded: boolean;
+  onExpandedChange: (expanded: boolean) => void;
   onUseAlternate: () => void;
 };
 
@@ -63,8 +63,15 @@ type TopProps = {
 const THEN_WITHIN_METERS = 60;
 // The open list stops short of the footer, so the map and End stay in view.
 const STEPS_MAX_SHARE = 0.45;
-const PRESSED_SCALE = 0.97;
-const BOUNCE = { damping: 11, stiffness: 260, mass: 0.6 };
+// Opening and closing ease like a system sheet: smooth, with no overshoot.
+const PANEL_MOTION = LinearTransition.duration(240).easing(Easing.out(Easing.cubic));
+
+/**
+ * The touch feel each platform expects: iOS 26 glass reacts by itself, Android gets the system ripple, and older
+ * iPhones dim the way a native control does.
+ */
+const nativePress = { android_ripple: Platform.OS === 'android' ? { foreground: true } : undefined };
+const PRESS_DIM = Platform.OS === 'ios' && !HAS_LIQUID_GLASS ? 'active:opacity-60' : '';
 
 /** A soft line in the banner's own text color, so it reads on any tint. */
 function Rule({ color }: { color: string }) {
@@ -101,8 +108,7 @@ function StepRow({
 /**
  * The next turn, big and at the top, on blue glass like Apple Maps. Tapping it opens every turn still ahead with
  * how far each one is, in a list that scrolls on its own; tapping the turn again folds it back. Going the wrong way
- * turns the glass red. The press springs back on every platform: iOS 26 glass does it natively, and elsewhere a
- * matching spring stands in.
+ * turns the glass red. Touch feels native on each platform.
  */
 export function NavigationBanner({
   route,
@@ -114,6 +120,8 @@ export function NavigationBanner({
   notice,
   hasAlternate,
   weakSignal = false,
+  expanded,
+  onExpandedChange,
   onUseAlternate,
 }: TopProps) {
   const [accent, accentForeground, danger, dangerForeground] = useThemeColor([
@@ -124,9 +132,6 @@ export function NavigationBanner({
   ]);
   const { height } = useWindowDimensions();
   const reduceMotion = useReducedMotion();
-  const [expanded, setExpanded] = useState(false);
-  const scale = useSharedValue(1);
-  const pressStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.get() }] }));
 
   const along = progress?.distanceAlong ?? 0;
   const index = Math.min((progress?.stepIndex ?? 0) + 1, route.steps.length - 1);
@@ -138,18 +143,17 @@ export function NavigationBanner({
   const open = expanded && canExpand;
   const ahead = route.steps.slice(index + 1);
   const ink = wrong ? dangerForeground : accentForeground;
-  const springs = !HAS_LIQUID_GLASS && !reduceMotion;
-  const layout = reduceMotion ? undefined : LinearTransition.springify().damping(18).stiffness(180);
+  const layout = reduceMotion ? undefined : PANEL_MOTION;
 
   function toggle() {
     if (!canExpand) return;
     void Haptics.selectionAsync();
-    setExpanded((value) => !value);
+    onExpandedChange(!open);
   }
 
   return (
     <View pointerEvents="box-none" className="gap-2.5 px-3">
-      <Animated.View layout={layout} style={pressStyle}>
+      <Animated.View layout={layout}>
         <Glass radius={28} tint={wrong ? danger : accent} interactive>
           <Pressable
             accessibilityRole="button"
@@ -162,14 +166,9 @@ export function NavigationBanner({
                   : `In ${formatDistance(toStep)}, ${stepText(step, destinationName)}`
             }
             accessibilityHint={canExpand ? (open ? 'Hides the turns ahead' : 'Shows every turn still ahead') : undefined}
-            onPressIn={() => {
-              if (springs && canExpand) scale.set(withSpring(PRESSED_SCALE, BOUNCE));
-            }}
-            onPressOut={() => {
-              if (springs) scale.set(withSpring(1, BOUNCE));
-            }}
+            {...nativePress}
             onPress={toggle}
-            className="p-4">
+            className={cn('p-4', PRESS_DIM)}>
             {hasArrived ? (
               <View className="flex-row items-center gap-3.5">
                 <Icon name="flag.checkered" size={30} weight="semibold" tintColor={ink} />
@@ -280,46 +279,152 @@ type BottomProps = {
   hasArrived: boolean;
   voiceOn: boolean;
   manualStep: number | null;
+  /** The panel of trip settings is open. Only one of this and the turn list is open at a time. */
+  expanded: boolean;
+  onExpandedChange: (expanded: boolean) => void;
+  avoidStairs: boolean;
+  /** Stairs only matter on foot. */
+  canAvoidStairs: boolean;
+  facingUp: boolean;
   onToggleVoice: () => void;
+  onAvoidStairs: (avoid: boolean) => void;
+  onFacingUp: (facingUp: boolean) => void;
   onStep: (index: number) => void;
   onEnd: () => void;
 };
 
-/** Time and distance left, the voice switch, and End. */
-export function NavigationFooter({ route, progress, hasArrived, voiceOn, manualStep, onToggleVoice, onStep, onEnd }: BottomProps) {
-  const foreground = useThemeColor('foreground');
+/** A setting in the trip panel, with the platform's own switch. */
+function Setting({
+  symbol,
+  title,
+  value,
+  onChange,
+}: {
+  symbol: SFSymbol;
+  title: string;
+  value: boolean;
+  onChange: (next: boolean) => void;
+}) {
+  const [foreground, accent, border] = useThemeColor(['foreground', 'accent', 'border']);
+  return (
+    <View className="flex-row items-center gap-3 py-2">
+      <View className="size-9 items-center justify-center rounded-full bg-default">
+        <Icon name={symbol} size={16} tintColor={foreground} />
+      </View>
+      <Text className="min-w-0 flex-1 text-base text-foreground">{title}</Text>
+      <Switch
+        accessibilityLabel={title}
+        value={value}
+        onValueChange={(next) => {
+          void Haptics.selectionAsync();
+          onChange(next);
+        }}
+        trackColor={{ true: accent, false: border }}
+        ios_backgroundColor={border}
+      />
+    </View>
+  );
+}
+
+/**
+ * Time and distance left, the voice switch, and End. Tapping the time opens the trip panel, where stairs, voice,
+ * and how the map turns can change at any point of the walk.
+ */
+export function NavigationFooter({
+  route,
+  progress,
+  hasArrived,
+  voiceOn,
+  manualStep,
+  expanded,
+  onExpandedChange,
+  avoidStairs,
+  canAvoidStairs,
+  facingUp,
+  onToggleVoice,
+  onAvoidStairs,
+  onFacingUp,
+  onStep,
+  onEnd,
+}: BottomProps) {
+  const [foreground, muted] = useThemeColor(['foreground', 'muted']);
   const now = useNow();
+  const reduceMotion = useReducedMotion();
   const remaining = progress?.remaining ?? route.distance;
   const seconds = route.duration !== undefined && route.distance > 0 ? route.duration * (remaining / route.distance) : remaining / 1.3;
   const arrive = new Date(now + seconds * 1000).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  const open = expanded && !hasArrived;
+  const layout = reduceMotion ? undefined : PANEL_MOTION;
+  const stepNumber = Math.min((progress?.stepIndex ?? 0) + 1, route.steps.length);
 
   return (
-    <Glass className="mx-3 overflow-hidden rounded-[28px]">
-      <View className="gap-3 p-4">
-        {manualStep !== null && !hasArrived ? (
-          <View className="flex-row gap-2">
-            <MapButton style={{ flex: 1 }} variant="secondary" label="Back" isDisabled={manualStep === 0} onPress={() => onStep(manualStep - 1)} />
-            <MapButton style={{ flex: 1 }} label="Next step" onPress={() => onStep(manualStep + 1)} />
+    <Animated.View layout={layout} style={{ marginHorizontal: 12 }}>
+      <Glass radius={28} interactive>
+        <View className="gap-3 p-4">
+          {manualStep !== null && !hasArrived ? (
+            <View className="flex-row gap-2">
+              <MapButton
+                style={{ flex: 1 }}
+                variant="secondary"
+                label="Back"
+                isDisabled={manualStep === 0}
+                onPress={() => onStep(manualStep - 1)}
+              />
+              <MapButton style={{ flex: 1 }} label="Next step" onPress={() => onStep(manualStep + 1)} />
+            </View>
+          ) : null}
+          <View className="flex-row items-center gap-3">
+            <Pressable
+              accessibilityRole="button"
+              accessibilityState={{ expanded: open, disabled: hasArrived }}
+              accessibilityHint={hasArrived ? undefined : open ? 'Hides trip settings' : 'Shows trip settings'}
+              disabled={hasArrived}
+            {...nativePress}
+              onPress={() => {
+                void Haptics.selectionAsync();
+                onExpandedChange(!open);
+              }}
+              className={cn('min-w-0 flex-1 flex-row items-center gap-2', PRESS_DIM)}>
+              <View className="min-w-0 flex-1">
+                <Text className="text-2xl font-bold text-foreground">
+                  {hasArrived ? 'Arrived' : formatRouteTime(route, remaining)}
+                </Text>
+                <Text className="text-sm text-muted">
+                  {hasArrived ? "You're here" : `${formatDistance(remaining)} · ${arrive}`}
+                </Text>
+              </View>
+              {hasArrived ? null : (
+                <Icon name={open ? 'chevron.down' : 'chevron.up'} size={14} weight="semibold" tintColor={muted} />
+              )}
+            </Pressable>
+            <Pressable
+              accessibilityRole="switch"
+              accessibilityLabel="Spoken directions"
+              accessibilityState={{ checked: voiceOn }}
+              onPress={onToggleVoice}
+              className="size-12 items-center justify-center rounded-full bg-default active:opacity-70">
+              <Icon name={voiceOn ? 'speaker.wave.2.fill' : 'speaker.slash.fill'} size={18} tintColor={foreground} />
+            </Pressable>
+            <MapButton variant="danger" symbol="xmark" label={hasArrived ? 'Done' : 'End'} onPress={onEnd} />
           </View>
-        ) : null}
-        <View className="flex-row items-center gap-3">
-          <View className="min-w-0 flex-1">
-            <Text className="text-2xl font-bold text-foreground">{hasArrived ? 'Arrived' : formatRouteTime(route, remaining)}</Text>
-            <Text className="text-sm text-muted">
-              {hasArrived ? "You're here" : `${formatDistance(remaining)} · ${arrive}`}
-            </Text>
-          </View>
-          <Pressable
-            accessibilityRole="switch"
-            accessibilityLabel="Spoken directions"
-            accessibilityState={{ checked: voiceOn }}
-            onPress={onToggleVoice}
-            className="size-12 items-center justify-center rounded-full bg-default active:opacity-70">
-            <Icon name={voiceOn ? 'speaker.wave.2.fill' : 'speaker.slash.fill'} size={18} tintColor={foreground} />
-          </Pressable>
-          <MapButton variant="danger" symbol="xmark" label={hasArrived ? 'Done' : 'End'} onPress={onEnd} />
+
+          {open ? (
+            <Animated.View
+              entering={reduceMotion ? undefined : FadeIn.duration(220).delay(60)}
+              exiting={reduceMotion ? undefined : FadeOut.duration(120)}
+              className="border-t border-border pt-1">
+              <Text className="pb-1 pt-2 text-xs font-semibold uppercase tracking-wide text-muted">
+                Arrive {arrive} · Step {stepNumber} of {route.steps.length}
+              </Text>
+              {canAvoidStairs ? (
+                <Setting symbol="figure.stairs" title="Avoid stairs" value={avoidStairs} onChange={onAvoidStairs} />
+              ) : null}
+              <Setting symbol="speaker.wave.2.fill" title="Spoken directions" value={voiceOn} onChange={() => onToggleVoice()} />
+              <Setting symbol="location.north.line.fill" title="Turn the map with me" value={facingUp} onChange={onFacingUp} />
+            </Animated.View>
+          ) : null}
         </View>
-      </View>
-    </Glass>
+      </Glass>
+    </Animated.View>
   );
 }

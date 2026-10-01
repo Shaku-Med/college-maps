@@ -48,7 +48,7 @@ import { markReady } from '@/lib/splash';
 import { showMeetupOnMap, useShownMeetup } from '@/lib/meetup-focus';
 import { remainingPath } from '@/lib/routing';
 import { useSocial } from '@/lib/social';
-import { MY_LOCATION, closeTrip, planTrip, startNavigating, useTrip } from '@/lib/trip';
+import { MY_LOCATION, closeTrip, planTrip, setAvoidStairs, startNavigating, useTrip } from '@/lib/trip';
 
 const { center, zoom, bounds, styles } = CAMPUS.map;
 const CAMPUS_CENTER: [number, number] = [center.longitude, center.latitude];
@@ -107,6 +107,8 @@ export default function MapScreen() {
   const shownMeetupId = useShownMeetup();
   const [filter, setFilter] = useState<MapFilter>('all');
   const [facingUp, setFacingUp] = useState(true);
+  // The turn list at the top and the trip panel at the bottom: one open at a time, so the map stays in view.
+  const [hudPanel, setHudPanel] = useState<'steps' | 'trip' | null>(null);
   const [isRotated, setIsRotated] = useState(false);
   const [activePerson, setActivePerson] = useState<string | null>(null);
   const [permission, requestPermission] = Location.useForegroundPermissions();
@@ -401,8 +403,18 @@ export default function MapScreen() {
     }
   }
 
+  // Changing stairs mid walk finds the way again from here; if there is no step free way, the walk stays as is.
+  function changeAvoidStairs(avoid: boolean) {
+    if (!navigation.changeAvoidStairs(avoid)) {
+      toast.show({ variant: 'warning', label: 'No step-free way from here', description: 'Your route stays the same for now.' });
+      return;
+    }
+    setAvoidStairs(avoid);
+  }
+
   function end() {
     const destination = trip.destination;
+    setHudPanel(null);
     setFacingUp(true);
     setIsRotated(false);
     smoothHeading.stop();
@@ -768,6 +780,8 @@ export default function MapScreen() {
             notice={navigation.notice}
             hasAlternate={navigation.previousPath !== null}
             weakSignal={(location.fix?.accuracy ?? 0) > 60}
+            expanded={hudPanel === 'steps'}
+            onExpandedChange={(open) => setHudPanel(open ? 'steps' : null)}
             onUseAlternate={() => {
               if (!navigation.switchToPrevious()) toast.show({ variant: 'danger', label: 'Could not find a way to that route' });
             }}
@@ -858,6 +872,15 @@ export default function MapScreen() {
             hasArrived={navigation.hasArrived}
             voiceOn={voice.enabled}
             manualStep={navigation.manualStep}
+            expanded={hudPanel === 'trip'}
+            onExpandedChange={(open) => setHudPanel(open ? 'trip' : null)}
+            avoidStairs={trip.avoidStairs}
+            canAvoidStairs={!navigation.route.travel || navigation.route.travel === 'walk'}
+            facingUp={facingUp}
+            onAvoidStairs={changeAvoidStairs}
+            onFacingUp={(next) => {
+              if (next !== facingUp) toggleFacing();
+            }}
             onToggleVoice={voice.toggle}
             onStep={step}
             onEnd={end}

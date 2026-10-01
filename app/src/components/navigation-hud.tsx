@@ -1,10 +1,12 @@
 "use client";
 
-import { Button, Surface } from "@heroui/react";
+import { Button, Surface, Switch } from "@heroui/react";
 import {
   Bus,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
+  ChevronUp,
   Compass,
   Flag,
   LocateFixed,
@@ -15,6 +17,8 @@ import {
   VolumeX,
   Zap,
 } from "lucide-react";
+
+import { useState } from "react";
 
 import { StepIcon } from "@/components/step-icon";
 import type { Place } from "@/data/campus";
@@ -49,8 +53,26 @@ type NavigationHudProps = {
   manualStep: number | null;
   onStepBack: () => void;
   onStepNext: () => void;
+  avoidStairs: boolean;
+  /** Stairs only matter on foot. */
+  canAvoidStairs: boolean;
+  onAvoidStairsChange: (avoid: boolean) => void;
   onEnd: () => void;
 };
+
+/** One of the trip settings, with the same switch the directions panel uses. */
+function TripSetting({ label, isSelected, onChange }: { label: string; isSelected: boolean; onChange: (next: boolean) => void }) {
+  return (
+    <Switch isSelected={isSelected} onChange={onChange} className="w-full">
+      <Switch.Content className="w-full justify-between py-1.5">
+        <span className="text-sm">{label}</span>
+        <Switch.Control>
+          <Switch.Thumb />
+        </Switch.Control>
+      </Switch.Content>
+    </Switch>
+  );
+}
 
 export function NavigationHud({
   destination,
@@ -73,8 +95,13 @@ export function NavigationHud({
   manualStep,
   onStepBack,
   onStepNext,
+  avoidStairs,
+  canAvoidStairs,
+  onAvoidStairsChange,
   onEnd,
 }: NavigationHudProps) {
+  // The turns ahead at the top and the trip settings at the bottom: one open at a time, so the map stays in view.
+  const [panel, setPanel] = useState<"steps" | "trip" | null>(null);
   const current = progress?.stepIndex ?? 0;
   const next = route.steps[Math.min(current + 1, route.steps.length - 1)];
   const toNext = Math.max(0, next.startDistance - (progress?.distanceAlong ?? 0));
@@ -83,18 +110,36 @@ export function NavigationHud({
   const stepping = manualStep !== null;
   const shownStep = stepping ? route.steps[manualStep] : next;
   const shownDistance = stepping ? shownStep.length : toNext;
+  const shownIndex = stepping ? manualStep : Math.min(current + 1, route.steps.length - 1);
+  const ahead = route.steps.slice(shownIndex + 1);
+  const canOpenSteps = !hasArrived && !isWrongWay && ahead.length > 0;
+  const stepsOpen = panel === "steps" && canOpenSteps;
+  const tripOpen = panel === "trip" && !hasArrived;
+  const along = progress?.distanceAlong ?? 0;
 
   return (
     <>
       <div className="pointer-events-none absolute inset-x-0 top-0 z-30 pl-[var(--map-safe-left)] pr-[var(--map-safe-right)] pt-[var(--map-safe-top)] md:left-4 md:right-auto md:w-[420px] md:px-0 md:pt-4">
         <div
-          role="status"
-          aria-live="polite"
           className={
             isWrongWay && !hasArrived
-              ? "animate-sheet-in pointer-events-auto flex items-center gap-4 rounded-3xl bg-danger px-5 py-4 text-danger-foreground shadow-xl transition-colors duration-300"
-              : "animate-sheet-in pointer-events-auto flex items-center gap-4 rounded-3xl bg-accent px-5 py-4 text-accent-foreground shadow-xl transition-colors duration-300"
+              ? "animate-sheet-in pointer-events-auto overflow-hidden rounded-3xl bg-danger/90 text-danger-foreground shadow-xl backdrop-blur-xl transition-colors duration-300"
+              : "animate-sheet-in pointer-events-auto overflow-hidden rounded-3xl bg-accent/90 text-accent-foreground shadow-xl backdrop-blur-xl transition-colors duration-300"
           }>
+        <p role="status" aria-live="polite" className="sr-only">
+          {hasArrived
+            ? `You have arrived at ${destination.name}`
+            : isWrongWay
+              ? "Wrong way"
+              : `${formatDistance(shownDistance)}, ${stepText(shownStep, destination.name)}`}
+        </p>
+        <button
+          type="button"
+          aria-expanded={canOpenSteps ? stepsOpen : undefined}
+          aria-label={canOpenSteps ? (stepsOpen ? "Hide the turns ahead" : "Show every turn ahead") : undefined}
+          disabled={!canOpenSteps}
+          onClick={() => setPanel(stepsOpen ? null : "steps")}
+          className="flex w-full items-center gap-4 px-5 py-4 text-left transition-transform duration-150 enabled:cursor-pointer enabled:active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-[-4px] focus-visible:outline-current">
           {hasArrived ? (
             <>
               <Flag className="size-8 shrink-0" aria-hidden />
@@ -114,12 +159,40 @@ export function NavigationHud({
           ) : (
             <>
               <StepIcon step={shownStep} className="size-9 shrink-0" strokeWidth={2.25} />
-              <div className="min-w-0">
+              <div className="min-w-0 flex-1">
                 <p className="text-2xl font-semibold leading-tight tracking-tight">{formatDistance(shownDistance)}</p>
                 <p className="truncate text-base opacity-90">{stepText(shownStep, destination.name)}</p>
               </div>
+              {canOpenSteps ? (
+                stepsOpen ? (
+                  <ChevronUp className="size-5 shrink-0 opacity-80" aria-hidden />
+                ) : (
+                  <ChevronDown className="size-5 shrink-0 opacity-80" aria-hidden />
+                )
+              ) : null}
             </>
           )}
+        </button>
+        {stepsOpen ? (
+          <div className="animate-fade-in border-t border-current/20 px-5 pb-3">
+            <ol aria-label="Turns ahead" className="max-h-[45dvh] overflow-y-auto overscroll-contain">
+              {ahead.map((step, offset) => (
+                <li key={shownIndex + 1 + offset} className="flex items-center gap-3 py-2.5">
+                  <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-current/15">
+                    <StepIcon step={step} className="size-4" />
+                  </span>
+                  <span className="min-w-0 flex-1 text-sm leading-snug">{stepText(step, destination.name)}</span>
+                  <span className="text-xs font-medium opacity-75">
+                    {formatDistance(Math.max(0, step.startDistance - along))}
+                  </span>
+                </li>
+              ))}
+            </ol>
+            <p className="pt-2 text-center text-xs opacity-80">
+              {ahead.length} more {ahead.length === 1 ? "turn" : "turns"} · {formatDistance(remaining)} to go
+            </p>
+          </div>
+        ) : null}
         </div>
         {isRiding && !hasArrived ? (
           <p
@@ -188,7 +261,27 @@ export function NavigationHud({
             ) : null}
           </div>
         ) : null}
-        <Surface className="flex items-center gap-3 rounded-t-[28px] px-5 pb-[max(1rem,var(--map-safe-bottom))] pt-4 shadow-2xl md:rounded-3xl md:pb-4">
+        <Surface className="rounded-t-[28px] px-5 pb-[max(1rem,var(--map-safe-bottom))] pt-4 shadow-2xl md:rounded-3xl md:pb-4">
+          {tripOpen ? (
+            <div className="animate-fade-in mb-3 border-b border-separator pb-2">
+              <p className="pb-1 text-xs font-semibold uppercase tracking-wide text-muted">
+                Step {shownIndex + 1} of {route.steps.length}
+              </p>
+              {canAvoidStairs ? (
+                <TripSetting label="Avoid stairs" isSelected={avoidStairs} onChange={onAvoidStairsChange} />
+              ) : null}
+              <TripSetting label="Spoken directions" isSelected={voiceOn} onChange={() => onToggleVoice()} />
+              <TripSetting label="Turn the map with me" isSelected={facingUp} onChange={() => onToggleFacing()} />
+            </div>
+          ) : null}
+          <div className="flex items-center gap-3">
+          <button
+            type="button"
+            aria-expanded={hasArrived ? undefined : tripOpen}
+            aria-label={hasArrived ? undefined : tripOpen ? "Hide trip settings" : "Show trip settings"}
+            disabled={hasArrived}
+            onClick={() => setPanel(tripOpen ? null : "trip")}
+            className="flex min-w-0 flex-1 items-center gap-2 rounded-2xl text-left transition-transform duration-150 enabled:cursor-pointer enabled:active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-focus">
           <div className="min-w-0 flex-1">
             {hasArrived ? (
               <p className="text-base font-semibold">Enjoy your class</p>
@@ -208,6 +301,12 @@ export function NavigationHud({
               </>
             )}
           </div>
+          {hasArrived ? null : tripOpen ? (
+            <ChevronDown className="size-5 shrink-0 text-muted" aria-hidden />
+          ) : (
+            <ChevronUp className="size-5 shrink-0 text-muted" aria-hidden />
+          )}
+          </button>
           {stepping && !hasArrived ? (
             <>
               <Button
@@ -237,6 +336,7 @@ export function NavigationHud({
           <Button variant={hasArrived ? "primary" : "danger-soft"} size="lg" onPress={onEnd}>
             {hasArrived ? "Done" : "End"}
           </Button>
+          </div>
         </Surface>
       </div>
     </>

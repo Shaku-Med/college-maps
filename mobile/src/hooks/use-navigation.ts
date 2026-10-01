@@ -119,6 +119,8 @@ export function useNavigation({ destination, avoidStairs, follow, facingUp }: Op
   const arrivalCount = useRef(0);
   const onCampusCount = useRef(0);
   const lastGood = useRef<{ position: Coordinate; at: number } | null>(null);
+  // Where guidance last placed the traveller: their fix, or the step they are on when following by hand.
+  const lastPoint = useRef<Coordinate | null>(null);
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const followTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
@@ -182,11 +184,12 @@ export function useNavigation({ destination, avoidStairs, follow, facingUp }: Op
 
   // Street routes are rerouted by asking the server again, which answers later, so this runs on its own.
   const rerouteStreet = useCallback(
-    (position: Coordinate) => {
+    (position: Coordinate, asked = false) => {
       const { route: leaving, destination: target, avoidStairs: stairs } = nav.current;
       const travel = leaving?.travel;
       const state = streetReroute.current;
-      if (!leaving || !travel || !target || state.inflight || Date.now() - state.at < STREET_REROUTE_GAP_MS) return;
+      // Someone changing a setting gets an answer now; only automatic reroutes wait between tries.
+      if (!leaving || !travel || !target || state.inflight || (!asked && Date.now() - state.at < STREET_REROUTE_GAP_MS)) return;
       state.inflight = true;
       state.at = Date.now();
       const heading = travelHeading();
@@ -234,6 +237,7 @@ export function useNavigation({ destination, avoidStairs, follow, facingUp }: Op
         }
       }
       latestFix.current = fix;
+      lastPoint.current = position;
 
       const current = nav.current;
       if (!current.active || !current.route || !current.destination || current.arrived) return;
@@ -409,6 +413,7 @@ export function useNavigation({ destination, avoidStairs, follow, facingUp }: Op
     arrivalCount.current = 0;
     onCampusCount.current = 0;
     lastGood.current = null;
+    lastPoint.current = null;
     setShownAt(null);
     setIsRiding(false);
     setPreviousPath(null);
@@ -421,6 +426,7 @@ export function useNavigation({ destination, avoidStairs, follow, facingUp }: Op
   const start = useCallback(
     (chosen: Route, from: Coordinate | null) => {
       reset();
+      lastPoint.current = from ?? chosen.path[0];
       nav.current = { ...nav.current, active: true, route: chosen, previous: null, arrived: false, following: !!from };
       setRoute(chosen);
       if (!from) {
@@ -490,6 +496,31 @@ export function useNavigation({ destination, avoidStairs, follow, facingUp }: Op
     return true;
   }, [commit]);
 
+  /**
+   * Avoid stairs switched on or off mid route: the way is found again from where the traveller is now. Returns
+   * false when no step free way exists from here, and the current route stays.
+   */
+  const changeAvoidStairs = useCallback(
+    (avoid: boolean) => {
+      const current = nav.current;
+      const at = lastPoint.current;
+      if (!current.active || !current.route || !current.destination || current.arrived || !at) return true;
+      if (current.route.travel) {
+        nav.current = { ...current, avoidStairs: avoid };
+        rerouteStreet(at, true);
+        return true;
+      }
+      const chosen = findRoute(walkGraph(), at, current.destination.coordinate, { avoidStairs: avoid, heading: facing() });
+      if (!chosen) return false;
+      nav.current = { ...nav.current, avoidStairs: avoid };
+      commit(chosen, current.route, at, 'rerouted');
+      // Following by hand starts the new route from its first step.
+      setManualStep((step) => (step === null ? null : 0));
+      return true;
+    },
+    [commit, facing, rerouteStreet],
+  );
+
   /** Without a live location, the traveller moves through the steps themselves. */
   const showStep = useCallback(
     (index: number) => {
@@ -497,6 +528,7 @@ export function useNavigation({ destination, avoidStairs, follow, facingUp }: Op
       if (!current) return null;
       const clamped = Math.max(0, Math.min(current.steps.length - 1, index));
       const at = progressAtDistance(current, current.steps[clamped].startDistance);
+      lastPoint.current = at.point;
       setManualStep(clamped);
       setProgress(at);
       const arrived = clamped === current.steps.length - 1;
@@ -528,5 +560,6 @@ export function useNavigation({ destination, avoidStairs, follow, facingUp }: Op
     recenter,
     switchToPrevious,
     showStep,
+    changeAvoidStairs,
   };
 }

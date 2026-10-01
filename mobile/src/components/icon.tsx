@@ -3,6 +3,7 @@ import { SymbolView, type AndroidSymbol, type SFSymbol, type SymbolViewProps } f
 // Android has no SF Symbols, so every symbol the app uses has its Material Symbol here. Anything missing from
 // the list still shows a neutral dot instead of nothing.
 const MATERIAL: Partial<Record<SFSymbol, AndroidSymbol>> = {
+
   'app.badge': 'app_badging',
   'arrow.triangle.2.circlepath': 'sync',
   'arrow.triangle.branch': 'call_split',
@@ -24,8 +25,10 @@ const MATERIAL: Partial<Record<SFSymbol, AndroidSymbol>> = {
   calendar: 'calendar_month',
   'car.fill': 'directions_car',
   checkmark: 'check',
+  'chevron.down': 'keyboard_arrow_down',
   'chevron.left': 'chevron_left',
   'chevron.right': 'chevron_right',
+  'chevron.up': 'keyboard_arrow_up',
   'chevron.up.chevron.down': 'unfold_more',
   'clock.fill': 'schedule',
   'cross.case': 'medical_services',
@@ -35,8 +38,6 @@ const MATERIAL: Partial<Record<SFSymbol, AndroidSymbol>> = {
   'doc.plaintext': 'article',
   'doc.richtext': 'description',
   'door.left.hand.open': 'door_open',
-  'play.fill': 'play_arrow',
-
   ellipsis: 'more_horiz',
   'ellipsis.circle': 'more_horiz',
   envelope: 'mail',
@@ -70,6 +71,7 @@ const MATERIAL: Partial<Record<SFSymbol, AndroidSymbol>> = {
   'person.badge.plus': 'person_add',
   'person.crop.circle': 'account_circle',
   'person.crop.circle.fill': 'account_circle',
+  'play.fill': 'play_arrow',
   plus: 'add',
   'point.3.connected.trianglepath.dotted': 'hub',
   'rectangle.portrait.and.arrow.right': 'logout',

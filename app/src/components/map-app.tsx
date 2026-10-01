@@ -339,12 +339,13 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
 
   // Street routes are rerouted by asking the server again, which answers later, so this runs on its own.
   const rerouteStreet = useCallback(
-    (position: Coordinate) => {
+    (position: Coordinate, asked = false) => {
       const nav = navRef.current;
       const leaving = nav.navRoute;
       const travel = leaving?.travel;
       const state = streetRerouteRef.current;
-      if (!leaving || !travel || !nav.destination || state.inflight || Date.now() - state.at < STREET_REROUTE_GAP_MS) {
+      // Someone changing a setting gets an answer now; only automatic reroutes wait between tries.
+      if (!leaving || !travel || !nav.destination || state.inflight || (!asked && Date.now() - state.at < STREET_REROUTE_GAP_MS)) {
         return;
       }
       state.inflight = true;
@@ -962,6 +963,36 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
     commitRoute(chosen, nav.navRoute, geo.position, "switched");
   }
 
+  // Turning Avoid stairs on or off mid walk finds the way again from where the walker is now. With no step free
+  // way from here, the walk stays as it is.
+  function changeAvoidStairs(avoid: boolean) {
+    const nav = navRef.current;
+    const route = nav.navRoute;
+    const from =
+      geo.position ??
+      (route && manualStep !== null ? progressAtDistance(route, route.steps[manualStep].startDistance).point : undefined);
+    if (nav.mode !== "navigate" || !route || !nav.destination || !from || nav.hasArrived) {
+      setAvoidStairs(avoid);
+      return;
+    }
+    if (route.travel) {
+      navRef.current = { ...nav, avoidStairs: avoid };
+      setAvoidStairs(avoid);
+      rerouteStreet(from, true);
+      return;
+    }
+    if (!nav.graph) return;
+    const chosen = findRoute(nav.graph, from, nav.destination.coordinate, { avoidStairs: avoid, heading: facing() });
+    if (!chosen) {
+      toast.info("No step-free way from here", { description: "Your route stays the same for now." });
+      return;
+    }
+    navRef.current = { ...navRef.current, avoidStairs: avoid };
+    setAvoidStairs(avoid);
+    commitRoute(chosen, route, from, "rerouted");
+    if (manualStep !== null) setManualStep(0);
+  }
+
   // Without a live location the walker moves through the steps themselves, and the map shows each one.
   function showStep(index: number) {
     const route = navRoute;
@@ -1424,6 +1455,9 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
           manualStep={manualStep}
           onStepBack={() => showStep((manualStep ?? 0) - 1)}
           onStepNext={() => showStep((manualStep ?? 0) + 1)}
+          avoidStairs={avoidStairs}
+          canAvoidStairs={!navRoute.travel || navRoute.travel === "walk"}
+          onAvoidStairsChange={changeAvoidStairs}
           onEnd={endNavigation}
         />
       ) : null}
