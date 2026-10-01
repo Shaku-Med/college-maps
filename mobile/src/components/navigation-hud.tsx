@@ -1,9 +1,9 @@
 import type { SFSymbol } from 'expo-symbols';
 import * as Haptics from 'expo-haptics';
-import { cn, useThemeColor } from 'heroui-native';
+import { useThemeColor } from 'heroui-native';
 import { useEffect, useState } from 'react';
 import { Platform, ScrollView, StyleSheet, Switch, Text, useWindowDimensions, View } from 'react-native';
-import { Pressable } from 'react-native-gesture-handler';
+import { Pressable, type PressableProps } from 'react-native-gesture-handler';
 import Animated, {
   Easing,
   FadeIn,
@@ -13,6 +13,7 @@ import Animated, {
   LinearTransition,
   useReducedMotion,
 } from 'react-native-reanimated';
+import { useResolveClassNames } from 'uniwind';
 
 import { Icon } from '@/components/icon';
 import { Glass, HAS_LIQUID_GLASS } from '@/components/glass';
@@ -90,12 +91,24 @@ function usePanelMotion(open: boolean, reduceMotion: boolean) {
   return moving && !reduceMotion ? PANEL_MOTION : undefined;
 }
 
+const DIMS_ON_PRESS = Platform.OS === 'ios' && !HAS_LIQUID_GLASS;
+
 /**
- * The touch feel each platform expects: iOS 26 glass reacts by itself, Android gets the system ripple, and older
- * iPhones dim the way a native control does.
+ * Gesture handler's Pressable, which Uniwind does not style, so its classes are resolved here; left alone they
+ * were dropped, padding and all. By default the touch feels native: iOS 26 glass reacts by itself, Android gets
+ * the system ripple, and older iPhones dim. `dim` dims on every platform instead.
  */
-const nativePress = { android_ripple: Platform.OS === 'android' ? { foreground: true } : undefined };
-const PRESS_DIM = Platform.OS === 'ios' && !HAS_LIQUID_GLASS ? 'active:opacity-60' : '';
+function Press({ className = '', dim, ...props }: Omit<PressableProps, 'style'> & { className?: string; dim?: number }) {
+  const base = useResolveClassNames(className);
+  const pressedOpacity = dim ?? (DIMS_ON_PRESS ? 0.6 : undefined);
+  return (
+    <Pressable
+      android_ripple={dim === undefined && Platform.OS === 'android' ? { foreground: true } : undefined}
+      {...props}
+      style={({ pressed }) => [base, pressed && pressedOpacity !== undefined ? { opacity: pressedOpacity } : null]}
+    />
+  );
+}
 
 /** A soft line in the banner's own text color, so it reads on any tint. */
 function Rule({ color }: { color: string }) {
@@ -180,7 +193,7 @@ export function NavigationBanner({
     <View pointerEvents="box-none" className="gap-2.5 px-3">
       <Animated.View layout={layout}>
         <Glass radius={28} tint={wrong ? danger : accent} interactive>
-          <Pressable
+          <Press
             accessibilityRole="button"
             accessibilityState={{ expanded: open, disabled: !canExpand }}
             accessibilityLabel={
@@ -191,9 +204,8 @@ export function NavigationBanner({
                   : `In ${formatDistance(toStep)}, ${stepText(step, destinationName)}`
             }
             accessibilityHint={canExpand ? (open ? 'Hides the turns ahead' : 'Shows every turn still ahead') : undefined}
-            {...nativePress}
             onPress={toggle}
-            className={cn('p-4', PRESS_DIM)}>
+            className="p-4">
             {hasArrived ? (
               <View className="flex-row items-center gap-3.5">
                 <Icon name="flag.checkered" size={30} weight="semibold" tintColor={ink} />
@@ -251,7 +263,7 @@ export function NavigationBanner({
                 ) : null}
               </>
             )}
-          </Pressable>
+          </Press>
 
           {/* Outside the pressable, so dragging the list scrolls it instead of counting as a tap. */}
           {open ? (
@@ -288,9 +300,9 @@ export function NavigationBanner({
       ) : notice && !hasArrived ? (
         <Pill symbol={notice === 'faster' ? 'bolt.fill' : 'arrow.triangle.branch'} text={NOTICE_TEXT[notice]} />
       ) : hasAlternate && !hasArrived && !wrong ? (
-        <Pressable onPress={onUseAlternate} className="items-center active:opacity-70">
+        <Press onPress={onUseAlternate} dim={0.7} className="items-center">
           <Pill symbol="arrow.uturn.backward" text="Tap to take your earlier route" />
-        </Pressable>
+        </Press>
       ) : weakSignal && !hasArrived ? (
         <Pill symbol="location" text="Weak GPS signal, position may jump" />
       ) : null}
@@ -405,17 +417,16 @@ export function NavigationFooter({
           ) : null}
           <View className="flex-row items-center gap-3">
             <View className="min-w-0 flex-1">
-              <Pressable
+              <Press
                 accessibilityRole="button"
                 accessibilityState={{ expanded: open, disabled: hasArrived }}
                 accessibilityHint={hasArrived ? undefined : open ? 'Hides trip settings' : 'Shows trip settings'}
                 disabled={hasArrived}
-                {...nativePress}
                 onPress={() => {
                   void Haptics.selectionAsync();
                   onExpandedChange(!open);
                 }}
-                className={cn('flex-row items-center gap-2', PRESS_DIM)}>
+                className="flex-row items-center gap-2">
                 <View className="min-w-0 flex-1">
                   <Text className="text-2xl font-bold text-foreground">
                     {hasArrived ? 'Arrived' : formatRouteTime(route, remaining)}
@@ -427,16 +438,17 @@ export function NavigationFooter({
                 {hasArrived ? null : (
                   <Icon name={open ? 'chevron.down' : 'chevron.up'} size={14} weight="semibold" tintColor={muted} />
                 )}
-              </Pressable>
+              </Press>
             </View>
-            <Pressable
+            <Press
               accessibilityRole="switch"
               accessibilityLabel="Spoken directions"
               accessibilityState={{ checked: voiceOn }}
               onPress={onToggleVoice}
-              className="size-12 items-center justify-center rounded-full bg-default active:opacity-70">
+              dim={0.7}
+              className="size-12 items-center justify-center rounded-full bg-default">
               <Icon name={voiceOn ? 'speaker.wave.2.fill' : 'speaker.slash.fill'} size={18} tintColor={foreground} />
-            </Pressable>
+            </Press>
             {hasArrived && nextStopName && onContinue ? (
               <MapButton symbol="arrow.right" label="Continue" onPress={onContinue} />
             ) : null}
