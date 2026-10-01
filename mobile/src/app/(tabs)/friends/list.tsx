@@ -60,7 +60,11 @@ export default function FriendsListScreen() {
 
   return (
     <>
+      {/* Stacked under the title: on iOS 26 an automatic bar can sink into the bottom toolbar, behind the
+          tab bar's own search, where it cannot be reached. */}
       <Stack.SearchBar
+        placement="stacked"
+        hideWhenScrolling={false}
         placeholder="Search friends"
         autoCapitalize="none"
         onChangeText={(event) => setQuery(event.nativeEvent.text.slice(0, MAX_QUERY_LENGTH))}

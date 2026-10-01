@@ -36,7 +36,9 @@ export function PlacePicker({ onPick, selectedId, buildingsOnly = false, header 
 
   return (
     <>
+      {/* Stacked under the title so it is always in reach; on iOS 26 an automatic bar can move to the bottom. */}
       <Stack.SearchBar
+        placement="stacked"
         placeholder="Search places"
         autoCapitalize="none"
         hideWhenScrolling={false}
