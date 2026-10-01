@@ -5,6 +5,7 @@ import { useMemo, useState } from 'react';
 import { RefreshControl, ScrollView, Text, View } from 'react-native';
 
 import { Icon } from '@/components/icon';
+import { GlassSearchInput } from '@/components/glass-field';
 import { NativeMenu } from '@/components/native-menu';
 import { EmptyState } from '@/components/section';
 import { getPlace } from '@/data/campus';
@@ -85,7 +86,7 @@ export default function CampusEventsScreen() {
       <SearchField value={query} onChange={setQuery}>
         <SearchField.Group>
           <SearchField.SearchIcon />
-          <SearchField.Input
+          <GlassSearchInput
             placeholder="Search events, places, hosts"
             autoCapitalize="none"
             autoCorrect={false}

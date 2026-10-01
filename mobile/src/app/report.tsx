@@ -7,7 +7,6 @@ import {
   ListGroup,
   Separator,
   Switch,
-  TextArea,
   TextField,
   useToast,
 } from 'heroui-native';
@@ -15,6 +14,7 @@ import { useState } from 'react';
 import { ScrollView, Text, View } from 'react-native';
 
 import { useSheetInsets } from '@/hooks/use-sheet-insets';
+import { GlassTextArea } from '@/components/glass-field';
 import { useProfile } from '@/lib/account';
 import { reasonLabel, sendReport, type ReportReason } from '@/lib/moderation';
 import { refreshSocial } from '@/lib/social';
@@ -109,7 +109,7 @@ export default function ReportScreen() {
 
       <TextField>
         <Label>{needsDetails ? 'What happened?' : 'Anything else we should know? (optional)'}</Label>
-        <TextArea
+        <GlassTextArea
           value={details}
           onChangeText={setDetails}
           placeholder={

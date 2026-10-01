@@ -1,10 +1,11 @@
 import * as Haptics from 'expo-haptics';
 import { router, useLocalSearchParams } from 'expo-router';
-import { Button, CloseButton, Description, FieldError, Input, Label, TextField, cn, useToast } from 'heroui-native';
+import { Button, CloseButton, Description, FieldError, Label, TextField, cn, useToast } from 'heroui-native';
 import { useMemo, useState } from 'react';
 import { Alert, Pressable, ScrollView, Text, View } from 'react-native';
 
 import { useSheetInsets } from '@/hooks/use-sheet-insets';
+import { GlassInput } from '@/components/glass-field';
 import { TimeField } from '@/components/time-field';
 import { CAMPUS } from '@/data/campus';
 import { getClasses, setClasses } from '@/lib/classes';
@@ -83,13 +84,13 @@ export default function ClassSheet() {
 
       <TextField isRequired isInvalid={tried && !name.trim()}>
         <Label>Class</Label>
-        <Input value={name} onChangeText={(text) => setName(text.slice(0, MAX_CLASS_NAME))} placeholder="Like Biology 101" />
+        <GlassInput value={name} onChangeText={(text) => setName(text.slice(0, MAX_CLASS_NAME))} placeholder="Like Biology 101" />
         <FieldError>Give the class a name.</FieldError>
       </TextField>
 
       <TextField isRequired isInvalid={tried && roomProblem !== null}>
         <Label>Room</Label>
-        <Input
+        <GlassInput
           value={roomCode}
           onChangeText={(text) => setRoomCode(text.slice(0, 16))}
           placeholder={CAMPUS.rooms.example}

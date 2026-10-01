@@ -1,10 +1,11 @@
 import * as Haptics from 'expo-haptics';
 import { router, Stack } from 'expo-router';
-import { Button, Chip, FieldError, Input, ListGroup, Separator, TextField, useThemeColor, useToast } from 'heroui-native';
+import { Button, Chip, FieldError, ListGroup, Separator, TextField, useThemeColor, useToast } from 'heroui-native';
 import { Fragment, useState } from 'react';
 import { RefreshControl, ScrollView, Text, View } from 'react-native';
 
 import { Icon } from '@/components/icon';
+import { GlassInput } from '@/components/glass-field';
 import { EmptyState, SectionTitle } from '@/components/section';
 import { StackLinkedItem } from '@/components/stack-linked-item';
 import { getPlace } from '@/data/campus';
@@ -198,7 +199,7 @@ export default function FriendsScreen() {
           <SectionTitle>Add a friend</SectionTitle>
           <View className="flex-row items-start gap-2">
             <TextField className="flex-1" isInvalid={addError !== null}>
-              <Input
+              <GlassInput
                 value={username}
                 onChangeText={(text) => {
                   setUsername(normalizeUsername(text).slice(0, MAX_USERNAME_LENGTH));

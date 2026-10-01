@@ -1,8 +1,9 @@
-import { Button, Description, FieldError, Input, Label, TextField } from 'heroui-native';
+import { Button, Description, FieldError, Label, TextField } from 'heroui-native';
 import { useState } from 'react';
 import { View } from 'react-native';
 
 import { setAccountUser } from '@/lib/account';
+import { GlassInput } from '@/components/glass-field';
 import { MAX_NAME_LENGTH, MAX_USERNAME_LENGTH, accountApi, normalizeUsername, type AccountUser } from '@/lib/api';
 
 /** Display name and username: what friends see. The school email is never shown to anyone. */
@@ -34,7 +35,7 @@ export function ProfileForm({ user, submitLabel, onSaved }: { user: AccountUser;
     <View className="gap-4">
       <TextField isRequired isInvalid={error?.field === 'name'}>
         <Label>Name</Label>
-        <Input
+        <GlassInput
           value={displayName}
           onChangeText={(text) => setDisplayName(text.slice(0, MAX_NAME_LENGTH))}
           placeholder="What friends call you"
@@ -45,7 +46,7 @@ export function ProfileForm({ user, submitLabel, onSaved }: { user: AccountUser;
       </TextField>
       <TextField isRequired isInvalid={error?.field === 'username'}>
         <Label>Username</Label>
-        <Input
+        <GlassInput
           value={username}
           onChangeText={(text) => setUsername(normalizeUsername(text).slice(0, MAX_USERNAME_LENGTH))}
           placeholder="like jane_doe"

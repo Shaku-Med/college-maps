@@ -1,9 +1,10 @@
 import * as Haptics from 'expo-haptics';
-import { Button, Description, FieldError, Input, InputOTP, Label, REGEXP_ONLY_DIGITS, TextField } from 'heroui-native';
+import { Button, Description, FieldError, InputOTP, Label, REGEXP_ONLY_DIGITS, TextField } from 'heroui-native';
 import { useEffect, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 
 import { CAMPUS } from '@/data/campus';
+import { GlassInput } from '@/components/glass-field';
 import { completeSignIn } from '@/lib/account';
 import { CODE_LENGTH, MAX_EMAIL_LENGTH, accountApi, normalizeEmail, schoolEmailProblem } from '@/lib/api';
 import { openWeb } from '@/lib/links';
@@ -116,7 +117,7 @@ export function SignIn() {
       </View>
       <TextField isRequired isInvalid={error !== null}>
         <Label>School email</Label>
-        <Input
+        <GlassInput
           value={email}
           onChangeText={(text) => setEmail(text.slice(0, MAX_EMAIL_LENGTH))}
           placeholder={`you@${CAMPUS.college.emailDomains[0]}`}

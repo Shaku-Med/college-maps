@@ -1,10 +1,11 @@
 import * as Haptics from 'expo-haptics';
 import { router } from 'expo-router';
-import { Button, CloseButton, FieldError, Input, Label, TextField, useThemeColor, useToast } from 'heroui-native';
+import { Button, CloseButton, FieldError, Label, TextField, useThemeColor, useToast } from 'heroui-native';
 import { useState } from 'react';
 import { ScrollView, Text, View } from 'react-native';
 
 import { useSheetInsets } from '@/hooks/use-sheet-insets';
+import { GlassInput } from '@/components/glass-field';
 import { Icon } from '@/components/icon';
 import { deleteAccount, useAccount } from '@/lib/account';
 import { setClasses } from '@/lib/classes';
@@ -67,7 +68,7 @@ export default function DeleteAccountScreen() {
 
       <TextField isRequired isInvalid={error !== null}>
         <Label>{prompt}</Label>
-        <Input
+        <GlassInput
           value={confirm}
           onChangeText={(text) => {
             setConfirm(text.slice(0, 40));

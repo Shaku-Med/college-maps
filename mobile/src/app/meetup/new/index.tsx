@@ -5,7 +5,6 @@ import {
   Checkbox,
   CloseButton,
   FieldError,
-  Input,
   Label,
   ListGroup,
   Separator,
@@ -17,6 +16,7 @@ import { Fragment, useEffect, useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 
 import { useSheetInsets } from '@/hooks/use-sheet-insets';
+import { GlassInput } from '@/components/glass-field';
 import { Icon } from '@/components/icon';
 import { ChoiceChips } from '@/components/choice-chips';
 import { getPlace } from '@/data/campus';
@@ -122,7 +122,7 @@ export default function NewMeetupSheet() {
       {isPublic ? (
         <TextField isRequired>
           <Label>Name</Label>
-          <Input value={title} onChangeText={(text) => setTitle(text.slice(0, MAX_TITLE))} placeholder="Study group, pickup game..." />
+          <GlassInput value={title} onChangeText={(text) => setTitle(text.slice(0, MAX_TITLE))} placeholder="Study group, pickup game..." />
         </TextField>
       ) : (
         <View className="gap-2">
@@ -211,7 +211,7 @@ export default function NewMeetupSheet() {
 
       <TextField>
         <Label>Note</Label>
-        <Input value={note} onChangeText={(text) => setNote(text.slice(0, MAX_NOTE))} placeholder="Optional, like which entrance" />
+        <GlassInput value={note} onChangeText={(text) => setNote(text.slice(0, MAX_NOTE))} placeholder="Optional, like which entrance" />
       </TextField>
 
       {error ? <FieldError isInvalid>{error}</FieldError> : null}

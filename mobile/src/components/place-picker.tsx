@@ -4,6 +4,7 @@ import { Fragment, useMemo, useState, type ReactNode } from 'react';
 import { ScrollView, View } from 'react-native';
 
 import { Icon } from '@/components/icon';
+import { GlassSearchInput } from '@/components/glass-field';
 import { PLACES, type Place } from '@/data/campus';
 import { CATEGORY_SYMBOLS, categoryLabel } from '@/lib/categories';
 import { MAX_QUERY_LENGTH, searchPlaces } from '@/lib/search';
@@ -33,7 +34,7 @@ export function PlacePicker({ onPick, selectedId, buildingsOnly = false, header 
       <SearchField value={query} onChange={(value) => setQuery(value.slice(0, MAX_QUERY_LENGTH))}>
         <SearchField.Group>
           <SearchField.SearchIcon />
-          <SearchField.Input
+          <GlassSearchInput
             placeholder="Search places"
             autoCapitalize="none"
             autoCorrect={false}

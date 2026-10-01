@@ -3,6 +3,7 @@ import { Fragment, useMemo, useState } from 'react';
 import { RefreshControl, ScrollView, Text, View } from 'react-native';
 
 import { EmptyState } from '@/components/section';
+import { GlassSearchInput } from '@/components/glass-field';
 import { useProfile } from '@/lib/account';
 import { useReadableStyle } from '@/hooks/use-layout';
 import { matchesPerson } from '@/lib/person-search';
@@ -51,7 +52,7 @@ export default function SentScreen() {
       <SearchField value={query} onChange={setQuery}>
         <SearchField.Group>
           <SearchField.SearchIcon />
-          <SearchField.Input
+          <GlassSearchInput
             placeholder="Search sent requests"
             autoCapitalize="none"
             autoCorrect={false}

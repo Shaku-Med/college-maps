@@ -4,6 +4,7 @@ import { Fragment, useMemo, useState } from 'react';
 import { RefreshControl, ScrollView, Text, View } from 'react-native';
 
 import { Icon } from '@/components/icon';
+import { GlassSearchInput } from '@/components/glass-field';
 import { NativeMenu } from '@/components/native-menu';
 import { EmptyState } from '@/components/section';
 import { useProfile } from '@/lib/account';
@@ -68,7 +69,7 @@ export default function FriendsListScreen() {
       <SearchField value={query} onChange={setQuery}>
         <SearchField.Group>
           <SearchField.SearchIcon />
-          <SearchField.Input placeholder="Search friends" autoCapitalize="none" autoCorrect={false} autoComplete="off" />
+          <GlassSearchInput placeholder="Search friends" autoCapitalize="none" autoCorrect={false} autoComplete="off" />
           <SearchField.ClearButton />
         </SearchField.Group>
       </SearchField>

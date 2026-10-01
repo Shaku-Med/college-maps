@@ -1,11 +1,12 @@
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
 import { router } from 'expo-router';
-import { Button, CloseButton, ListGroup, Separator, TextArea, useToast } from 'heroui-native';
+import { Button, CloseButton, ListGroup, Separator, useToast } from 'heroui-native';
 import { Fragment, useMemo, useState } from 'react';
 import { ScrollView, Text, View } from 'react-native';
 
 import { useSheetInsets } from '@/hooks/use-sheet-insets';
+import { GlassTextArea } from '@/components/glass-field';
 import { CAMPUS, getPlace } from '@/data/campus';
 import { getClasses, setClasses } from '@/lib/classes';
 import { MAX_CLASSES, formatClock, formatDays, newClassId, parseScheduleText } from '@/lib/schedule';
@@ -56,7 +57,7 @@ export default function ImportSheet() {
       <Button variant="secondary" onPress={() => void paste()}>
         <Button.Label>Paste from clipboard</Button.Label>
       </Button>
-      <TextArea
+      <GlassTextArea
         value={text}
         onChangeText={(value) => setText(value.slice(0, MAX_PASTE))}
         placeholder="Or paste it here"
