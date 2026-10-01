@@ -1,15 +1,14 @@
 "use client";
 
-import { Button, Dropdown, Input, Label, ListBox, SearchField, TextField, ToggleButton, ToggleButtonGroup, toast } from "@heroui/react";
+import { Button, Dropdown, Input, Label, SearchField, TextField, ToggleButton, ToggleButtonGroup, toast } from "@heroui/react";
 import { Ban, CalendarPlus, Clock, Flag, MapPin, MoreHorizontal } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { useConfirmDialog } from "@/components/confirm-dialog";
-import { PlaceItem } from "@/components/place-row";
+import { PlaceSearchList } from "@/components/place-search-list";
 import { useReportFlow } from "@/components/report-flow";
 import { getPlace } from "@/data/campus";
 import { matchesCampusEvent } from "@/lib/campus-search";
-import { searchPlaces } from "@/lib/search";
 import { socialApi, type Meetup, type MeetupDestination } from "@/lib/social-api";
 
 const START_OPTIONS = [
@@ -246,7 +245,6 @@ function NewPublicMeetupForm({ onCancel, onCreated }: { onCancel: () => void; on
   const [minutes, setMinutes] = useState("120");
   const [isBusy, setIsBusy] = useState(false);
 
-  const places = useMemo(() => searchPlaces(placeQuery, 8), [placeQuery]);
   const place = getPlace(placeId);
 
   async function create() {
@@ -295,17 +293,15 @@ function NewPublicMeetupForm({ onCancel, onCreated }: { onCancel: () => void; on
             <SearchField value={placeQuery} onChange={setPlaceQuery} aria-label="Find a place">
               <Input variant="secondary" placeholder="Search buildings" />
             </SearchField>
-            <ListBox
-              aria-label="Places"
-              selectionMode="none"
-              onAction={(key) => {
-                setPlaceId(String(key));
+            <PlaceSearchList
+              query={placeQuery}
+              browse={false}
+              limit={8}
+              onSelect={(picked) => {
+                setPlaceId(picked.id);
                 setPlaceQuery("");
-              }}>
-              {places.map((item) => (
-                <PlaceItem key={item.id} place={item} />
-              ))}
-            </ListBox>
+              }}
+            />
           </>
         )}
       </div>

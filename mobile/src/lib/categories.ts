@@ -1,6 +1,7 @@
 import type { SFSymbol } from 'expo-symbols';
 
-import { CATEGORY_LABELS, PLACES, PLACE_CATEGORIES, type PlaceCategory } from '@/data/campus';
+import { CATEGORY_LABELS, type PlaceCategory } from '@/data/campus';
+import { BROWSE_ORDER } from '@/lib/search';
 
 export const CATEGORY_SYMBOLS: Record<PlaceCategory, SFSymbol> = {
   academic: 'graduationcap',
@@ -15,22 +16,7 @@ export const CATEGORY_SYMBOLS: Record<PlaceCategory, SFSymbol> = {
   transit: 'bus',
 };
 
-// The order people browse in, most asked for first, limited to categories the campus actually has.
-const BROWSE_ORDER: PlaceCategory[] = [
-  'student',
-  'academic',
-  'dining',
-  'admin',
-  'health',
-  'athletics',
-  'housing',
-  'services',
-  'parking',
-  'transit',
-];
-
-export const USED_CATEGORIES = BROWSE_ORDER.filter(
-  (category) => PLACE_CATEGORIES.includes(category) && PLACES.some((place) => place.category === category),
-);
+// The shared browse order, so the map's filter chips and every place list read the same as the web.
+export const USED_CATEGORIES = BROWSE_ORDER;
 
 export const categoryLabel = (category: PlaceCategory) => CATEGORY_LABELS[category];

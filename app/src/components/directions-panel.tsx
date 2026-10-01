@@ -19,20 +19,15 @@ import { useState } from "react";
 
 import { CollapseButton, SheetGrabber } from "@/components/sheet-chrome";
 import { StepIcon } from "@/components/step-icon";
-import { CATEGORY_LABELS, PLACES, type Place } from "@/data/campus";
-import { BROWSE_ORDER } from "@/lib/categories";
+import { CATEGORY_LABELS, type Place } from "@/data/campus";
 import { formatRouteTime } from "@/lib/directions";
 import { formatDistance } from "@/lib/geo";
 import { stepText } from "@/lib/instructions";
+import { PLACE_SECTIONS } from "@/lib/search";
 import type { Meetup } from "@/lib/social-api";
 import type { Route, TravelMode } from "@/lib/routing";
 
 export const MY_LOCATION = "me";
-
-const ORIGIN_SECTIONS = BROWSE_ORDER.map((category) => ({
-  category,
-  places: PLACES.filter((place) => place.category === category),
-})).filter((section) => section.places.length > 0);
 
 export type RouteIssue =
   | "loading"
@@ -144,7 +139,7 @@ export function DirectionsPanel({
                 </span>
                 <ListBox.ItemIndicator />
               </ListBox.Item>
-              {ORIGIN_SECTIONS.map(({ category, places }) => (
+              {PLACE_SECTIONS.map(({ category, places }) => (
                 <ListBox.Section key={category}>
                   <Header>{CATEGORY_LABELS[category]}</Header>
                   {places

@@ -6,7 +6,6 @@ import {
   Dropdown,
   Input,
   Label,
-  ListBox,
   SearchField,
   Spinner,
   Surface,
@@ -20,12 +19,11 @@ import { useMemo, useState } from "react";
 
 import { CampusTab } from "@/components/campus-tab";
 import { useConfirmDialog } from "@/components/confirm-dialog";
-import { PlaceItem } from "@/components/place-row";
+import { PlaceSearchList } from "@/components/place-search-list";
 import { useReportFlow } from "@/components/report-flow";
 import { CollapseButton, SheetGrabber } from "@/components/sheet-chrome";
 import { getPlace } from "@/data/campus";
 import { MAX_USERNAME_LENGTH, normalizeUsername } from "@/lib/api";
-import { searchPlaces } from "@/lib/search";
 import { MAX_GUESTS, socialApi, type Friend, type FriendsOverview, type Meetup, type Person } from "@/lib/social-api";
 
 type PeoplePanelProps = {
@@ -679,7 +677,6 @@ function NewMeetupForm({
   const [note, setNote] = useState("");
   const [isBusy, setIsBusy] = useState(false);
 
-  const places = useMemo(() => searchPlaces(placeQuery, 8), [placeQuery]);
   const place = getPlace(placeId);
 
   async function create() {
@@ -810,17 +807,15 @@ function NewMeetupForm({
               <SearchField value={placeQuery} onChange={setPlaceQuery} aria-label="Find a place">
                 <Input variant="secondary" placeholder="Search buildings" />
               </SearchField>
-              <ListBox
-                aria-label="Places"
-                selectionMode="none"
-                onAction={(key) => {
-                  setPlaceId(String(key));
+              <PlaceSearchList
+                query={placeQuery}
+                browse={false}
+                limit={8}
+                onSelect={(picked) => {
+                  setPlaceId(picked.id);
                   setPlaceQuery("");
-                }}>
-                {places.map((item) => (
-                  <PlaceItem key={item.id} place={item} />
-                ))}
-              </ListBox>
+                }}
+              />
             </>
           )}
         </div>

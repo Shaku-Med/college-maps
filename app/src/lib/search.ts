@@ -1,6 +1,18 @@
-import { CAMPUS, PLACES, getPlace, type Place } from "@/data/campus";
+import { CAMPUS, PLACES, getPlace, type Place, type PlaceCategory } from "@/data/campus";
 
 export const MAX_QUERY_LENGTH = 60;
+
+// The order people browse campus in, most asked for first, limited to the kinds of places this campus has.
+// Shared by the web and the app, so a list of places reads the same everywhere.
+export const BROWSE_ORDER: PlaceCategory[] = (
+  ["student", "academic", "dining", "admin", "health", "athletics", "housing", "services", "parking", "transit"] as const
+).filter((category) => PLACES.some((place) => place.category === category));
+
+/** Every campus place grouped by kind, in browse order, each group sorted by building code. */
+export const PLACE_SECTIONS: { category: PlaceCategory; places: Place[] }[] = BROWSE_ORDER.map((category) => ({
+  category,
+  places: PLACES.filter((place) => place.category === category).sort((a, b) => a.id.localeCompare(b.id)),
+}));
 
 export type RoomMatch = {
   place: Place;

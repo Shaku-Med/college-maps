@@ -33,15 +33,3 @@ export type MapFilter = "all" | PlaceCategory;
 
 export const MAP_FILTERS: MapFilter[] = ["all", ...USED_CATEGORIES];
 
-export const BROWSE_ORDER: PlaceCategory[] = [
-  "student",
-  "academic",
-  "dining",
-  "admin",
-  "health",
-  "athletics",
-  "housing",
-  "services",
-  "parking",
-  "transit",
-].filter((category): category is PlaceCategory => USED_CATEGORIES.includes(category as PlaceCategory));
