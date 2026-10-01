@@ -74,9 +74,20 @@ function Navigation() {
         <Stack.Screen
           name="origin"
           options={{
-            // Full-screen modal — form sheets crush the list on iPad.
-            presentation: 'fullScreenModal',
-            contentStyle: { backgroundColor: background },
+            // A page sheet: full width, swipe down to close, and it does not squeeze the list on iPad the way
+            // the floating form sheets do. Its header carries the title and the system search bar.
+            ...pageSheet,
+            headerShown: true,
+            title: 'Start from',
+            headerLargeTitle: true,
+            headerLargeTitleShadowVisible: false,
+            ...(Platform.OS === 'ios'
+              ? {
+                  headerTransparent: true,
+                  headerBlurEffect: 'systemChromeMaterial' as const,
+                  headerLargeStyle: { backgroundColor: 'transparent' },
+                }
+              : { headerShadowVisible: false }),
           }}
         />
         <Stack.Screen name="class/[id]" options={sheetTall} />

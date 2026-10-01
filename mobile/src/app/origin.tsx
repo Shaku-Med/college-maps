@@ -1,5 +1,5 @@
 import { router, Stack } from 'expo-router';
-import { CloseButton, ListGroup, useThemeColor } from 'heroui-native';
+import { ListGroup, useThemeColor } from 'heroui-native';
 import { Platform } from 'react-native';
 
 import { Icon } from '@/components/icon';
@@ -16,19 +16,12 @@ export default function OriginModal() {
 
   return (
     <>
-      {/* A real header, so searching uses the system search bar like the rest of the app. */}
-      <Stack.Screen
-        options={{
-          headerShown: true,
-          title: 'Start from',
-          headerLargeTitle: true,
-          headerLargeTitleShadowVisible: false,
-          headerRight: () => <CloseButton accessibilityLabel="Close" onPress={() => router.back()} />,
-          ...(Platform.OS === 'ios'
-            ? { headerTransparent: true, headerBlurEffect: 'systemChromeMaterial', headerLargeStyle: { backgroundColor: 'transparent' } }
-            : { headerShadowVisible: false }),
-        }}
-      />
+      <Stack.Toolbar placement="right">
+        {/* Android header buttons only take image icons, so it shows the word there. */}
+        <Stack.Toolbar.Button icon={Platform.OS === 'ios' ? 'xmark' : undefined} onPress={() => router.back()}>
+          Close
+        </Stack.Toolbar.Button>
+      </Stack.Toolbar>
       <PlacePicker
         selectedId={trip.origin}
         onPick={(place) => pick(place.id)}
