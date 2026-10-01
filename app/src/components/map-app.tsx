@@ -6,7 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { AccountPanel, initials } from "@/components/account-panel";
 import { CampusMap, type CampusMapHandle, type MapPerson } from "@/components/campus-map";
-import { DirectionsPanel, MY_LOCATION, type RouteIssue } from "@/components/directions-panel";
+import { DirectionsPanel, type RouteIssue } from "@/components/directions-panel";
 import { DragScroll } from "@/components/drag-scroll";
 import { NavigationHud, type RouteNotice } from "@/components/navigation-hud";
 import { MeetupPeek, MeetupSheet } from "@/components/meetup-sheet";
@@ -31,6 +31,7 @@ import { fetchStreetRoute } from "@/lib/directions";
 import { bearingDegrees, distanceMeters, turnAngle } from "@/lib/geo";
 import { ON_FOOT_MAX_MPS, RIDING_MAX_MPS, createMotionTracker, isOnFoot, type MotionState } from "@/lib/motion";
 import { loadSchedule, saveSchedule, type ClassEntry } from "@/lib/schedule";
+import { MY_LOCATION, tripPlan, withStop } from "@/lib/stops";
 import {
   findRoute,
   matchWalkway,
@@ -49,6 +50,9 @@ import {
 const OFF_CAMPUS_METERS = CAMPUS.map.onCampusRadiusMeters;
 const WALKING_AREA = CAMPUS.map.walkingArea;
 const NEAR_CAMPUS_PATH_METERS = 40;
+// Following the steps by hand, a fix only takes over once it is this close to the route. Anywhere else (off
+// campus while reading directions from a building) it would be matched to the wrong part of the route.
+const TAKEOVER_METERS = 40;
 
 // Campus walking directions only exist where the campus path network does. Anywhere outside it, even a
 // few hundred metres away on the expressway, the route has to come from the street network instead.
@@ -222,6 +226,13 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
   const [graph, setGraph] = useState<WalkGraph | null>(null);
   const [graphFailed, setGraphFailed] = useState(false);
   const [origin, setOrigin] = useState(MY_LOCATION);
+  // Places to visit on the way, in order, before the destination.
+  const [stops, setStops] = useState<string[]>([]);
+  // While guiding: every place visited in order, fixed at the start, and which one is being walked to now.
+  const [legs, setLegs] = useState<string[]>([]);
+  const [leg, setLeg] = useState(0);
+  // Following the steps by hand, a fix only takes over once it is on the route.
+  const manualRef = useRef(false);
   const [avoidStairs, setAvoidStairs] = useState(false);
 
   const [navRoute, setNavRoute] = useState<Route | null>(null);
@@ -408,7 +419,14 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
 
       const nav = navRef.current;
       if (nav.mode !== "navigate" || !nav.navRoute || !nav.destination || nav.hasArrived) return;
-      // Location arriving mid trip takes over from stepping through by hand.
+      if (manualRef.current) {
+        const probe = trackProgress(nav.navRoute, position, progressHintRef.current);
+        if (accuracy > UNTRUSTED_ACCURACY_METERS || probe.distanceFromRoute > TAKEOVER_METERS) return;
+        // On the route for real now: guidance follows the location from here.
+        manualRef.current = false;
+        navRef.current = { ...navRef.current, isFollowing: true };
+        setIsFollowing(true);
+      }
       setManualStep(null);
 
       let route = nav.navRoute;
@@ -556,8 +574,12 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
       const reachedEntrance =
         next.distanceAlong >= route.arrivalDistance - (travel ? STREET_ARRIVAL_METERS[travel] : ARRIVAL_METERS);
       // Riding past the place is not arriving at it.
+      // Only someone on the route reaches its end; being near its line from far off is not arriving.
+      const onTheRoute = next.distanceFromRoute <= limit;
       const arrived =
-        !holding && (reachedEntrance || distanceMeters(position, destination.coordinate) <= NEAR_DESTINATION_METERS);
+        !holding &&
+        trusted &&
+        ((reachedEntrance && onTheRoute) || distanceMeters(position, destination.coordinate) <= NEAR_DESTINATION_METERS);
       if (arrived) {
         navRef.current = { ...navRef.current, hasArrived: true, previousRoute: null };
         setHasArrived(true);
@@ -591,12 +613,16 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
     }
   }, []);
 
+  // While guiding, the place being walked to now: the next stop, or the destination after the last one.
+  const target = mode === "navigate" ? (getPlace(legs[leg]) ?? selected) : selected;
+  const nextTarget = mode === "navigate" ? getPlace(legs[leg + 1]) : undefined;
+
   const geo = useGeolocation({ onPosition: handlePosition, onError: handleGeoError });
   useWakeLock(mode === "navigate");
   const voice = useVoiceGuidance({
     route: mode === "navigate" ? navRoute : null,
     progress,
-    destinationName: selected?.name,
+    destinationName: target?.name,
     isWrongWay,
     hasArrived,
     notice: routeNotice,
@@ -614,9 +640,9 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
       avoidStairs,
       isFollowing,
       hasArrived,
-      destination: selected,
+      destination: target,
     };
-  }, [mode, navRoute, previousRoute, graph, avoidStairs, isFollowing, hasArrived, selected]);
+  }, [mode, navRoute, previousRoute, graph, avoidStairs, isFollowing, hasArrived, target]);
 
   useEffect(() => {
     if ((mode === "browse" && !isScheduleOpen) || graph || graphFailed) return;
@@ -641,38 +667,58 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
     window.history.replaceState(null, "", url);
   }, [selectedId, room]);
 
-  const originPlace = origin === MY_LOCATION ? undefined : getPlace(origin);
-  const originCoordinate = origin === MY_LOCATION ? geo.position : originPlace?.coordinate;
+  const plan = useMemo(
+    () =>
+      mode === "directions" && selected
+        ? tripPlan({ origin, stops, destination: selected, here: geo.position })
+        : null,
+    [mode, selected, origin, stops, geo.position],
+  );
+  const firstStop = plan?.targets[0];
+  const originCoordinate = plan?.start ?? undefined;
   // A fix just past the edge of the walking area, which GPS does beside buildings, still counts as on campus
   // while a campus walkway is close by, so one stray reading never turns a campus walk into street directions.
   const isOffCampus = useMemo(() => {
     const position = geo.position;
-    if (origin !== MY_LOCATION || position === undefined || onCampusPaths(position)) return false;
+    if (!plan?.live || position === undefined || onCampusPaths(position)) return false;
     const nearest = graph ? matchWalkway(graph, position, { avoidStairs: false }) : undefined;
     return !(nearest && nearest.distance <= NEAR_CAMPUS_PATH_METERS);
-  }, [geo.position, graph, origin]);
+  }, [geo.position, graph, plan?.live]);
 
   const campusRoute = useMemo(() => {
-    if (mode !== "directions" || !graph || !selected || !originCoordinate || isOffCampus) return null;
-    return findRoute(graph, originCoordinate, selected.coordinate, { avoidStairs });
-  }, [mode, graph, selected, originCoordinate, isOffCampus, avoidStairs]);
+    if (mode !== "directions" || !graph || !firstStop || !originCoordinate || isOffCampus) return null;
+    return findRoute(graph, originCoordinate, firstStop.coordinate, { avoidStairs });
+  }, [mode, graph, firstStop, originCoordinate, isOffCampus, avoidStairs]);
+
+  // Stops are campus places, so every leg after the first follows the campus paths.
+  const laterLegs = useMemo(() => {
+    const targets = plan?.targets ?? [];
+    if (!graph || targets.length < 2) return [];
+    const found: Route[] = [];
+    for (let i = 1; i < targets.length; i++) {
+      const next = findRoute(graph, targets[i - 1].coordinate, targets[i].coordinate, { avoidStairs });
+      if (!next) return null;
+      found.push(next);
+    }
+    return found;
+  }, [graph, plan?.targets, avoidStairs]);
 
   // Off campus there is no reason to block directions: the campus paths do not reach, so the route comes
   // from the street network instead, by whatever way the person is travelling.
-  const streetKey = mode === "directions" && isOffCampus && selected ? `${selected.id}|${travelMode}|${avoidStairs}` : null;
+  const streetKey = mode === "directions" && isOffCampus && firstStop ? `${firstStop.id}|${travelMode}|${avoidStairs}` : null;
   // Roughly a 100 m grid, so the preview is reconsidered as someone moves but not on every GPS fix.
   const streetCell = geo.position ? `${geo.position.latitude.toFixed(3)},${geo.position.longitude.toFixed(3)}` : "";
 
   useEffect(() => {
     const from = latestFixRef.current;
-    if (!streetKey || !selected || !from) return;
+    if (!streetKey || !firstStop || !from) return;
     const last = streetFetchRef.current;
     if (last && last.key === streetKey && distanceMeters(last.origin, from) < STREET_REFRESH_METERS) return;
     streetFetchRef.current = { key: streetKey, origin: from };
 
     const controller = new AbortController();
     let settled = false;
-    fetchStreetRoute(from, selected.coordinate, travelMode, { avoidStairs, heading: travelHeading(), signal: controller.signal })
+    fetchStreetRoute(from, firstStop.coordinate, travelMode, { avoidStairs, heading: travelHeading(), signal: controller.signal })
       .then((route) => {
         settled = true;
         setStreetResult({ key: streetKey, route, failed: false });
@@ -689,13 +735,14 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
       controller.abort();
       if (streetFetchRef.current?.key === streetKey) streetFetchRef.current = null;
     };
-  }, [streetKey, streetCell, selected, travelMode, avoidStairs, travelHeading]);
+  }, [streetKey, streetCell, firstStop, travelMode, avoidStairs, travelHeading]);
 
   const streetRoute = streetKey && streetResult?.key === streetKey ? streetResult.route : null;
   const previewRoute = isOffCampus ? streetRoute : campusRoute;
 
   let routeIssue: RouteIssue | undefined;
-  if (isOffCampus) {
+  if (laterLegs === null) routeIssue = avoidStairs ? "no-step-free" : "no-route";
+  else if (isOffCampus) {
     if (!streetResult || streetResult.key !== streetKey) routeIssue = "finding";
     else if (streetResult.failed) routeIssue = "street-failed";
     else if (!streetResult.route) routeIssue = "no-street-route";
@@ -708,20 +755,29 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
 
   // Voice lines start being made while the route is previewed, so they are ready when Start is tapped.
   useEffect(() => {
-    if (mode === "directions" && previewRoute && origin === MY_LOCATION) primeVoice(previewRoute);
-  }, [mode, previewRoute, origin, primeVoice]);
+    if (mode === "directions" && previewRoute && plan?.live) primeVoice(previewRoute);
+  }, [mode, previewRoute, plan?.live, primeVoice]);
 
   const hasPreviewRoute = previewRoute !== null;
+  // The whole walk drawn as one line: to the first stop, then on from stop to stop.
+  const previewPath = useMemo(
+    () => (previewRoute ? [...previewRoute.path, ...(laterLegs ?? []).flatMap((next) => next.path)] : undefined),
+    [previewRoute, laterLegs],
+  );
+  const previewPathRef = useRef(previewPath);
+  useEffect(() => {
+    previewPathRef.current = previewPath;
+  }, [previewPath]);
   const previewRouteRef = useRef(previewRoute);
   useEffect(() => {
     previewRouteRef.current = previewRoute;
   }, [previewRoute]);
 
   useEffect(() => {
-    if (mode === "directions" && hasPreviewRoute && previewRouteRef.current) {
-      mapRef.current?.fitPath(previewRouteRef.current.path, previewPadding());
+    if (mode === "directions" && hasPreviewRoute && previewPathRef.current) {
+      mapRef.current?.fitPath(previewPathRef.current, previewPadding());
     }
-  }, [mode, hasPreviewRoute, origin, avoidStairs, selectedId, travelMode]);
+  }, [mode, hasPreviewRoute, origin, stops, avoidStairs, selectedId, travelMode]);
 
   const selectPlace = useCallback(
     (place: Place | undefined, nextRoom?: string) => {
@@ -837,6 +893,7 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
     setIsScheduleOpen(false);
     setSelectedId(place.id);
     setRoom(entry.room);
+    setStops([]);
     setIsDirectionsExpanded(true);
     setMode("directions");
     geo.start();
@@ -853,6 +910,7 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
   }
 
   function openDirections() {
+    setStops([]);
     setIsDirectionsExpanded(true);
     setMode("directions");
     geo.start();
@@ -869,15 +927,13 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
     if (geo.position) requestHeading();
   }
 
-  function startNavigation() {
-    if (!previewRoute) return;
-    const from = geo.position;
-    // No location, but a starting building was picked: walk through the steps by hand instead of blocking.
+  // Guides along one leg: live from `from`, or step by step by hand without a location.
+  function beginRoute(route: Route, from: Coordinate | undefined) {
     if (!from) {
-      if (origin === MY_LOCATION) return;
+      manualRef.current = true;
       setManualStep(0);
-      setProgress(progressAtDistance(previewRoute, 0));
-      setNavRoute(previewRoute);
+      setProgress(progressAtDistance(route, 0));
+      setNavRoute(route);
       setPreviousRoute(null);
       setIsWrongWay(false);
       setHasArrived(false);
@@ -885,17 +941,18 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
       navRef.current = {
         ...navRef.current,
         mode: "navigate",
-        navRoute: previewRoute,
+        navRoute: route,
         previousRoute: null,
         isFollowing: false,
         hasArrived: false,
       };
-      voice.begin(previewRoute, facing());
+      voice.begin(route, facing());
       setMode("navigate");
-      mapRef.current?.fitPath(previewRoute.path, previewPadding());
+      mapRef.current?.fitPath(route.path, previewPadding());
       return;
     }
     requestCompass();
+    manualRef.current = false;
     progressHintRef.current = 0;
     offRouteCountRef.current = 0;
     otherWalkwayCountRef.current = 0;
@@ -906,31 +963,54 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
     setManualStep(null);
     ridingRef.current = false;
     setIsRiding(false);
-    voice.begin(previewRoute, facing());
+    voice.begin(route, facing());
     navRef.current = {
       ...navRef.current,
       mode: "navigate",
-      navRoute: previewRoute,
+      navRoute: route,
       previousRoute: null,
       isFollowing: true,
       hasArrived: false,
     };
     setPreviousRoute(null);
     setIsWrongWay(false);
-    setNavRoute(previewRoute);
-    setProgress(trackProgress(previewRoute, from, 0));
+    setNavRoute(route);
+    setProgress(trackProgress(route, from, 0));
     setHasArrived(false);
     setIsFollowing(true);
     setMode("navigate");
-    mapRef.current?.follow(
-      from,
-      navigationPadding(),
-      previewRoute.travel ? FOLLOW_ZOOM[previewRoute.travel] : undefined,
-    );
+    mapRef.current?.follow(from, navigationPadding(), route.travel ? FOLLOW_ZOOM[route.travel] : undefined);
+  }
+
+  function startNavigation() {
+    if (!previewRoute || !plan) return;
+    const from = plan.live ? geo.position : undefined;
+    // No location and no starting building: there is nowhere to start from yet.
+    if (!from && origin === MY_LOCATION) return;
+    setLegs(plan.targets.map((place) => place.id));
+    setLeg(0);
+    beginRoute(previewRoute, from);
+  }
+
+  // Arrived at a stop: on to the next place, from wherever the walker is now.
+  function continueTrip() {
+    const next = nextTarget;
+    if (!next || !target || !graph) return;
+    const from = geo.position ?? target.coordinate;
+    const route = findRoute(graph, from, next.coordinate, { avoidStairs });
+    if (!route) {
+      toast.danger(`Could not find a way to ${next.name}`);
+      return;
+    }
+    setLeg((current) => current + 1);
+    beginRoute(route, geo.position);
   }
 
   function endNavigation() {
     clearTimeout(followAgainRef.current);
+    manualRef.current = false;
+    setLegs([]);
+    setLeg(0);
     ridingRef.current = false;
     setIsRiding(false);
     setManualStep(null);
@@ -1023,7 +1103,7 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
     () => (navRoute && progress ? remainingPath(navRoute, progress) : navRoute?.path),
     [navRoute, progress],
   );
-  const mapRoute = mode === "navigate" ? navPath : mode === "directions" ? previewRoute?.path : undefined;
+  const mapRoute = mode === "navigate" ? navPath : mode === "directions" ? previewPath : undefined;
   const snappedToRoute = mode === "navigate" && progress && progress.distanceFromRoute <= SNAP_TO_ROUTE_METERS;
   const shownLocation = snappedToRoute
     ? progress.point
@@ -1046,7 +1126,7 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
         ref={mapRef}
         places={visiblePlaces}
         selectedId={selectedId}
-        originId={mode === "directions" ? originPlace?.id : undefined}
+        originId={mode === "directions" && origin !== MY_LOCATION ? origin : undefined}
         userLocation={shownLocation}
         route={mapRoute}
         people={meetupPeople}
@@ -1394,6 +1474,11 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
             onOpenEvent={(meetup) => openMeetup(meetup.id)}
             onTravelChange={setTravelMode}
             onOriginChange={handleOriginChange}
+            plan={plan}
+            stopIds={stops}
+            laterLegs={laterLegs ?? []}
+            onAddStop={(id) => setStops((current) => withStop(current, id, selected.id))}
+            onRemoveStop={(id) => setStops((current) => current.filter((stop) => stop !== id))}
             onAvoidStairsChange={setAvoidStairs}
             onStart={startNavigation}
             onBack={() => {
@@ -1428,9 +1513,11 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
         </div>
       ) : null}
 
-      {mode === "navigate" && selected && navRoute ? (
+      {mode === "navigate" && target && navRoute ? (
         <NavigationHud
-          destination={selected}
+          destination={target}
+          nextStopName={nextTarget?.name}
+          onContinue={continueTrip}
           route={navRoute}
           progress={progress}
           isFollowing={isFollowing}

@@ -57,6 +57,9 @@ type NavigationHudProps = {
   /** Stairs only matter on foot. */
   canAvoidStairs: boolean;
   onAvoidStairsChange: (avoid: boolean) => void;
+  /** The place after this one, when this one is a stop on the way. Arriving then offers to go on. */
+  nextStopName?: string;
+  onContinue?: () => void;
   onEnd: () => void;
 };
 
@@ -98,6 +101,8 @@ export function NavigationHud({
   avoidStairs,
   canAvoidStairs,
   onAvoidStairsChange,
+  nextStopName,
+  onContinue,
   onEnd,
 }: NavigationHudProps) {
   // The turns ahead at the top and the trip settings at the bottom: one open at a time, so the map stays in view.
@@ -128,7 +133,9 @@ export function NavigationHud({
           }>
         <p role="status" aria-live="polite" className="sr-only">
           {hasArrived
-            ? `You have arrived at ${destination.name}`
+            ? nextStopName
+              ? `Stop reached: ${destination.name}. Next, ${nextStopName}`
+              : `You have arrived at ${destination.name}`
             : isWrongWay
               ? "Wrong way"
               : `${formatDistance(shownDistance)}, ${stepText(shownStep, destination.name)}`}
@@ -144,8 +151,10 @@ export function NavigationHud({
             <>
               <Flag className="size-8 shrink-0" aria-hidden />
               <div className="min-w-0">
-                <p className="text-xl font-semibold leading-tight">You have arrived</p>
-                <p className="truncate text-sm opacity-85">{destination.name}</p>
+                <p className="text-xl font-semibold leading-tight">{nextStopName ? "Stop reached" : "You have arrived"}</p>
+                <p className="truncate text-sm opacity-85">
+                  {nextStopName ? `${destination.name} · Next: ${nextStopName}` : destination.name}
+                </p>
               </div>
             </>
           ) : isWrongWay ? (
@@ -284,7 +293,7 @@ export function NavigationHud({
             className="flex min-w-0 flex-1 items-center gap-2 rounded-2xl text-left transition-transform duration-150 enabled:cursor-pointer enabled:active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-focus">
           <div className="min-w-0 flex-1">
             {hasArrived ? (
-              <p className="text-base font-semibold">Enjoy your class</p>
+              <p className="text-base font-semibold">{nextStopName ? `Next: ${nextStopName}` : "Enjoy your class"}</p>
             ) : stepping ? (
               <>
                 <p className="text-lg font-semibold leading-tight">
@@ -333,8 +342,13 @@ export function NavigationHud({
             className={voiceOn ? "bg-default" : undefined}>
             {voiceOn ? <Volume2 aria-hidden /> : <VolumeX aria-hidden />}
           </Button>
-          <Button variant={hasArrived ? "primary" : "danger-soft"} size="lg" onPress={onEnd}>
-            {hasArrived ? "Done" : "End"}
+          {hasArrived && nextStopName && onContinue ? (
+            <Button variant="primary" size="lg" onPress={onContinue}>
+              Continue
+            </Button>
+          ) : null}
+          <Button variant={hasArrived && !nextStopName ? "primary" : "danger-soft"} size="lg" onPress={onEnd}>
+            {hasArrived && !nextStopName ? "Done" : "End"}
           </Button>
           </div>
         </Surface>

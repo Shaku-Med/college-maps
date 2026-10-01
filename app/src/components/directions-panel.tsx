@@ -14,20 +14,21 @@ import {
   ToggleButton,
   ToggleButtonGroup,
 } from "@heroui/react";
-import { ArrowLeft, Bike, CalendarClock, Car, Footprints, LocateFixed, Navigation } from "lucide-react";
+import { ArrowLeft, Bike, CalendarClock, Car, Footprints, LocateFixed, Navigation, Plus } from "lucide-react";
 import { useState } from "react";
 
 import { CollapseButton, SheetGrabber } from "@/components/sheet-chrome";
 import { StepIcon } from "@/components/step-icon";
 import { CATEGORY_LABELS, type Place } from "@/data/campus";
 import { formatRouteTime } from "@/lib/directions";
-import { formatDistance } from "@/lib/geo";
+import { formatDistance, formatSeconds } from "@/lib/geo";
 import { stepText } from "@/lib/instructions";
 import { PLACE_SECTIONS } from "@/lib/search";
+import { MAX_STOPS, MY_LOCATION, tripTotals, type TripPlan } from "@/lib/stops";
 import type { Meetup } from "@/lib/social-api";
 import type { Route, TravelMode } from "@/lib/routing";
 
-export { MY_LOCATION } from "@/lib/stops";
+export { MY_LOCATION };
 
 export type RouteIssue =
   | "loading"
@@ -61,6 +62,14 @@ type DirectionsPanelProps = {
   onTravelChange: (travel: TravelMode) => void;
   onOriginChange: (origin: string) => void;
   onAvoidStairsChange: (value: boolean) => void;
+  /** Every place the walk visits in order; the last is the destination. */
+  plan: TripPlan | null;
+  /** The stops the walker added, as opposed to a starting building they are not at yet. */
+  stopIds: readonly string[];
+  /** The legs after the first stop. */
+  laterLegs: Route[];
+  onAddStop: (id: string) => void;
+  onRemoveStop: (id: string) => void;
   onStart: () => void;
   onBack: () => void;
   onCollapse: () => void;
@@ -89,6 +98,11 @@ export function DirectionsPanel({
   onTravelChange,
   onOriginChange,
   onAvoidStairsChange,
+  plan,
+  stopIds,
+  laterLegs,
+  onAddStop,
+  onRemoveStop,
   onStart,
   onBack,
   onCollapse,
@@ -97,9 +111,11 @@ export function DirectionsPanel({
   const [showSteps, setShowSteps] = useState(false);
   // A rough fix is enough to set off; the route tightens as better ones arrive. With no location at all, a
   // walk from a chosen building can still be followed step by step.
-  const live = origin === MY_LOCATION && located;
+  const live = (plan?.live ?? false) && located;
   const canStart = route !== null && (live || origin !== MY_LOCATION);
   const mode = TRAVEL_MODES.find((option) => option.id === (travel ?? "walk")) ?? TRAVEL_MODES[1];
+  const stops = plan ? plan.targets.slice(0, -1) : [];
+  const totals = route && laterLegs.length > 0 ? tripTotals([route, ...laterLegs]) : null;
 
   return (
     <Surface
@@ -155,6 +171,60 @@ export function DirectionsPanel({
             </ListBox>
           </Select.Popover>
         </Select>
+
+        {stops.length > 0 ? (
+          <ol aria-label="Stops on the way" className="flex flex-col gap-1.5">
+            {stops.map((stop, index) => {
+              // A starting building the walker is not at yet comes first, as a stop of its own.
+              const isStart = stop.id === origin && !stopIds.includes(stop.id);
+              return (
+                <li key={stop.id} className="flex items-center gap-3 rounded-2xl bg-surface-secondary px-3 py-2">
+                  <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-accent text-xs font-bold text-accent-foreground">
+                    {index + 1}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm">{stop.name}</span>
+                    {isStart ? <span className="block text-xs text-muted">On the way, since you are not there yet</span> : null}
+                  </span>
+                  {isStart ? null : (
+                    <CloseButton aria-label={`Remove the stop at ${stop.name}`} onPress={() => onRemoveStop(stop.id)} />
+                  )}
+                </li>
+              );
+            })}
+          </ol>
+        ) : null}
+
+        {stopIds.length < MAX_STOPS ? (
+          <Select
+            value={null}
+            onChange={(key) => key !== null && onAddStop(String(key))}
+            fullWidth
+            aria-label="Add a stop"
+            placeholder="Add a stop">
+            <Select.Trigger>
+              <Plus className="size-4 shrink-0 text-accent" aria-hidden />
+              <Select.Value />
+              <Select.Indicator />
+            </Select.Trigger>
+            <Select.Popover containerPadding={48}>
+              <ListBox>
+                {PLACE_SECTIONS.map(({ category, places }) => (
+                  <ListBox.Section key={category}>
+                    <Header>{CATEGORY_LABELS[category]}</Header>
+                    {places
+                      .filter((place) => place.id !== destination.id && !stopIds.includes(place.id))
+                      .map((place) => (
+                        <ListBox.Item key={place.id} id={place.id} textValue={place.name}>
+                          {place.name}
+                        </ListBox.Item>
+                      ))}
+                  </ListBox.Section>
+                ))}
+              </ListBox>
+            </Select.Popover>
+          </Select>
+        ) : null}
 
         {travel ? (
           <ToggleButtonGroup
@@ -230,9 +300,12 @@ export function DirectionsPanel({
           <>
             <div className="flex items-end justify-between gap-3">
               <div>
-                <p className="text-2xl font-semibold tracking-tight">{formatRouteTime(route)}</p>
+                <p className="text-2xl font-semibold tracking-tight">
+                  {totals ? formatSeconds(totals.seconds) : formatRouteTime(route)}
+                </p>
                 <p className="text-sm text-muted">
-                  {formatDistance(route.distance)} {mode.noun}
+                  {formatDistance(totals?.meters ?? route.distance)} {mode.noun}
+                  {stops.length > 0 ? ` · ${stops.length} ${stops.length === 1 ? "stop" : "stops"}` : ""}
                   {avoidStairs && mode.id === "walk" ? " · step-free" : ""}
                 </p>
               </div>
