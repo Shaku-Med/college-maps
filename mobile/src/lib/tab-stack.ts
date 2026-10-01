@@ -10,15 +10,22 @@ import { Platform } from 'react-native';
  */
 export const tabStackOptions: ComponentProps<typeof Stack>['screenOptions'] = {
   headerLargeTitle: true,
-  headerShadowVisible: false,
   headerLargeTitleShadowVisible: false,
   // Hub screens stay live under a pushed child so the selected row paints during swipe-back.
   freezeOnBlur: false,
   ...(Platform.OS === 'ios'
     ? {
+        // Apple's large title header: clear behind the big title, then the page slides under a frosted bar
+        // with a hairline once it collapses. The material follows light and dark mode by itself. This needs
+        // every page's scroll view to be its outermost view with contentInsetAdjustmentBehavior="automatic",
+        // or the title would sit on top of the content.
+        headerTransparent: true,
+        headerBlurEffect: 'systemChromeMaterial',
+        headerLargeStyle: { backgroundColor: 'transparent' },
+        headerShadowVisible: true,
         gestureEnabled: true,
         animationMatchesGesture: true,
         fullScreenGestureShadowEnabled: true,
       }
-    : {}),
+    : { headerShadowVisible: false }),
 };
