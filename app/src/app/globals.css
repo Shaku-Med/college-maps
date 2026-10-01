@@ -16,10 +16,10 @@
     }
   }
 }
-/* iOS 26 and later on a phone: the floating tab bar. */
+/* Any iPhone: the floating tab bar. Liquid Glass on top of it stays an iOS 26 option. */
 @custom-variant floating {
   @media (width < 48rem) {
-    &:where([data-device="phone"][data-liquid] *) {
+    &:where([data-device="phone"][data-os="ios"] *) {
       @slot;
     }
   }

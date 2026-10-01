@@ -59,6 +59,8 @@ type NavigationHudProps = {
   onAvoidStairsChange: (avoid: boolean) => void;
   /** The place after this one, when this one is a stop on the way. Arriving then offers to go on. */
   nextStopName?: string;
+  /** Which stop is being walked to, like "Stop 1 of 2", while there are stops ahead. */
+  stopLabel?: string;
   onContinue?: () => void;
   onEnd: () => void;
 };
@@ -102,6 +104,7 @@ export function NavigationHud({
   canAvoidStairs,
   onAvoidStairsChange,
   nextStopName,
+  stopLabel,
   onContinue,
   onEnd,
 }: NavigationHudProps) {
@@ -306,6 +309,7 @@ export function NavigationHud({
                 <p className="text-lg font-semibold leading-tight">{formatRouteTime(route, remaining)}</p>
                 <p className="text-sm text-muted">
                   {formatDistance(remaining)} to {destination.id}
+                  {stopLabel ? ` · ${stopLabel}` : ""}
                 </p>
               </>
             )}

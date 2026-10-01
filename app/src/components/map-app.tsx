@@ -1128,10 +1128,34 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
     return PLACES.filter((place) => place.category === filter || place.id === selectedId);
   }, [mode, filter, selectedId]);
 
-  const navPath = useMemo(
-    () => (navRoute && progress ? remainingPath(navRoute, progress) : navRoute?.path),
-    [navRoute, progress],
-  );
+  // While navigating, the walks between the stops still ahead stay on the map, not only the one being walked now.
+  const legsAhead = useMemo(() => {
+    if (mode !== "navigate" || !graph) return [];
+    const ahead: Route[] = [];
+    for (let i = leg; i < legs.length - 1; i++) {
+      const from = getPlace(legs[i]);
+      const to = getPlace(legs[i + 1]);
+      const next = from && to ? findRoute(graph, from.coordinate, to.coordinate, { avoidStairs }) : null;
+      if (next) ahead.push(next);
+    }
+    return ahead;
+  }, [mode, graph, legs, leg, avoidStairs]);
+
+  const navPath = useMemo(() => {
+    const current = navRoute && progress ? remainingPath(navRoute, progress) : navRoute?.path;
+    return current && [...current, ...legsAhead.flatMap((next) => next.path)];
+  }, [navRoute, progress, legsAhead]);
+
+  // Stops keep their number from the plan, so stop 2 is still stop 2 once stop 1 is done.
+  const stopNumbers = useMemo(() => {
+    const visits = mode === "navigate" ? legs : mode === "directions" ? (plan?.targets.map((place) => place.id) ?? []) : [];
+    const numbers: Record<string, number> = {};
+    visits.slice(0, -1).forEach((id, index) => {
+      if (mode !== "navigate" || index >= leg) numbers[id] = index + 1;
+    });
+    return numbers;
+  }, [mode, legs, leg, plan]);
+  const stopCount = mode === "navigate" ? legs.length - 1 : 0;
   const mapRoute = mode === "navigate" ? navPath : mode === "directions" ? previewPath : undefined;
   const snappedToRoute = mode === "navigate" && progress && progress.distanceFromRoute <= SNAP_TO_ROUTE_METERS;
   const shownLocation = snappedToRoute
@@ -1156,6 +1180,7 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
         places={visiblePlaces}
         selectedId={selectedId}
         originId={mode === "directions" && origin !== MY_LOCATION ? origin : undefined}
+        stopNumbers={stopNumbers}
         userLocation={shownLocation}
         route={mapRoute}
         people={meetupPeople}
@@ -1557,6 +1582,7 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
         <NavigationHud
           destination={target}
           nextStopName={nextTarget?.name}
+          stopLabel={stopCount > 0 && leg < stopCount ? `Stop ${leg + 1} of ${stopCount}` : undefined}
           onContinue={continueTrip}
           route={navRoute}
           progress={progress}

@@ -506,10 +506,37 @@ export default function MapScreen() {
     });
   }
 
-  const routePath = navigating
+  // While guiding, the walks between the stops still ahead stay on the map, not just the one being walked now.
+  const legsAhead = useMemo(() => {
+    if (!navigating) return [];
+    const ahead = [];
+    for (let i = trip.leg; i < trip.legs.length - 1; i++) {
+      const from = getPlace(trip.legs[i]);
+      const to = getPlace(trip.legs[i + 1]);
+      const route = from && to ? findRoute(walkGraph(), from.coordinate, to.coordinate, { avoidStairs: trip.avoidStairs }) : null;
+      if (route) ahead.push(route);
+    }
+    return ahead;
+  }, [navigating, trip.legs, trip.leg, trip.avoidStairs]);
+
+  // Stops keep their number from the plan, so stop 2 is still stop 2 after stop 1 is done.
+  const stopNumbers = useMemo(() => {
+    const numbers: Record<string, number> = {};
+    const visits = navigating ? trip.legs : (preview.plan?.targets.map((place) => place.id) ?? []);
+    visits.slice(0, -1).forEach((id, index) => {
+      if (!navigating || index >= trip.leg) numbers[id] = index + 1;
+    });
+    return numbers;
+  }, [navigating, trip.legs, trip.leg, preview.plan]);
+  const stopCount = navigating ? trip.legs.length - 1 : 0;
+
+  const currentPath = navigating
     ? navigation.route && navigation.progress
       ? remainingPath(navigation.route, navigation.progress)
       : navigation.route?.path
+    : undefined;
+  const routePath = navigating
+    ? currentPath && [...currentPath, ...legsAhead.flatMap((leg) => leg.path)]
     : previewRoute
       ? [...previewRoute.path, ...preview.later.flatMap((leg) => leg.path)]
       : undefined;
@@ -753,6 +780,7 @@ export default function MapScreen() {
             place={place}
             selected={place.id === destinationId}
             origin={place.id === originPlace?.id}
+            stop={stopNumbers[place.id]}
             activity={activityCounts[place.id] ?? 0}
             onPress={openPlace}
           />
@@ -902,6 +930,7 @@ export default function MapScreen() {
                 onClose={closeTrip}
                 onPickOrigin={() => router.push('/origin')}
                 onAddStop={() => router.push('/stop')}
+                onSeeAllStops={() => router.push('/stops')}
                 onRemoveStop={removeStop}
               />
             </View>
@@ -924,6 +953,7 @@ export default function MapScreen() {
               if (next !== facingUp) toggleFacing();
             }}
             onToggleVoice={voice.toggle}
+            stopLabel={stopCount > 0 && trip.leg < stopCount ? `Stop ${trip.leg + 1} of ${stopCount}` : undefined}
             nextStopName={nextTarget?.name}
             onContinue={continueTrip}
             onStep={step}

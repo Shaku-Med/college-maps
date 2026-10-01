@@ -14,7 +14,7 @@ import {
   ToggleButton,
   ToggleButtonGroup,
 } from "@heroui/react";
-import { ArrowLeft, Bike, CalendarClock, Car, Footprints, LocateFixed, Navigation, Plus } from "lucide-react";
+import { ArrowLeft, Bike, CalendarClock, Car, ChevronRight, Flag, Footprints, LocateFixed, Navigation, Plus } from "lucide-react";
 import { useState } from "react";
 
 import { CollapseButton, SheetGrabber } from "@/components/sheet-chrome";
@@ -85,6 +85,35 @@ const ISSUE_TEXT: Record<Exclude<RouteIssue, "loading" | "locating" | "finding">
   "street-failed": "Directions are not loading right now. Check your connection and try again.",
 };
 
+// How many stops the panel lists before sending the rest to their own page, the same as the app.
+const STOPS_SHOWN = 2;
+
+function StopItem({
+  stop,
+  number,
+  isStart,
+  onRemove,
+}: {
+  stop: Place;
+  number: number;
+  /** A starting building the walker is not at yet comes first, as a stop of its own, and changes with From. */
+  isStart: boolean;
+  onRemove: (id: string) => void;
+}) {
+  return (
+    <li className="flex items-center gap-3 rounded-2xl bg-surface-secondary px-3 py-2">
+      <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-accent text-xs font-bold text-accent-foreground">
+        {number}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-sm">{stop.name}</span>
+        {isStart ? <span className="block text-xs text-muted">On the way, since you are not there yet</span> : null}
+      </span>
+      {isStart ? null : <CloseButton aria-label={`Remove the stop at ${stop.name}`} onPress={() => onRemove(stop.id)} />}
+    </li>
+  );
+}
+
 export function DirectionsPanel({
   destination,
   origin,
@@ -109,6 +138,7 @@ export function DirectionsPanel({
   onClose,
 }: DirectionsPanelProps) {
   const [showSteps, setShowSteps] = useState(false);
+  const [allStops, setAllStops] = useState(false);
   // A rough fix is enough to set off; the route tightens as better ones arrive. With no location at all, a
   // walk from a chosen building can still be followed step by step.
   const live = (plan?.live ?? false) && located;
@@ -116,6 +146,44 @@ export function DirectionsPanel({
   const mode = TRAVEL_MODES.find((option) => option.id === (travel ?? "walk")) ?? TRAVEL_MODES[1];
   const stops = plan ? plan.targets.slice(0, -1) : [];
   const totals = route && laterLegs.length > 0 ? tripTotals([route, ...laterLegs]) : null;
+
+  // Every stop gets its own page in the sheet once there are more than the panel lists.
+  if (allStops && stops.length > 0) {
+    return (
+      <Surface
+        role="region"
+        aria-label="Stops on the way"
+        className="animate-sheet-in flex max-h-[78dvh] flex-col rounded-t-[28px] shadow-2xl md:max-h-[calc(100dvh-8rem)] md:rounded-3xl">
+        <SheetGrabber onCollapse={onCollapse} />
+        <div className="flex items-center gap-1 px-3 pt-2 md:pt-3">
+          <Button isIconOnly variant="ghost" aria-label="Back to directions" onPress={() => setAllStops(false)} className="rounded-full">
+            <ArrowLeft aria-hidden />
+          </Button>
+          <h2 className="min-w-0 flex-1 truncate text-base font-semibold">Stops</h2>
+          <CollapseButton onCollapse={onCollapse} />
+        </div>
+        <ol
+          aria-label="Stops on the way"
+          className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto overscroll-contain px-5 pb-[max(1rem,var(--map-safe-bottom))] pt-2 md:pb-4">
+          {stops.map((stop, index) => (
+            <StopItem
+              key={stop.id}
+              stop={stop}
+              number={index + 1}
+              isStart={stop.id === origin && !stopIds.includes(stop.id)}
+              onRemove={onRemoveStop}
+            />
+          ))}
+          <li className="flex items-center gap-3 px-3 py-2 text-sm text-muted">
+            <Flag className="size-4 shrink-0 text-accent" aria-hidden />
+            <span className="min-w-0 flex-1 truncate">
+              Then on to <span className="font-semibold text-foreground">{destination.name}</span>
+            </span>
+          </li>
+        </ol>
+      </Surface>
+    );
+  }
 
   return (
     <Surface
@@ -174,24 +242,29 @@ export function DirectionsPanel({
 
         {stops.length > 0 ? (
           <ol aria-label="Stops on the way" className="flex flex-col gap-1.5">
-            {stops.map((stop, index) => {
-              // A starting building the walker is not at yet comes first, as a stop of its own.
-              const isStart = stop.id === origin && !stopIds.includes(stop.id);
-              return (
-                <li key={stop.id} className="flex items-center gap-3 rounded-2xl bg-surface-secondary px-3 py-2">
-                  <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-accent text-xs font-bold text-accent-foreground">
-                    {index + 1}
+            {stops.slice(0, STOPS_SHOWN).map((stop, index) => (
+              <StopItem
+                key={stop.id}
+                stop={stop}
+                number={index + 1}
+                isStart={stop.id === origin && !stopIds.includes(stop.id)}
+                onRemove={onRemoveStop}
+              />
+            ))}
+            {stops.length > STOPS_SHOWN ? (
+              <li>
+                <button
+                  type="button"
+                  onClick={() => setAllStops(true)}
+                  className="flex w-full items-center gap-3 rounded-2xl bg-surface-secondary px-3 py-2.5 text-left outline-none transition-colors hover:bg-surface-tertiary focus-visible:ring-2 focus-visible:ring-focus">
+                  <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-accent-soft text-xs font-bold text-accent-soft-foreground">
+                    +{stops.length - STOPS_SHOWN}
                   </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm">{stop.name}</span>
-                    {isStart ? <span className="block text-xs text-muted">On the way, since you are not there yet</span> : null}
-                  </span>
-                  {isStart ? null : (
-                    <CloseButton aria-label={`Remove the stop at ${stop.name}`} onPress={() => onRemoveStop(stop.id)} />
-                  )}
-                </li>
-              );
-            })}
+                  <span className="min-w-0 flex-1 text-sm">See all {stops.length} stops</span>
+                  <ChevronRight className="size-4 shrink-0 text-muted" aria-hidden />
+                </button>
+              </li>
+            ) : null}
           </ol>
         ) : null}
 

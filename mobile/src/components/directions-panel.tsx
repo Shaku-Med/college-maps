@@ -8,6 +8,7 @@ import { Icon } from '@/components/icon';
 import { Glass } from '@/components/glass';
 import { MapButton } from '@/components/map-button';
 import { StepIcon } from '@/components/step-icon';
+import { STOPS_SHOWN, StopRow } from '@/components/stop-row';
 import { getPlace } from '@/data/campus';
 import { PANEL_WIDTH } from '@/hooks/use-layout';
 import { useNow } from '@/hooks/use-now';
@@ -49,6 +50,7 @@ type DirectionsPanelProps = {
   onPickOrigin: () => void;
   onAddStop: () => void;
   onRemoveStop: (id: string) => void;
+  onSeeAllStops: () => void;
 };
 
 export function DirectionsPanel({
@@ -66,6 +68,7 @@ export function DirectionsPanel({
   onPickOrigin,
   onAddStop,
   onRemoveStop,
+  onSeeAllStops,
 }: DirectionsPanelProps) {
   const [showSteps, setShowSteps] = useState(false);
   const now = useNow();
@@ -112,36 +115,27 @@ export function DirectionsPanel({
 
         {stops.length > 0 ? (
           <View className="gap-2">
-            {stops.map((stop, index) => {
-              // A starting building the traveller is not at yet comes first, as a stop of its own.
-              const isStart = stop.id === trip.origin && !trip.stops.includes(stop.id);
-              return (
-                <View key={stop.id} className="flex-row items-center gap-3 rounded-2xl bg-default px-3.5 py-2.5">
-                  <View className="size-6 items-center justify-center rounded-full bg-accent">
-                    <Text className="text-xs font-bold text-accent-foreground">{index + 1}</Text>
-                  </View>
-                  <View className="min-w-0 flex-1">
-                    <Text className="text-sm text-foreground" numberOfLines={1}>
-                      {stop.name}
-                    </Text>
-                    {isStart ? <Text className="text-xs text-muted">On the way, since you are not there yet</Text> : null}
-                  </View>
-                  {isStart ? null : (
-                    <Pressable
-                      accessibilityRole="button"
-                      accessibilityLabel={`Remove the stop at ${stop.name}`}
-                      hitSlop={8}
-                      onPress={() => {
-                        void Haptics.selectionAsync();
-                        onRemoveStop(stop.id);
-                      }}
-                      className="size-7 items-center justify-center rounded-full active:opacity-60">
-                      <Icon name="xmark" size={12} weight="semibold" tintColor={muted} />
-                    </Pressable>
-                  )}
+            {stops.slice(0, STOPS_SHOWN).map((stop, index) => (
+              <StopRow
+                key={stop.id}
+                stop={stop}
+                number={index + 1}
+                isStart={stop.id === trip.origin && !trip.stops.includes(stop.id)}
+                onRemove={onRemoveStop}
+              />
+            ))}
+            {stops.length > STOPS_SHOWN ? (
+              <Pressable
+                accessibilityRole="button"
+                onPress={onSeeAllStops}
+                className="flex-row items-center gap-3 rounded-2xl bg-default px-3.5 py-2.5 active:opacity-70">
+                <View className="size-6 items-center justify-center rounded-full bg-accent-soft">
+                  <Text className="text-xs font-bold text-accent-soft-foreground">+{stops.length - STOPS_SHOWN}</Text>
                 </View>
-              );
-            })}
+                <Text className="min-w-0 flex-1 text-sm text-foreground">See all {stops.length} stops</Text>
+                <Icon name="chevron.right" size={12} weight="semibold" tintColor={muted} />
+              </Pressable>
+            ) : null}
           </View>
         ) : null}
 

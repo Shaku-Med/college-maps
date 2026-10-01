@@ -78,6 +78,8 @@ type CampusMapProps = {
   places: readonly Place[];
   selectedId?: string;
   originId?: string;
+  /** Stops on the way, numbered in the order they are visited. */
+  stopNumbers?: Readonly<Record<string, number>>;
   userLocation?: Coordinate;
   people?: readonly MapPerson[];
   destinationPin?: Coordinate;
@@ -108,6 +110,9 @@ const markerBase =
   "flex h-7 min-w-9 cursor-pointer items-center justify-center rounded-full border px-2.5 text-xs font-semibold shadow-sm transition-[transform,background-color] duration-150 hover:scale-105 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus";
 const markerIdle = "border-border bg-overlay text-overlay-foreground";
 const markerActive = "scale-110 border-accent bg-accent text-accent-foreground";
+// The stop's number rides on the pill's corner, read from data-stop.
+const markerStop =
+  "relative scale-105 border-accent bg-accent-soft text-accent-soft-foreground after:absolute after:-right-1.5 after:-top-1.5 after:flex after:size-4 after:items-center after:justify-center after:rounded-full after:bg-accent after:text-[10px] after:font-bold after:leading-none after:text-accent-foreground after:content-[attr(data-stop)]";
 const markerOrigin =
   "scale-105 border-foreground bg-foreground text-background";
 
@@ -582,6 +587,7 @@ export function CampusMap({
   places,
   selectedId,
   originId,
+  stopNumbers,
   userLocation,
   people,
   destinationPin,
@@ -962,11 +968,15 @@ export function CampusMap({
 
       const isSelected = place.id === selectedId;
       const isOrigin = place.id === originId;
+      const stop = isSelected ? undefined : stopNumbers?.[place.id];
       const activity = activityByPlace?.[place.id] ?? 0;
       entry.el.className = cn(
         markerBase,
-        isSelected ? markerActive : isOrigin ? markerOrigin : markerIdle,
+        isSelected ? markerActive : stop !== undefined ? markerStop : isOrigin ? markerOrigin : markerIdle,
       );
+      if (stop !== undefined) entry.el.dataset.stop = String(stop);
+      else delete entry.el.dataset.stop;
+      entry.el.setAttribute("aria-label", stop !== undefined ? `Stop ${stop}, ${place.name}` : place.name);
       entry.el.setAttribute("aria-pressed", String(isSelected));
       const glow = entry.marker.getElement().querySelector("[data-activity-glow]") as HTMLElement | null;
       if (glow) {
@@ -981,9 +991,9 @@ export function CampusMap({
         }
       }
       entry.marker.getElement().style.zIndex =
-        isSelected || isOrigin || activity > 0 ? "2" : "1";
+        isSelected || isOrigin || stop !== undefined || activity > 0 ? "2" : "1";
     }
-  }, [isReady, places, selectedId, originId, activityByPlace]);
+  }, [isReady, places, selectedId, originId, stopNumbers, activityByPlace]);
 
   useEffect(() => {
     const lib = libRef.current;

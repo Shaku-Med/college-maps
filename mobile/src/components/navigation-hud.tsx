@@ -328,6 +328,8 @@ type BottomProps = {
   onFacingUp: (facingUp: boolean) => void;
   /** The place after this stop. With it, arriving offers to go on instead of finishing. */
   nextStopName?: string;
+  /** Which stop is being walked to, like "Stop 1 of 2", while there are stops ahead. */
+  stopLabel?: string;
   onContinue?: () => void;
   onStep: (index: number) => void;
   onEnd: () => void;
@@ -385,6 +387,7 @@ export function NavigationFooter({
   onAvoidStairs,
   onFacingUp,
   nextStopName,
+  stopLabel,
   onContinue,
   onStep,
   onEnd,
@@ -432,7 +435,7 @@ export function NavigationFooter({
                     {hasArrived ? 'Arrived' : formatRouteTime(route, remaining)}
                   </Text>
                   <Text className="text-sm text-muted">
-                    {hasArrived ? "You're here" : `${formatDistance(remaining)} · ${arrive}`}
+                    {hasArrived ? "You're here" : [formatDistance(remaining), arrive, stopLabel].filter(Boolean).join(' · ')}
                   </Text>
                 </View>
                 {hasArrived ? null : (

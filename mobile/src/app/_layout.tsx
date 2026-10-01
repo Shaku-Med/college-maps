@@ -89,6 +89,7 @@ function Navigation() {
         />
         <Stack.Screen name="origin" options={{ ...pickerSheet, title: 'Start from' }} />
         <Stack.Screen name="stop" options={{ ...pickerSheet, title: 'Add a stop' }} />
+        <Stack.Screen name="stops" options={{ ...pickerSheet, title: 'Stops' }} />
         <Stack.Screen name="class/[id]" options={sheetTall} />
         <Stack.Screen name="class-import" options={sheetTall} />
         <Stack.Screen name="profile" options={sheetMedium} />
