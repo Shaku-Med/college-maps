@@ -2,18 +2,21 @@ import type { SFSymbol } from 'expo-symbols';
 import * as Haptics from 'expo-haptics';
 import { useThemeColor } from 'heroui-native';
 import { useState } from 'react';
-import { Pressable, ScrollView, Text, useWindowDimensions, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import Animated, {
   FadeIn,
   FadeInUp,
   FadeOut,
   FadeOutUp,
   LinearTransition,
+  useAnimatedStyle,
   useReducedMotion,
+  useSharedValue,
+  withSpring,
 } from 'react-native-reanimated';
 
 import { Icon } from '@/components/icon';
-import { Glass } from '@/components/glass';
+import { Glass, HAS_LIQUID_GLASS } from '@/components/glass';
 import { MapButton } from '@/components/map-button';
 import { StepIcon } from '@/components/step-icon';
 import { useNow } from '@/hooks/use-now';
@@ -60,25 +63,46 @@ type TopProps = {
 const THEN_WITHIN_METERS = 60;
 // The open list stops short of the footer, so the map and End stay in view.
 const STEPS_MAX_SHARE = 0.45;
+const PRESSED_SCALE = 0.97;
+const BOUNCE = { damping: 11, stiffness: 260, mass: 0.6 };
 
-function StepRow({ step, away, destinationName }: { step: Route['steps'][number]; away: number; destinationName: string }) {
-  const foreground = useThemeColor('foreground');
+/** A soft line in the banner's own text color, so it reads on any tint. */
+function Rule({ color }: { color: string }) {
+  return <View style={{ height: StyleSheet.hairlineWidth * 2, backgroundColor: color, opacity: 0.25 }} />;
+}
+
+function StepRow({
+  step,
+  away,
+  destinationName,
+  ink,
+}: {
+  step: Route['steps'][number];
+  away: number;
+  destinationName: string;
+  ink: string;
+}) {
   return (
     <View className="flex-row items-center gap-3 py-2.5">
-      <View className="size-9 items-center justify-center rounded-full bg-default">
-        <StepIcon step={step} size={16} color={foreground} />
+      <View className="size-9 items-center justify-center rounded-full">
+        <View style={[StyleSheet.absoluteFill, { borderRadius: 18, backgroundColor: ink, opacity: 0.16 }]} />
+        <StepIcon step={step} size={16} color={ink} />
       </View>
-      <Text className="min-w-0 flex-1 text-base leading-5 text-foreground" numberOfLines={2}>
+      <Text className="min-w-0 flex-1 text-base leading-5" style={{ color: ink }} numberOfLines={2}>
         {stepText(step, destinationName)}
       </Text>
-      <Text className="text-sm font-medium text-muted">{formatDistance(away)}</Text>
+      <Text className="text-sm font-medium" style={{ color: ink, opacity: 0.75 }}>
+        {formatDistance(away)}
+      </Text>
     </View>
   );
 }
 
 /**
- * The next turn, big and at the top, on glass like Apple Maps. Tapping it opens every turn still ahead with how
- * far each one is; tapping again folds it back. Arriving and going the wrong way tint the glass so they stand out.
+ * The next turn, big and at the top, on blue glass like Apple Maps. Tapping it opens every turn still ahead with
+ * how far each one is, in a list that scrolls on its own; tapping the turn again folds it back. Going the wrong way
+ * turns the glass red. The press springs back on every platform: iOS 26 glass does it natively, and elsewhere a
+ * matching spring stands in.
  */
 export function NavigationBanner({
   route,
@@ -92,17 +116,18 @@ export function NavigationBanner({
   weakSignal = false,
   onUseAlternate,
 }: TopProps) {
-  const [accent, accentForeground, danger, dangerForeground, foreground, muted] = useThemeColor([
+  const [accent, accentForeground, danger, dangerForeground] = useThemeColor([
     'accent',
     'accent-foreground',
     'danger',
     'danger-foreground',
-    'foreground',
-    'muted',
   ]);
   const { height } = useWindowDimensions();
   const reduceMotion = useReducedMotion();
   const [expanded, setExpanded] = useState(false);
+  const scale = useSharedValue(1);
+  const pressStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.get() }] }));
+
   const along = progress?.distanceAlong ?? 0;
   const index = Math.min((progress?.stepIndex ?? 0) + 1, route.steps.length - 1);
   const step = route.steps[index];
@@ -112,6 +137,8 @@ export function NavigationBanner({
   const canExpand = !hasArrived && !wrong && index < route.steps.length - 1;
   const open = expanded && canExpand;
   const ahead = route.steps.slice(index + 1);
+  const ink = wrong ? dangerForeground : accentForeground;
+  const springs = !HAS_LIQUID_GLASS && !reduceMotion;
   const layout = reduceMotion ? undefined : LinearTransition.springify().damping(18).stiffness(180);
 
   function toggle() {
@@ -122,90 +149,114 @@ export function NavigationBanner({
 
   return (
     <View pointerEvents="box-none" className="gap-2.5 px-3">
-      <Animated.View layout={layout}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityState={{ expanded: open, disabled: !canExpand }}
-          accessibilityLabel={
-            hasArrived
-              ? `You have arrived at ${destinationName}`
-              : wrong
-                ? 'Wrong way. Turn around when it is safe'
-                : `In ${formatDistance(toStep)}, ${stepText(step, destinationName)}`
-          }
-          accessibilityHint={canExpand ? (open ? 'Hides the turns ahead' : 'Shows every turn still ahead') : undefined}
-          onPress={toggle}>
-          <Glass radius={28} tint={wrong ? danger : hasArrived ? accent : undefined} className="p-4">
+      <Animated.View layout={layout} style={pressStyle}>
+        <Glass radius={28} tint={wrong ? danger : accent} interactive>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityState={{ expanded: open, disabled: !canExpand }}
+            accessibilityLabel={
+              hasArrived
+                ? `You have arrived at ${destinationName}`
+                : wrong
+                  ? 'Wrong way. Turn around when it is safe'
+                  : `In ${formatDistance(toStep)}, ${stepText(step, destinationName)}`
+            }
+            accessibilityHint={canExpand ? (open ? 'Hides the turns ahead' : 'Shows every turn still ahead') : undefined}
+            onPressIn={() => {
+              if (springs && canExpand) scale.set(withSpring(PRESSED_SCALE, BOUNCE));
+            }}
+            onPressOut={() => {
+              if (springs) scale.set(withSpring(1, BOUNCE));
+            }}
+            onPress={toggle}
+            className="p-4">
             {hasArrived ? (
               <View className="flex-row items-center gap-3.5">
-                <Icon name="flag.checkered" size={30} weight="semibold" tintColor={accentForeground} />
+                <Icon name="flag.checkered" size={30} weight="semibold" tintColor={ink} />
                 <View className="min-w-0 flex-1">
-                  <Text className="text-2xl font-bold text-accent-foreground">You have arrived</Text>
-                  <Text className="text-base text-accent-foreground opacity-80" numberOfLines={1}>
+                  <Text className="text-2xl font-bold" style={{ color: ink }}>
+                    You have arrived
+                  </Text>
+                  <Text className="text-base opacity-80" style={{ color: ink }} numberOfLines={1}>
                     {destinationName}
                   </Text>
                 </View>
               </View>
             ) : wrong ? (
               <View className="flex-row items-center gap-3.5">
-                <Icon name="arrow.uturn.down" size={30} weight="semibold" tintColor={dangerForeground} />
+                <Icon name="arrow.uturn.down" size={30} weight="semibold" tintColor={ink} />
                 <View className="min-w-0 flex-1">
-                  <Text className="text-2xl font-bold text-danger-foreground">Wrong way</Text>
-                  <Text className="text-base text-danger-foreground opacity-80">Turn around when it is safe</Text>
+                  <Text className="text-2xl font-bold" style={{ color: ink }}>
+                    Wrong way
+                  </Text>
+                  <Text className="text-base opacity-80" style={{ color: ink }}>
+                    Turn around when it is safe
+                  </Text>
                 </View>
               </View>
             ) : (
               <>
                 <View className="flex-row items-center gap-3.5">
-                  <StepIcon step={step} size={34} color={accent} />
+                  <StepIcon step={step} size={34} color={ink} />
                   <View className="min-w-0 flex-1">
-                    <Text className="text-3xl font-bold text-foreground">{formatDistance(toStep)}</Text>
-                    <Text className="text-lg font-medium leading-6 text-foreground" numberOfLines={2}>
+                    <Text className="text-3xl font-bold" style={{ color: ink }}>
+                      {formatDistance(toStep)}
+                    </Text>
+                    <Text className="text-lg font-medium leading-6" style={{ color: ink }} numberOfLines={2}>
                       {stepText(step, destinationName)}
                     </Text>
                   </View>
                   {canExpand ? (
-                    <Icon name={open ? 'chevron.up' : 'chevron.down'} size={14} weight="semibold" tintColor={muted} />
+                    <Icon name={open ? 'chevron.up' : 'chevron.down'} size={14} weight="semibold" tintColor={ink} />
                   ) : null}
                 </View>
 
                 {then && !open && toStep <= THEN_WITHIN_METERS ? (
-                  <Animated.View
-                    entering={reduceMotion ? undefined : FadeIn.duration(180)}
-                    className="mt-3 flex-row items-center gap-2 border-t border-border pt-3">
-                    <Text className="text-sm font-semibold text-muted">Then</Text>
-                    <StepIcon step={then} size={15} color={foreground} />
-                    <Text className="min-w-0 flex-1 text-sm text-foreground" numberOfLines={1}>
-                      {stepText(then, destinationName)}
-                    </Text>
-                  </Animated.View>
-                ) : null}
-
-                {open ? (
-                  <Animated.View
-                    entering={reduceMotion ? undefined : FadeIn.duration(220).delay(60)}
-                    exiting={reduceMotion ? undefined : FadeOut.duration(120)}
-                    className="mt-3 border-t border-border pt-1">
-                    <ScrollView style={{ maxHeight: height * STEPS_MAX_SHARE }} showsVerticalScrollIndicator={false}>
-                      {ahead.map((next, offset) => (
-                        <StepRow
-                          key={index + 1 + offset}
-                          step={next}
-                          away={Math.max(0, next.startDistance - along)}
-                          destinationName={destinationName}
-                        />
-                      ))}
-                    </ScrollView>
-                    <Text className="pt-2 text-center text-xs text-muted">
-                      {ahead.length} more {ahead.length === 1 ? 'turn' : 'turns'} ·{' '}
-                      {formatDistance(progress?.remaining ?? route.distance)} to go
-                    </Text>
+                  <Animated.View entering={reduceMotion ? undefined : FadeIn.duration(180)} className="mt-3 gap-3">
+                    <Rule color={ink} />
+                    <View className="flex-row items-center gap-2">
+                      <Text className="text-sm font-semibold opacity-80" style={{ color: ink }}>
+                        Then
+                      </Text>
+                      <StepIcon step={then} size={15} color={ink} />
+                      <Text className="min-w-0 flex-1 text-sm" style={{ color: ink }} numberOfLines={1}>
+                        {stepText(then, destinationName)}
+                      </Text>
+                    </View>
                   </Animated.View>
                 ) : null}
               </>
             )}
-          </Glass>
-        </Pressable>
+          </Pressable>
+
+          {/* Outside the pressable, so dragging the list scrolls it instead of counting as a tap. */}
+          {open ? (
+            <Animated.View
+              entering={reduceMotion ? undefined : FadeIn.duration(220).delay(60)}
+              exiting={reduceMotion ? undefined : FadeOut.duration(120)}
+              className="px-4 pb-3">
+              <Rule color={ink} />
+              <ScrollView
+                style={{ maxHeight: height * STEPS_MAX_SHARE }}
+                nestedScrollEnabled
+                showsVerticalScrollIndicator={false}>
+                {ahead.map((next, offset) => (
+                  <StepRow
+                    key={index + 1 + offset}
+                    step={next}
+                    away={Math.max(0, next.startDistance - along)}
+                    destinationName={destinationName}
+                    ink={ink}
+                  />
+                ))}
+              </ScrollView>
+              <Text className="pt-2 text-center text-xs opacity-80" style={{ color: ink }}>
+                {ahead.length} more {ahead.length === 1 ? 'turn' : 'turns'} ·{' '}
+                {formatDistance(progress?.remaining ?? route.distance)} to go
+              </Text>
+            </Animated.View>
+          ) : null}
+        </Glass>
       </Animated.View>
 
       {isRiding && !hasArrived ? (

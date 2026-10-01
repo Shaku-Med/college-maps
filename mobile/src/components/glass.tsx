@@ -4,7 +4,7 @@ import type { ReactNode } from 'react';
 import { View, type ColorValue, type StyleProp, type ViewStyle } from 'react-native';
 import { withUniwind } from 'uniwind';
 
-const LIQUID_GLASS = isLiquidGlassAvailable();
+export const HAS_LIQUID_GLASS = isLiquidGlassAvailable();
 // GlassView is a native view, which Tailwind classes do not reach on their own. Without this its size and
 // rounded corners are dropped and it stretches to fill its parent.
 const StyledGlassView = withUniwind(GlassView);
@@ -23,7 +23,7 @@ type GlassProps = {
 /** Liquid Glass on iOS 26, and a solid floating surface on anything older. */
 export function Glass({ children, className, style, interactive = false, radius, tint }: GlassProps) {
   const shape = radius === undefined ? style : [{ borderRadius: radius, overflow: 'hidden' as const }, style];
-  if (LIQUID_GLASS) {
+  if (HAS_LIQUID_GLASS) {
     return (
       <StyledGlassView isInteractive={interactive} tintColor={tint} className={className} style={shape}>
         {children}
