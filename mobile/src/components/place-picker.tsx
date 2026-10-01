@@ -1,10 +1,11 @@
 import * as Haptics from 'expo-haptics';
-import { ListGroup, SearchField, Separator, useThemeColor } from 'heroui-native';
+import { Stack } from 'expo-router';
+import { ListGroup, Separator, useThemeColor } from 'heroui-native';
 import { Fragment, useMemo, useState, type ReactNode } from 'react';
-import { ScrollView, View } from 'react-native';
+import { ScrollView, Text, View } from 'react-native';
 
 import { Icon } from '@/components/icon';
-import { GlassSearchInput } from '@/components/glass-field';
+import { useReadableStyle } from '@/hooks/use-layout';
 import { PLACES, type Place } from '@/data/campus';
 import { CATEGORY_SYMBOLS, categoryLabel } from '@/lib/categories';
 import { MAX_QUERY_LENGTH, searchPlaces } from '@/lib/search';
@@ -20,8 +21,12 @@ type PlacePickerProps = {
 
 const SORTED = [...PLACES].sort((a, b) => a.name.localeCompare(b.name));
 
-/** A searchable list of campus places, the same search the rest of the app uses. */
+/**
+ * A searchable list of campus places, the same search the rest of the app uses. The search box is the screen's
+ * native header search bar, so this has to be the screen's outermost view.
+ */
 export function PlacePicker({ onPick, selectedId, buildingsOnly = false, header }: PlacePickerProps) {
+  const readable = useReadableStyle();
   const [query, setQuery] = useState('');
   const [muted, accent] = useThemeColor(['muted', 'accent']);
   const places = useMemo(() => {
@@ -30,24 +35,24 @@ export function PlacePicker({ onPick, selectedId, buildingsOnly = false, header 
   }, [query, buildingsOnly]);
 
   return (
-    <View className="flex-1 gap-3">
-      <SearchField value={query} onChange={(value) => setQuery(value.slice(0, MAX_QUERY_LENGTH))}>
-        <SearchField.Group>
-          <SearchField.SearchIcon />
-          <GlassSearchInput
-            placeholder="Search places"
-            autoCapitalize="none"
-            autoCorrect={false}
-            autoComplete="off"
-          />
-          <SearchField.ClearButton />
-        </SearchField.Group>
-      </SearchField>
+    <>
+      <Stack.SearchBar
+        placeholder="Search places"
+        autoCapitalize="none"
+        hideWhenScrolling={false}
+        onChangeText={(event) => setQuery(event.nativeEvent.text.slice(0, MAX_QUERY_LENGTH))}
+      />
       <ScrollView
+        contentInsetAdjustmentBehavior="automatic"
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
-        contentContainerClassName="pb-8"
-        showsVerticalScrollIndicator={false}>
+        contentContainerClassName="px-4 pb-8 pt-2"
+        contentContainerStyle={readable}>
+        {places.length === 0 && query.trim() ? (
+          <View className="rounded-3xl bg-default px-5 py-6">
+            <Text className="text-center text-sm leading-5 text-muted">No places match “{query.trim()}”.</Text>
+          </View>
+        ) : null}
         <ListGroup>
           {header ? (
             <>
@@ -82,6 +87,6 @@ export function PlacePicker({ onPick, selectedId, buildingsOnly = false, header 
           ))}
         </ListGroup>
       </ScrollView>
-    </View>
+    </>
   );
 }

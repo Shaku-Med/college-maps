@@ -1,5 +1,5 @@
 import { GlassView, isLiquidGlassAvailable } from 'expo-glass-effect';
-import { Input, SearchField, TextArea, cn, useTextField, useThemeColor } from 'heroui-native';
+import { Input, TextArea, cn, useTextField, useThemeColor } from 'heroui-native';
 import { forwardRef, useEffect, useRef, type ComponentProps, type ComponentRef } from 'react';
 import { StyleSheet, View } from 'react-native';
 import Animated, {
@@ -128,30 +128,3 @@ export const GlassTextArea = forwardRef<ComponentRef<typeof TextArea>, TextAreaP
     </Animated.View>
   );
 });
-
-type SearchInputProps = ComponentProps<typeof SearchField.Input>;
-
-/** For SearchField.Group: fills the row like the plain SearchField.Input does. */
-export const GlassSearchInput = forwardRef<ComponentRef<typeof SearchField.Input>, SearchInputProps>(
-  function GlassSearchInput({ className, onFocus, onBlur, ...props }, ref) {
-    const glass = useGlassField(false);
-    return (
-      <Animated.View style={[{ flex: 1 }, glass.style]}>
-        <SearchField.Input
-          ref={ref}
-          {...props}
-          className={cn('bg-transparent', className)}
-          background={glass.background}
-          onFocus={(event) => {
-            glass.onFocus();
-            onFocus?.(event);
-          }}
-          onBlur={(event) => {
-            glass.onBlur();
-            onBlur?.(event);
-          }}
-        />
-      </Animated.View>
-    );
-  },
-);

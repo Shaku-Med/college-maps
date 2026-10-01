@@ -1,36 +1,34 @@
-import { router } from 'expo-router';
+import { router, Stack } from 'expo-router';
 import { CloseButton, ListGroup, useThemeColor } from 'heroui-native';
-import { Text, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Platform } from 'react-native';
 
 import { Icon } from '@/components/icon';
 import { PlacePicker } from '@/components/place-picker';
 import { MY_LOCATION, setTripOrigin, useTrip } from '@/lib/trip';
 
 export default function OriginModal() {
-  const insets = useSafeAreaInsets();
   const trip = useTrip();
-  const [accent, background] = useThemeColor(['accent', 'background']);
+  const accent = useThemeColor('accent');
   const pick = (origin: string) => {
     setTripOrigin(origin);
     router.back();
   };
 
   return (
-    <View
-      className="flex-1 px-5"
-      style={{
-        backgroundColor: background,
-        paddingTop: insets.top + 12,
-        paddingBottom: Math.max(insets.bottom, 16),
-      }}>
-      <View className="mb-4 flex-row items-center justify-between">
-        <View className="min-w-0 flex-1 pr-3">
-          <Text className="text-xs font-semibold uppercase tracking-wide text-muted">Directions</Text>
-          <Text className="text-2xl font-bold text-foreground">Start from</Text>
-        </View>
-        <CloseButton onPress={() => router.back()} />
-      </View>
+    <>
+      {/* A real header, so searching uses the system search bar like the rest of the app. */}
+      <Stack.Screen
+        options={{
+          headerShown: true,
+          title: 'Start from',
+          headerLargeTitle: true,
+          headerLargeTitleShadowVisible: false,
+          headerRight: () => <CloseButton accessibilityLabel="Close" onPress={() => router.back()} />,
+          ...(Platform.OS === 'ios'
+            ? { headerTransparent: true, headerBlurEffect: 'systemChromeMaterial', headerLargeStyle: { backgroundColor: 'transparent' } }
+            : { headerShadowVisible: false }),
+        }}
+      />
       <PlacePicker
         selectedId={trip.origin}
         onPick={(place) => pick(place.id)}
@@ -51,6 +49,6 @@ export default function OriginModal() {
           </ListGroup.Item>
         }
       />
-    </View>
+    </>
   );
 }
