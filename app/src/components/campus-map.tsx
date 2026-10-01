@@ -773,7 +773,9 @@ export function CampusMap({
     const handleScheme = (event: MediaQueryListEvent) =>
       mapRef.current?.setStyle(styleFor(event.matches));
     const relayout = () => mapRef.current?.resize();
+    const relayoutWhenShown = () => document.visibilityState === "visible" && relayout();
     let ro: ResizeObserver | null = null;
+    let settleTimer: number | undefined;
 
     (async () => {
       const lib = await import("maplibre-gl");
@@ -875,6 +877,10 @@ export function CampusMap({
       window.visualViewport?.addEventListener("resize", relayout);
       window.addEventListener("orientationchange", relayout);
       window.addEventListener("pageshow", relayout);
+      document.addEventListener("visibilitychange", relayoutWhenShown);
+      // The first frame can be lost, leaving the base map black under the labels until the first touch. Measuring
+      // again once the page has settled gets it drawing, and costs nothing when it already is.
+      settleTimer = window.setTimeout(relayout, 1200);
       media.addEventListener("change", handleScheme);
       setIsReady(true);
     })();
@@ -886,6 +892,8 @@ export function CampusMap({
       window.visualViewport?.removeEventListener("resize", relayout);
       window.removeEventListener("orientationchange", relayout);
       window.removeEventListener("pageshow", relayout);
+      document.removeEventListener("visibilitychange", relayoutWhenShown);
+      window.clearTimeout(settleTimer);
       markers.forEach(({ marker }) => marker.remove());
       markers.clear();
       userGlideRef.current?.stop();
