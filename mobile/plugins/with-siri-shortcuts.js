@@ -1,15 +1,58 @@
 const fs = require('fs');
 const path = require('path');
-const { IOSConfig, withDangerousMod, withXcodeProject } = require('expo/config-plugins');
+const { IOSConfig, withDangerousMod, withInfoPlist, withXcodeProject } = require('expo/config-plugins');
 
-// Siri and the Shortcuts app: "Directions to 1N in CSI Map", "Take me to class with CSI Map", "Show my classes in
-// CSI Map". Each one opens the app and leaves the request in UserDefaults, which src/lib/siri.ts picks up, so it
-// also works when Siri starts the app cold. The places come from the same campus.json the map uses.
+// Siri and the Shortcuts app: "Get directions to Campus Center on CSI Map", "Take me to class with CSI Map",
+// "Show my classes in CSI Map". Each one opens the app and leaves the request in UserDefaults, which
+// src/lib/siri.ts picks up, so it also works when Siri starts the app cold. The places come from the same
+// campus.json the map uses.
 
 const FILE_NAME = 'CSIMapShortcuts.swift';
 const CAMPUS_JSON = path.join(__dirname, '..', '..', 'app', 'campus', 'campus.json');
 const HANDOFF_KEY = 'csimap.siriLink';
-const MAX_SYNONYMS = 8;
+const MAX_SYNONYMS = 6;
+
+// How people actually ask. Siri hands a request to the app only when it is close to one of these, and anything
+// that sounds like plain directions goes to Apple Maps otherwise, so the common ways of saying it are all here:
+// in, on, and with the app's name, and the usual verbs. {place} is the campus place, {app} the app's name.
+const PHRASES = {
+  directions: [
+    'Directions to {place} in {app}',
+    'Directions to {place} on {app}',
+    'Get directions to {place} in {app}',
+    'Get directions to {place} on {app}',
+    'Get directions to {place} with {app}',
+    'Take me to {place} with {app}',
+    'Take me to {place} on {app}',
+    'Navigate to {place} with {app}',
+    'How do I get to {place} in {app}',
+    'How do I get to {place} on {app}',
+    '{app} directions to {place}',
+    'Get directions with {app}',
+    'Get directions on {app}',
+  ],
+  nextClass: [
+    'Take me to class with {app}',
+    'Take me to class on {app}',
+    'Directions to my next class in {app}',
+    'Directions to my next class on {app}',
+    'Get me to class with {app}',
+  ],
+  classes: [
+    'Show my classes in {app}',
+    'Show my classes on {app}',
+    'Open my schedule in {app}',
+    'What are my classes in {app}',
+  ],
+};
+
+const swiftPhrases = (list) =>
+  list
+    .map(
+      (phrase) =>
+        `                "${phrase.replace('{place}', () => '\\(\\.$place)').replace('{app}', () => '\\(.applicationName)')}",`,
+    )
+    .join('\n');
 
 // Safe inside a Swift string literal: no quotes, backslashes (which would start interpolation), or control
 // characters can get through from the data file.
@@ -104,9 +147,7 @@ struct CSIMapShortcuts: AppShortcutsProvider {
         AppShortcut(
             intent: DirectionsToPlaceIntent(),
             phrases: [
-                "Directions to \\(\\.$place) in \\(.applicationName)",
-                "Take me to \\(\\.$place) with \\(.applicationName)",
-                "Get directions with \\(.applicationName)",
+${swiftPhrases(PHRASES.directions)}
             ],
             shortTitle: "Directions",
             systemImageName: "figure.walk"
@@ -114,8 +155,7 @@ struct CSIMapShortcuts: AppShortcutsProvider {
         AppShortcut(
             intent: DirectionsToNextClassIntent(),
             phrases: [
-                "Take me to class with \\(.applicationName)",
-                "Directions to my next class in \\(.applicationName)",
+${swiftPhrases(PHRASES.nextClass)}
             ],
             shortTitle: "Next class",
             systemImageName: "calendar.badge.clock"
@@ -123,8 +163,7 @@ struct CSIMapShortcuts: AppShortcutsProvider {
         AppShortcut(
             intent: ShowClassesIntent(),
             phrases: [
-                "Show my classes in \\(.applicationName)",
-                "Open my schedule in \\(.applicationName)",
+${swiftPhrases(PHRASES.classes)}
             ],
             shortTitle: "My classes",
             systemImageName: "calendar"
@@ -135,6 +174,15 @@ struct CSIMapShortcuts: AppShortcutsProvider {
 }
 
 module.exports = function withSiriShortcuts(config) {
+  // Other ways Siri may hear the name, so "CSI Maps" or a spelled out "C S I Map" still reaches the app.
+  config = withInfoPlist(config, (mod) => {
+    mod.modResults.INAlternativeAppNames = [
+      { INAlternativeAppName: 'CSI Maps' },
+      { INAlternativeAppName: 'C S I Map', INAlternativeAppNamePronunciationHint: 'see ess eye map' },
+    ];
+    return mod;
+  });
+
   config = withDangerousMod(config, [
     'ios',
     async (mod) => {
