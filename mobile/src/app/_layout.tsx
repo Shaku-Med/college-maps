@@ -3,6 +3,7 @@ import '@/lib/polyfills';
 import 'expo-sqlite/localStorage/install';
 import '@/global.css';
 import { markReady } from '@/lib/splash';
+import '@/lib/orientation';
 
 import { isLiquidGlassAvailable } from 'expo-glass-effect';
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
