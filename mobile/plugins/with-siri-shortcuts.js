@@ -39,12 +39,12 @@ function swiftSource(places) {
 import AppIntents
 import Foundation
 
-@available(iOS 16.0, *)
+@available(iOS 17.0, *)
 private func handToApp(_ path: String) {
     UserDefaults.standard.set(path, forKey: ${swiftString(HANDOFF_KEY)})
 }
 
-@available(iOS 16.0, *)
+@available(iOS 17.0, *)
 enum CampusPlace: String, AppEnum {
 ${cases}
 
@@ -54,7 +54,7 @@ ${names}
     ]
 }
 
-@available(iOS 16.0, *)
+@available(iOS 17.0, *)
 struct DirectionsToPlaceIntent: AppIntent {
     static let title: LocalizedStringResource = "Get directions"
     static let description = IntentDescription("Opens CSI Map with walking directions to a campus building, lot, or bus stop.")
@@ -70,7 +70,7 @@ struct DirectionsToPlaceIntent: AppIntent {
     }
 }
 
-@available(iOS 16.0, *)
+@available(iOS 17.0, *)
 struct DirectionsToNextClassIntent: AppIntent {
     static let title: LocalizedStringResource = "Directions to my next class"
     static let description = IntentDescription("Opens CSI Map with walking directions to your next class.")
@@ -83,7 +83,7 @@ struct DirectionsToNextClassIntent: AppIntent {
     }
 }
 
-@available(iOS 16.0, *)
+@available(iOS 17.0, *)
 struct ShowClassesIntent: AppIntent {
     static let title: LocalizedStringResource = "Show my classes"
     static let description = IntentDescription("Opens your class schedule in CSI Map.")
@@ -96,7 +96,7 @@ struct ShowClassesIntent: AppIntent {
     }
 }
 
-@available(iOS 16.0, *)
+@available(iOS 17.0, *)
 struct CSIMapShortcuts: AppShortcutsProvider {
     static let shortcutTileColor: ShortcutTileColor = .blue
 
