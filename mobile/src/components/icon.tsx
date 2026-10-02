@@ -2,7 +2,6 @@ import { SymbolView, type AndroidSymbol, type SFSymbol, type SymbolViewProps } f
 
 // Android has no SF Symbols, so every symbol the app uses has its Material Symbol here.
 const MATERIAL: Partial<Record<SFSymbol, AndroidSymbol>> = {
-
   'app.badge': 'app_badging',
   'arrow.right': 'arrow_forward',
   'arrow.triangle.2.circlepath': 'sync',
@@ -37,6 +36,7 @@ const MATERIAL: Partial<Record<SFSymbol, AndroidSymbol>> = {
   'doc.on.clipboard': 'content_paste',
   'doc.plaintext': 'article',
   'doc.richtext': 'description',
+  'doc.text': 'description',
   'door.left.hand.open': 'door_open',
   ellipsis: 'more_horiz',
   'ellipsis.circle': 'more_horiz',
@@ -63,6 +63,7 @@ const MATERIAL: Partial<Record<SFSymbol, AndroidSymbol>> = {
   'mappin.and.ellipse': 'pin_drop',
   'mappin.circle.fill': 'location_on',
   megaphone: 'campaign',
+  mic: 'mic',
   number: 'tag',
   parkingsign: 'local_parking',
   pencil: 'edit',
@@ -84,6 +85,7 @@ const MATERIAL: Partial<Record<SFSymbol, AndroidSymbol>> = {
   'speaker.wave.2.fill': 'volume_up',
   'square.and.arrow.down': 'download',
   'square.and.arrow.up': 'share',
+  'sun.max': 'light_mode',
   trash: 'delete',
   'view.2d': 'map',
   'view.3d': 'view_in_ar',
