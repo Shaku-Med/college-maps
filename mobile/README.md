@@ -65,12 +65,49 @@ Before submitting:
 
    > Sign in is only needed for friends and meetups; the map, search, classes, and directions work without it.
    > Accounts are limited to College of Staten Island emails, so please use the review account: enter
-   > REVIEW_EMAIL, tap Email me a code, then enter REVIEW_CODE. Location is used while in use to show where
-   > you are and to guide turn by turn directions. During directions it continues in the background, with the
-   > blue indicator and a Live Activity, and speaks each turn, which is why the app uses the location and
-   > audio background modes. Nothing is tracked or shared outside a meetup the user joins. This is an
-   > unofficial student project and is not affiliated with the College of Staten Island.
+   > REVIEW_EMAIL, tap Email me a code, then enter REVIEW_CODE.
+   >
+   > Location is used while in use to show where you are and to guide turn by turn directions. During
+   > directions it continues in the background, with the blue indicator and a Live Activity, and speaks each
+   > turn, which is why the app uses the location and audio background modes. Background updates only start
+   > when the user taps Start and stop when directions end. Nothing is tracked or shared outside a meetup the
+   > user joins.
+   >
+   > Siri and Shortcuts (iOS 17 and later): open the app once, then say "Directions to Physics and Astronomy
+   > in CSI Map", "Take me to class with CSI Map" (add a class in the Classes tab first), or "Show my classes
+   > in CSI Map". Each opens the app with that screen ready; nothing runs without opening it. The same
+   > shortcuts are listed in the Shortcuts app, and Account > Directions with Siri turns them off inside the
+   > app. The Up Next widget and the Live Activity show the user's own classes and current walk only.
+   >
+   > The off campus driving and cycling routes come from OpenStreetMap data. This is an unofficial student
+   > project and is not affiliated with the College of Staten Island.
 
 4. App Privacy answers: email address and user id (linked to the user, for app functionality), precise
    location (not stored, used for app functionality and shared live only inside meetups), other user content
-   (event titles and notes). No tracking.
+   (event titles and notes). No tracking. Siri requests stay on the phone and send nothing to the server.
+
+5. On the App Store page, the "Supports" details come from the build on their own. Say what Siri can do in the
+   description, so people know to ask:
+
+   > Ask Siri. "Directions to the library in CSI Map" opens walking directions, "Take me to class with
+   > CSI Map" heads to your next class, and "Show my classes in CSI Map" opens your schedule. They are in the
+   > Shortcuts app too, ready for the Action button or a Home Screen shortcut.
+
+   One screenshot of the Siri request is worth adding, since that is where most people first see it.
+
+## Google Play review
+
+1. App access: the same `REVIEW_EMAIL` and `REVIEW_CODE` as the App Store, with the steps from the review note.
+2. Foreground service declaration (App content > Foreground service permissions). Play asks why each type is
+   used and wants a short video of it in action:
+   - Location: turn by turn walking directions keep following the route with the screen off, from Start until
+     the walk ends, with the ongoing notification showing.
+   - Media playback: the turn by turn voice keeps speaking each turn with the screen off during directions.
+3. Location permission: only while in use (fine and coarse). There is no background location permission, so
+   the background location declaration does not apply.
+4. Data safety: the same answers as App Privacy above. Data is encrypted in transit, and people can delete
+   their account and data in the app (Account > Delete account) or ask by email.
+5. The app drops Android's draw over other apps and old storage permissions in `app.json`
+   (`blockedPermissions`), since it uses neither and Play treats the first as sensitive.
+6. Google Assistant has been replaced by Gemini, which does not run actions in other apps yet, so there is
+   nothing to declare for it. Links like `csimap://directions/1N` and the Home Screen shortcuts work on their own.
