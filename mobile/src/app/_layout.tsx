@@ -14,6 +14,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { refreshAccount } from '@/lib/account';
 import { useNotificationTaps } from '@/lib/notifications';
+import { useSiriHandoff } from '@/lib/siri';
 // Registers the background location task at startup, as iOS requires.
 import '@/lib/location';
 import { LaunchOverlay } from '@/components/launch-overlay';
@@ -64,6 +65,7 @@ function Navigation() {
   };
 
   useNotificationTaps();
+  useSiriHandoff();
 
   useEffect(() => {
     // Paint an empty Up Next right away so a freshly added widget is not a blank square.

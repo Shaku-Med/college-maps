@@ -2,7 +2,7 @@ import Constants from 'expo-constants';
 import { router, Stack } from 'expo-router';
 import type { SFSymbol } from 'expo-symbols';
 import { Card, ListGroup, Separator, Spinner, Switch, useThemeColor, useToast } from 'heroui-native';
-import { Alert, ScrollView, Text, View } from 'react-native';
+import { Alert, Platform, ScrollView, Text, View } from 'react-native';
 
 import { Icon } from '@/components/icon';
 import { ProfileForm } from '@/components/profile-form';
@@ -244,6 +244,18 @@ export default function AccountScreen() {
               onChange={(next) => setDevicePref('keepAwake', next)}
             />
             <Separator className="mx-4" />
+            {Platform.OS === 'ios' ? (
+              <>
+                <ToggleRow
+                  symbol="mic"
+                  title="Directions with Siri"
+                  description="Say “Directions to 1N in CSI Map” or “Take me to class with CSI Map”"
+                  value={device.siri}
+                  onChange={(next) => setDevicePref('siri', next)}
+                />
+                <Separator className="mx-4" />
+              </>
+            ) : null}
             <Row
               symbol="speaker.wave.2"
               title="Directions voice"

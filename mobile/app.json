@@ -162,7 +162,8 @@
         }
       ],
       "expo-quick-actions",
-      "./plugins/with-background-modes"
+      "./plugins/with-background-modes",
+      "./plugins/with-siri-shortcuts"
     ],
     "experiments": {
       "typedRoutes": true,

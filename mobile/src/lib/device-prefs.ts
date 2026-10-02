@@ -4,10 +4,10 @@ import { useSyncExternalStore } from 'react';
  * Choices that stay on this phone (not the account server): keep-awake during turn-by-turn, etc.
  * Defaults match the previous always-on navigation behavior.
  */
-export type DevicePrefs = { keepAwake: boolean };
+export type DevicePrefs = { keepAwake: boolean; siri: boolean };
 
 const KEY = 'csimap.device';
-const DEFAULTS: DevicePrefs = { keepAwake: true };
+const DEFAULTS: DevicePrefs = { keepAwake: true, siri: true };
 const listeners = new Set<() => void>();
 
 function load(): DevicePrefs {
@@ -15,6 +15,7 @@ function load(): DevicePrefs {
     const saved = JSON.parse(globalThis.localStorage?.getItem(KEY) ?? '{}') as Partial<Record<keyof DevicePrefs, unknown>>;
     return {
       keepAwake: typeof saved.keepAwake === 'boolean' ? saved.keepAwake : DEFAULTS.keepAwake,
+      siri: typeof saved.siri === 'boolean' ? saved.siri : DEFAULTS.siri,
     };
   } catch {
     return { ...DEFAULTS };
