@@ -3,8 +3,10 @@ import { router, usePathname } from 'expo-router';
 import { useThemeColor, useToast } from 'heroui-native';
 import { useQuickActionRouting } from 'expo-quick-actions/router';
 import { useEffect } from 'react';
-import { DynamicColorIOS, Platform } from 'react-native';
+import { DynamicColorIOS, Platform, View } from 'react-native';
 
+import { TabRail } from '@/components/tab-rail';
+import { useTabRail } from '@/hooks/use-layout';
 import { useProfile } from '@/lib/account';
 import { useClasses } from '@/lib/classes';
 import { useOnline } from '@/lib/online';
@@ -28,6 +30,9 @@ export default function TabLayout() {
   const online = useOnline();
   const pathname = usePathname();
   const { toast } = useToast();
+  const rail = useTabRail();
+  const showOffline = () =>
+    toast.show({ variant: 'warning', label: "You're offline", description: 'Friends and account need an internet connection.' });
 
   useEffect(() => updateQuickActions(classes, recent), [classes, recent]);
 
@@ -56,47 +61,48 @@ export default function TabLayout() {
   }, [online, pathname]);
 
   return (
-    // Directions and navigation take the whole screen, so the tab bar steps aside for them.
-    <NativeTabs
-      tintColor={accent}
-      sidebarAdaptable
-      minimizeBehavior="onScrollDown"
-      hidden={trip.phase !== 'idle'}
-      // Android's bar is a solid Material surface by default.
-      backgroundColor={Platform.OS === 'android' ? 'transparent' : undefined}
-      screenListeners={{
-        tabPress: (e) => {
-          if (!online && e.data.isPrevented) {
-            toast.show({
-              variant: 'warning',
-              label: "You're offline",
-              description: 'Friends and account need an internet connection.',
-            });
-          }
-        },
-      }}>
-      {/* The map fills the whole screen, under the tab bar. */}
-      <NativeTabs.Trigger name="index" disableAutomaticContentInsets>
-        <NativeTabs.Trigger.Label>Map</NativeTabs.Trigger.Label>
-        <NativeTabs.Trigger.Icon sf={{ default: 'map', selected: 'map.fill' }} md="map" />
-      </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="classes">
-        <NativeTabs.Trigger.Label>Classes</NativeTabs.Trigger.Label>
-        <NativeTabs.Trigger.Icon sf={{ default: 'calendar', selected: 'calendar' }} md="calendar_month" />
-      </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="friends" disabled={!online} accessibilityLabel={online ? undefined : 'Friends, unavailable offline'}>
-        <NativeTabs.Trigger.Label>Friends</NativeTabs.Trigger.Label>
-        <NativeTabs.Trigger.Icon sf={{ default: 'person.2', selected: 'person.2.fill' }} md="group" />
-        {online && social.waiting > 0 ? <NativeTabs.Trigger.Badge>{String(social.waiting)}</NativeTabs.Trigger.Badge> : null}
-      </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="account" disabled={!online} accessibilityLabel={online ? undefined : 'Account, unavailable offline'}>
-        <NativeTabs.Trigger.Label>Account</NativeTabs.Trigger.Label>
-        <NativeTabs.Trigger.Icon sf={{ default: 'person.crop.circle', selected: 'person.crop.circle.fill' }} md="account_circle" />
-      </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="search" role="search">
-        <NativeTabs.Trigger.Label>Search</NativeTabs.Trigger.Label>
-        <NativeTabs.Trigger.Icon sf="magnifyingglass" md="search" />
-      </NativeTabs.Trigger>
-    </NativeTabs>
+    <View className="flex-1 flex-row bg-background">
+      {rail && trip.phase === 'idle' ? (
+        <TabRail online={online} friendsWaiting={social.waiting} onOffline={showOffline} />
+      ) : null}
+      <View className="flex-1">
+        {/* Directions and navigation take the whole screen, so the tab bar steps aside for them. */}
+        <NativeTabs
+          tintColor={accent}
+          sidebarAdaptable
+          minimizeBehavior="onScrollDown"
+          hidden={trip.phase !== 'idle' || rail}
+          // Android's bar is a solid Material surface by default.
+          backgroundColor={Platform.OS === 'android' ? 'transparent' : undefined}
+          screenListeners={{
+            tabPress: (e) => {
+              if (!online && e.data.isPrevented) showOffline();
+            },
+          }}>
+          {/* The map fills the whole screen, under the tab bar. */}
+          <NativeTabs.Trigger name="index" disableAutomaticContentInsets>
+            <NativeTabs.Trigger.Label>Map</NativeTabs.Trigger.Label>
+            <NativeTabs.Trigger.Icon sf={{ default: 'map', selected: 'map.fill' }} md="map" />
+          </NativeTabs.Trigger>
+          <NativeTabs.Trigger name="classes">
+            <NativeTabs.Trigger.Label>Classes</NativeTabs.Trigger.Label>
+            <NativeTabs.Trigger.Icon sf={{ default: 'calendar', selected: 'calendar' }} md="calendar_month" />
+          </NativeTabs.Trigger>
+          <NativeTabs.Trigger name="friends" disabled={!online} accessibilityLabel={online ? undefined : 'Friends, unavailable offline'}>
+            <NativeTabs.Trigger.Label>Friends</NativeTabs.Trigger.Label>
+            <NativeTabs.Trigger.Icon sf={{ default: 'person.2', selected: 'person.2.fill' }} md="group" />
+            {online && social.waiting > 0 ? <NativeTabs.Trigger.Badge>{String(social.waiting)}</NativeTabs.Trigger.Badge> : null}
+          </NativeTabs.Trigger>
+          <NativeTabs.Trigger name="account" disabled={!online} accessibilityLabel={online ? undefined : 'Account, unavailable offline'}>
+            <NativeTabs.Trigger.Label>Account</NativeTabs.Trigger.Label>
+            <NativeTabs.Trigger.Icon sf={{ default: 'person.crop.circle', selected: 'person.crop.circle.fill' }} md="account_circle" />
+          </NativeTabs.Trigger>
+          <NativeTabs.Trigger name="search" role="search">
+            <NativeTabs.Trigger.Label>Search</NativeTabs.Trigger.Label>
+            <NativeTabs.Trigger.Icon sf="magnifyingglass" md="search" />
+          </NativeTabs.Trigger>
+        </NativeTabs>
+      </View>
+    </View>
   );
 }

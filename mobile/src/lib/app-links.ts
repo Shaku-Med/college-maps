@@ -1,5 +1,7 @@
 import { getPlace } from '@/data/campus';
+import { usesTabRail } from '@/hooks/use-layout';
 import { getClasses } from '@/lib/classes';
+import { openPlacePanel } from '@/lib/place-panel';
 import { findUpcoming } from '@/lib/schedule';
 import { isValidRoom } from '@/lib/search';
 import { planTrip } from '@/lib/trip';
@@ -42,5 +44,11 @@ export function handleAppLink(path: string): string | null {
     return '/';
   }
   if (parts[0] === 'classes' && parts.length === 1) return '/classes';
+  if (parts[0] === 'place' && parts.length === 2 && PLACE_ID.test(parts[1]) && usesTabRail()) {
+    const place = getPlace(parts[1].toUpperCase());
+    if (!place) return null;
+    openPlacePanel(place.id, roomFrom(query));
+    return '/';
+  }
   return null;
 }

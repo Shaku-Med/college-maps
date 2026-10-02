@@ -13,24 +13,26 @@ import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { router, useFocusEffect, usePathname } from 'expo-router';
 import { useThemeColor, useToast } from 'heroui-native';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Linking, Platform, useColorScheme, useWindowDimensions, View } from 'react-native';
+import { Linking, Platform, ScrollView, useColorScheme, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Icon } from '@/components/icon';
 import { CategoryBar, type MapFilter } from '@/components/category-bar';
+import { Glass } from '@/components/glass';
 import { DirectionsPanel } from '@/components/directions-panel';
 import { MeetupBar } from '@/components/meetup-bar';
 import { PersonCard, PersonPin } from '@/components/person-pin';
 import { MapControls, type MapControl } from '@/components/map-controls';
 import { MapButton } from '@/components/map-button';
 import { NavigationBanner, NavigationFooter } from '@/components/navigation-hud';
+import { PlaceDetails } from '@/components/place-details';
 import { PlaceMarker } from '@/components/place-marker';
 import { EdgeScrim, TopScrim } from '@/components/top-scrim';
 import { UserPin } from '@/components/user-pin';
 import { CAMPUS, PLACES, contains, getPlace, type Coordinate, type Place } from '@/data/campus';
 import { walkGraph } from '@/data/walk-graph';
 import { useMeetupLive } from '@/hooks/use-meetup-live';
-import { mapCameraPadding, PANEL_WIDTH, useMapChromeBottom, useShortViewport, useWide } from '@/hooks/use-layout';
+import { mapCameraPadding, PANEL_WIDTH, useMapChromeBottom, useShortViewport, useTabRail, useWide } from '@/hooks/use-layout';
 import { useNavigation, type FollowTarget } from '@/hooks/use-navigation';
 import { useRoutePreview } from '@/hooks/use-route-preview';
 import { useVoiceGuidance } from '@/hooks/use-voice-guidance';
@@ -38,6 +40,8 @@ import { useProfile } from '@/lib/account';
 import { campusActivityByPlace, eventsAtPlace } from '@/lib/campus-activity';
 import { useDevicePrefs } from '@/lib/device-prefs';
 import { useFocusedPlace } from '@/lib/focus';
+import { showPlace } from '@/lib/links';
+import { closePlacePanel, usePlacePanel } from '@/lib/place-panel';
 import { formatRouteTime } from '@/lib/directions';
 import { formatDistance } from '@/lib/geo';
 import { stepText } from '@/lib/instructions';
@@ -332,8 +336,7 @@ export default function MapScreen() {
 
   const openPlace = useCallback(
     (place: Place) => {
-      if (trip.phase !== 'idle') return;
-      router.push({ pathname: '/place/[id]', params: { id: place.id } });
+      if (trip.phase === 'idle') showPlace(place);
     },
     [trip.phase],
   );
@@ -562,7 +565,9 @@ export default function MapScreen() {
   const meetupWhere = meetupPlace?.name ?? (meetupHost ? `Wherever ${meetupHost.displayName} is` : 'A pin on the map');
 
   // Android can report no bottom inset inside a tab, though the map runs under the tab and system bars.
-  const tabBarShown = trip.phase === 'idle';
+  const rail = useTabRail();
+  const panelPlace = usePlacePanel();
+  const tabBarShown = trip.phase === 'idle' && !rail;
   const chromeBottom = useMapChromeBottom(tabBarShown);
 
   // Frames everyone in the meetup as people appear, but not on every move, so the map can still pan.
@@ -906,6 +911,19 @@ export default function MapScreen() {
           </View>
         ) : null}
         {navControls}
+        {panelPlace && trip.phase === 'idle' ? (
+          <View className="px-3" style={wide && !columnChrome ? { alignItems: 'center' } : undefined}>
+            <Glass className="w-full overflow-hidden rounded-[28px]" style={{ width: '100%', maxWidth: PANEL_WIDTH }}>
+              <ScrollView
+                bounces={false}
+                showsVerticalScrollIndicator={false}
+                style={{ maxHeight: height - insets.top - chromeBottom - 96 }}
+                contentContainerClassName="p-5">
+                <PlaceDetails place={panelPlace.place} room={panelPlace.room} onDone={closePlacePanel} />
+              </ScrollView>
+            </Glass>
+          </View>
+        ) : null}
         {planning && !pickingOrigin ? (
           <View className="px-3" style={wide && !columnChrome ? { alignItems: 'center' } : undefined}>
             <View style={{ width: '100%', maxWidth: PANEL_WIDTH }}>

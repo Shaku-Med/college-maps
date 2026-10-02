@@ -1,4 +1,4 @@
-import { Platform, useWindowDimensions, type ViewStyle } from 'react-native';
+import { Dimensions, Platform, useWindowDimensions, type ViewStyle } from 'react-native';
 import { initialWindowMetrics, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 // Past this width the map's panels sit in a left column, like the web, and text keeps a readable width.
@@ -12,10 +12,20 @@ export const PANEL_WIDTH = 440;
 /** Comfortable reading width for lists and forms on tablets. */
 export const READABLE_MAX = 720;
 
+/** The Material navigation rail Android tablets get instead of a stretched bottom tab bar. */
+export const RAIL_WIDTH = 88;
+
+export const usesTabRail = (width = Dimensions.get('window').width) => Platform.OS === 'android' && width >= WIDE_AT;
+
+export function useTabRail() {
+  return usesTabRail(useWindowDimensions().width);
+}
+
 /** Centers full-bleed tab pages on tablets with side gutters. */
 export function useReadableStyle(): ViewStyle {
   const { width } = useWindowDimensions();
-  const side = Math.max(0, (width - READABLE_MAX) / 2);
+  const available = width - (usesTabRail(width) ? RAIL_WIDTH : 0);
+  const side = Math.max(0, (available - READABLE_MAX) / 2);
   return side > 0 ? { width: '100%', paddingHorizontal: side } : { width: '100%' };
 }
 

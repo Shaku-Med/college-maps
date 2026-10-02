@@ -2,6 +2,8 @@ import { Linking, Share } from 'react-native';
 import { router } from 'expo-router';
 
 import type { Place } from '@/data/campus';
+import { usesTabRail } from '@/hooks/use-layout';
+import { openPlacePanel } from '@/lib/place-panel';
 
 export const WEB_ORIGIN = 'https://csimap.vercel.app';
 
@@ -25,5 +27,6 @@ export function openWeb(path = '/') {
 /** Switches to the map and opens the place there, from anywhere in the app. */
 export function showPlace(place: Place, room?: string) {
   router.navigate('/');
-  router.push({ pathname: '/place/[id]', params: room ? { id: place.id, room } : { id: place.id } });
+  if (usesTabRail()) openPlacePanel(place.id, room);
+  else router.push({ pathname: '/place/[id]', params: room ? { id: place.id, room } : { id: place.id } });
 }
