@@ -15,6 +15,7 @@ import { refreshAccount } from '@/lib/account';
 import { useNotificationTaps } from '@/lib/notifications';
 // Registers the background location task at startup, as iOS requires.
 import '@/lib/location';
+import { LaunchOverlay } from '@/components/launch-overlay';
 import { OfflineBanner } from '@/components/offline-banner';
 import { updateUpNextWidget } from '@/lib/up-next-widget';
 
@@ -111,6 +112,7 @@ export default function RootLayout() {
       <HeroUINativeProvider>
         <Navigation />
         <OfflineBanner />
+        <LaunchOverlay />
       </HeroUINativeProvider>
     </GestureHandlerRootView>
   );
