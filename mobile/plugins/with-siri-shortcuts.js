@@ -8,9 +8,10 @@ const { IOSConfig, withDangerousMod, withInfoPlist, withXcodeProject } = require
 // campus.json the map uses.
 
 const FILE_NAME = 'CSIMapShortcuts.swift';
-const CAMPUS_JSON = path.join(__dirname, '..', '..', 'app', 'campus', 'campus.json');
+// The campus data lives in the web app beside this one, at the repository root.
+const campusJson = (projectRoot) => path.join(projectRoot, '..', 'app', 'campus', 'campus.json');
 const HANDOFF_KEY = 'csimap.siriLink';
-const MAX_SYNONYMS = 6;
+const MAX_SYNONYMS = 9;
 
 // How people actually ask. Siri hands a request to the app only when it is close to one of these, and anything
 // that sounds like plain directions goes to Apple Maps otherwise, so the common ways of saying it are all here:
@@ -27,6 +28,10 @@ const PHRASES = {
     'Navigate to {place} with {app}',
     'How do I get to {place} in {app}',
     'How do I get to {place} on {app}',
+    'How do I go to {place} in {app}',
+    'How do I go to {place} on {app}',
+    'Go to {place} with {app}',
+    'Go to {place} on {app}',
     '{app} directions to {place}',
     'Get directions with {app}',
     'Get directions on {app}',
@@ -58,15 +63,27 @@ const swiftPhrases = (list) =>
 // characters can get through from the data file.
 const swiftString = (value) => `"${String(value).replace(/[\\"]/g, '').replace(/[\u0000-\u001f\u007f]/g, '').trim()}"`;
 
-function readPlaces() {
-  const campus = JSON.parse(fs.readFileSync(CAMPUS_JSON, 'utf8'));
-  return campus.places
-    .filter((place) => /^[A-Za-z0-9]{1,10}$/.test(place.id) && typeof place.name === 'string')
-    .map((place) => {
-      const synonyms = [place.id, place.label, ...(place.keywords ?? [])]
-        .filter((word) => typeof word === 'string' && word.trim() && word.toLowerCase() !== place.name.toLowerCase());
-      return { id: place.id, name: place.name, synonyms: [...new Set(synonyms)].slice(0, MAX_SYNONYMS) };
+function readPlaces(projectRoot) {
+  const campus = JSON.parse(fs.readFileSync(campusJson(projectRoot), 'utf8'));
+  const places = campus.places.filter((place) => /^[A-Za-z0-9]{1,10}$/.test(place.id) && typeof place.name === 'string');
+  return places.map((place) => {
+    // People say the code as often as the hall's name: "2N", "2 N", or "building 2N".
+    const spaced = place.id.replace(/(\d)([A-Za-z])/, '$1 $2');
+    const codes = place.isBuilding ? [`Building ${place.id}`, `Building ${spaced}`] : [];
+    // A search keyword that is part of another place's name would send Siri there instead, like "library"
+    // on a parking lot beside CSI Library.
+    const otherNames = places.filter((other) => other !== place).map((other) => other.name.toLowerCase());
+    const keywords = (place.keywords ?? []).filter(
+      (word) => typeof word === 'string' && !otherNames.some((name) => name.includes(word.toLowerCase())),
+    );
+    const seen = new Set([place.name.toLowerCase()]);
+    const synonyms = [place.id, spaced, ...codes, place.label, ...keywords].filter((word) => {
+      if (typeof word !== 'string' || !word.trim() || seen.has(word.toLowerCase())) return false;
+      seen.add(word.toLowerCase());
+      return true;
     });
+    return { id: place.id, name: place.name, synonyms: synonyms.slice(0, MAX_SYNONYMS) };
+  });
 }
 
 function swiftSource(places) {
@@ -188,7 +205,7 @@ module.exports = function withSiriShortcuts(config) {
     async (mod) => {
       const projectName = IOSConfig.XcodeUtils.getProjectName(mod.modRequest.projectRoot);
       const target = path.join(mod.modRequest.platformProjectRoot, projectName, FILE_NAME);
-      fs.writeFileSync(target, swiftSource(readPlaces()));
+      fs.writeFileSync(target, swiftSource(readPlaces(mod.modRequest.projectRoot)));
       return mod;
     },
   ]);
@@ -204,4 +221,4 @@ module.exports = function withSiriShortcuts(config) {
 };
 
 // Exposed for a quick look at the generated Swift without a full prebuild.
-module.exports.swiftSource = () => swiftSource(readPlaces());
+module.exports.swiftSource = (projectRoot = path.resolve()) => swiftSource(readPlaces(projectRoot));
