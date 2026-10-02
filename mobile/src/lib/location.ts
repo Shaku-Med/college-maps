@@ -74,9 +74,19 @@ TaskManager.defineTask<TaskData>(NAVIGATION_TASK, async ({ data, error }) => {
   for (const location of data.locations) publish(location);
 });
 
-async function startNavigationUpdates() {
+// Google's accuracy prompt shows once per launch; after a no, GPS alone is used instead of asking again.
+let mayAskForAccuracy = true;
+
+function takeAccuracyPrompt() {
+  const ask = mayAskForAccuracy;
+  mayAskForAccuracy = false;
+  return ask;
+}
+
+async function startNavigationUpdates(mayShowUserSettingsDialog: boolean) {
   await Location.startLocationUpdatesAsync(NAVIGATION_TASK, {
     accuracy: Location.Accuracy.BestForNavigation,
+    mayShowUserSettingsDialog,
     activityType: Location.ActivityType.OtherNavigation,
     distanceInterval: 1,
     timeInterval: 1000,
@@ -153,6 +163,7 @@ async function reconcile() {
   if (watch && watch.navigation === navigation) return;
 
   starting = true;
+  let failed = false;
   try {
     const permission = await Location.getForegroundPermissionsAsync();
     let granted = permission.granted;
@@ -166,16 +177,20 @@ async function reconcile() {
     }
     // The new watch starts before the old one stops, so switching never leaves a gap.
     const previous = watch;
-    const position = navigation
-      ? // Android can refuse, or be slow, to start the background service on some phones and power settings.
-        // Directions then follow along with the app open instead of sitting still with no location.
-        await withTimeout(startNavigationUpdates(), NAVIGATION_START_MS).catch(() =>
-          Location.watchPositionAsync(
-            { accuracy: Location.Accuracy.BestForNavigation, distanceInterval: 1, timeInterval: 1000 },
+    const startWatch = (mayShowUserSettingsDialog: boolean) =>
+      navigation
+        ? // Some Android power settings refuse the background service, so directions then follow with the app open.
+          withTimeout(startNavigationUpdates(mayShowUserSettingsDialog), NAVIGATION_START_MS).catch(() =>
+            Location.watchPositionAsync(
+              { accuracy: Location.Accuracy.BestForNavigation, distanceInterval: 1, timeInterval: 1000, mayShowUserSettingsDialog },
+              publish,
+            ),
+          )
+        : Location.watchPositionAsync(
+            { accuracy: Location.Accuracy.High, distanceInterval: 3, timeInterval: 1000, mayShowUserSettingsDialog },
             publish,
-          ),
-        )
-      : await Location.watchPositionAsync({ accuracy: Location.Accuracy.High, distanceInterval: 3, timeInterval: 1000 }, publish);
+          );
+    const position = await startWatch(takeAccuracyPrompt()).catch(() => startWatch(false));
     previous?.position.remove();
     const heading =
       previous?.heading ??
@@ -187,13 +202,14 @@ async function reconcile() {
     watch = { navigation, position, heading };
     if (snapshot.status !== 'active') set({ status: snapshot.fix ? 'active' : 'asking' });
   } catch {
+    failed = true;
     set({ status: 'error' });
   } finally {
     starting = false;
-    // Someone may have started or stopped while this was setting up.
+    // Catches a start or stop during setup; after a failure it waits for the next request, so it cannot loop.
     const stillWanted = users.size > 0;
     const stillNavigation = [...users.values()].some(Boolean);
-    if (stillWanted !== !!watch || (watch && watch.navigation !== stillNavigation)) void reconcile();
+    if (!failed && (stillWanted !== !!watch || (watch && watch.navigation !== stillNavigation))) void reconcile();
   }
 }
 
