@@ -21,8 +21,7 @@ export {
 const OFFLINE_MESSAGE = "You're offline or the server is unreachable. Try again in a moment.";
 const TIMEOUT_MS = 20_000;
 
-// The phone's version of the web app's apiCall: the same results, but the session travels as a bearer token
-// from the keychain instead of a cookie. The shared social API calls this one on the phone.
+// The web's apiCall for the phone, with the session as a keychain bearer token instead of a cookie.
 export async function apiCall<T>(
   path: string,
   method: 'GET' | 'POST' | 'PATCH' | 'DELETE',

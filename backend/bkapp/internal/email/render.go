@@ -43,9 +43,7 @@ type page struct {
 	Data      any
 }
 
-// Renderer builds emails from templates/: layout.html wraps every email, components.html holds the
-// shared blocks, and each email adds its own content file. A new email is a new content file plus a
-// method here, never new layout markup.
+// Renderer builds emails from templates/: one layout, shared components, and a content file per email.
 type Renderer struct {
 	brand campus.Brand
 	html  map[string]*htmltemplate.Template
@@ -112,7 +110,6 @@ func (r *Renderer) render(name string, p page) (Rendered, error) {
 }
 
 // LoginCode keeps the code out of the subject and preview line so it never shows on a locked phone.
-// logoSrc is "cid:" plus LogoContentID for attached logos, an https URL, or empty to leave it out.
 func (r *Renderer) LoginCode(to, code string, minutes int, logoSrc string) (Rendered, error) {
 	src, err := logoSource(logoSrc)
 	if err != nil {
@@ -169,8 +166,7 @@ func (r *Renderer) LogoURL() string {
 	return r.brand.URL + "/icons/icon-192.png"
 }
 
-// logoSource marks the logo address as trusted for the template. Only an attachment reference or an
-// https URL is accepted, since html/template would otherwise drop cid: links as unsafe.
+// logoSource marks the logo address as trusted for the template.
 func logoSource(src string) (htmltemplate.URL, error) {
 	if src == "" || src == "cid:"+LogoContentID || strings.HasPrefix(src, "https://") {
 		return htmltemplate.URL(src), nil

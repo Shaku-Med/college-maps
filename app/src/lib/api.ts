@@ -21,7 +21,6 @@ function isLocalHostname(hostname: string) {
 }
 
 // Accounts are optional: a college can run the map without the Go backend by leaving this unset.
-// When it is set, a malformed value stops the build instead of silently disabling sign in.
 function readOrigin(name: string, raw: string | undefined) {
   if (!raw) return null;
   let url: URL;
@@ -41,9 +40,7 @@ export const API_ORIGIN = readOrigin("NEXT_PUBLIC_API_URL", process.env.NEXT_PUB
 // The realtime server (backend/rtapp) that streams friends' positions during a meetup.
 export const REALTIME_ORIGIN = readOrigin("NEXT_PUBLIC_REALTIME_URL", process.env.NEXT_PUBLIC_REALTIME_URL);
 
-// Production talks to this website, which forwards /v1 to the Go API (API_UPSTREAM in next.config, or a
-// redirect rule on hosts that have one) so the SameSite=Strict session cookie stays first-party.
-// Development still hits the Go process directly.
+// Production goes through this site's /v1 proxy so the SameSite=Strict cookie stays first party.
 export function apiOriginFor(pageHostname: string, origin: string | null = API_ORIGIN) {
   if (!origin) return origin;
   // Only the cookie API is proxied onto this site. Realtime stays on its own host.

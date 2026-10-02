@@ -18,8 +18,7 @@ import { useSplashHidden } from '@/lib/splash';
 const SPLASH_BACKGROUND = '#1268D2';
 const SPLASH_IMAGE_WIDTH = 96;
 
-// The pin from the app icon, placed the way splash-icon.png has it: scaled 2.9 times around the middle of a
-// 1024 square, with the two roads cut through it in the background color.
+// The icon's pin as splash-icon.png draws it: scaled 2.9 times in a 1024 square, roads cut through.
 const PIN = 'M256 70 C 188 70 134 124 134 192 C 134 268 220 334 251 357 C 254 359.3 258 359.3 261 357 C 292 334 378 268 378 192 C 378 124 324 70 256 70 Z';
 const PIN_PLACEMENT = 'translate(512 512) scale(2.9) translate(-256 -214)';
 // Where the pin's tip sits, as a share of the image, for the squash to plant on and the ripple to start from.
@@ -59,11 +58,7 @@ function Pin() {
   );
 }
 
-/**
- * Picks up from the system splash with the same logo in the same place, then plays one small moment: the pin
- * crouches, hops, lands with a ripple like a location ping, and the blue fades away to the map. With Reduce
- * Motion on it only fades.
- */
+/** Takes over from the system splash with the same pin, which hops, pings, and fades into the map. */
 export function LaunchOverlay() {
   const splashHidden = useSplashHidden();
   const reduceMotion = useReducedMotion();

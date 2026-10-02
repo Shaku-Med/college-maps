@@ -49,8 +49,7 @@ function Navigation() {
   const nestedFormSheet = Platform.OS === 'ios' ? sheetTall : pageSheet;
 
   const pickerSheet = {
-    // A page sheet: full width, swipe down to close, and it does not squeeze the list on iPad the way
-    // the floating form sheets do. Its header carries the title and the system search bar.
+    // A page sheet: full width and swipe to close, without squeezing the list on iPad like form sheets do.
     ...pageSheet,
     headerShown: true,
     headerLargeTitle: true,

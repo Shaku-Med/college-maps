@@ -18,11 +18,9 @@ function applyCoverViewport() {
   const root = document.documentElement;
   if (isStandaloneApp()) {
     root.classList.add("is-standalone");
-    // WebKit bug 254868: innerHeight / 100dvh / visualViewport omit the home
-    // indicator in an installed app. 100vh is the full screen from cold start.
+    // WebKit bug 254868: innerHeight / 100dvh / visualViewport omit the home indicator in an installed app.
     root.style.setProperty("--app-height", "100vh");
-    // env(safe-area-inset-bottom) is often 0px on a cold standalone launch, so
-    // sheets would sit under the home indicator. 34px is the iPhone home bar.
+    // Standalone iOS often reports a 0px bottom inset on a cold launch; 34px is the home bar.
     if (window.matchMedia("(pointer: coarse)").matches) {
       root.style.setProperty("--standalone-home", "34px");
     }

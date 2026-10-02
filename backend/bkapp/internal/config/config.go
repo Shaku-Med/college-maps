@@ -50,8 +50,7 @@ type Config struct {
 	EmailFrom      string
 	CronSecret     string
 	ClientIPHeader string
-	// App Store review: one account whose sign in code is fixed, because a reviewer cannot receive a
-	// school email. Both are set or neither is.
+	// App Store review: one account whose sign in code is fixed, because a reviewer cannot receive a school email.
 	ReviewEmail string
 	ReviewCode  string
 	ReviewUntil time.Time
@@ -135,8 +134,7 @@ func Load() (Config, error) {
 		if !hostName.MatchString(cfg.SMTPHost) {
 			add(errors.New("SMTP_HOST must be a mail server name like smtp.gmail.com"))
 		}
-		// 2525 is the usual way out when a host blocks the standard submission ports, as Render's
-		// free plan does. Mail relays offer it with the same STARTTLS handshake as 587.
+		// 2525 is the usual way out when a host blocks the standard submission ports, as Render's free plan does.
 		cfg.SMTPPort, err = strconv.Atoi(os.Getenv("SMTP_PORT"))
 		if err != nil || (cfg.SMTPPort != 465 && cfg.SMTPPort != 587 && cfg.SMTPPort != 2525) {
 			add(errors.New("SMTP_PORT must be 587 or 2525 (STARTTLS) or 465 (TLS)"))
@@ -169,8 +167,7 @@ func Load() (Config, error) {
 		cfg.CronSecret = cron
 	}
 
-	// The review sign in is optional, so a mistake in it turns it off with a warning instead of taking the
-	// whole API down. Off is the closed state: no fixed code is accepted.
+	// The review sign in is optional, so a mistake in it turns it off with a warning instead of taking the whole API down.
 	unquote := func(name string) string { return strings.Trim(strings.TrimSpace(os.Getenv(name)), `"'`) }
 	reviewEmail, reviewCodeValue, reviewUntilValue := strings.ToLower(unquote("REVIEW_EMAIL")), unquote("REVIEW_CODE"), unquote("REVIEW_UNTIL")
 	if reviewEmail != "" || reviewCodeValue != "" || reviewUntilValue != "" {
@@ -270,8 +267,7 @@ func distinctBytes(value string) int {
 	return len(seen)
 }
 
-// isLocalHost covers this computer and addresses on the home or campus network, so a phone on the
-// same Wi-Fi can reach a development server. Production only ever accepts https.
+// isLocalHost allows this computer and the local network for development; production only takes https.
 func isLocalHost(host string) bool {
 	if host == "localhost" {
 		return true

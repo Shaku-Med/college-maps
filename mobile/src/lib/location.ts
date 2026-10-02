@@ -28,11 +28,9 @@ function set(next: Partial<Snapshot>) {
   for (const listener of listeners) listener();
 }
 
-// The compass is kept apart from the location: Android reports it many times a second, and if every reading
-// re-rendered the map screen the JS thread would have no time left to answer taps.
+// Kept apart so Android's many compass readings a second never re-render the map screen.
 const COMPASS_STEP = 3;
-// iOS hands over a fused, steady heading. Android's comes straight from the magnetometer and shakes, so it is
-// averaged as a direction (sine and cosine, so 359 and 1 average to 0, not 180).
+// iOS hands over a fused, steady heading.
 const COMPASS_SMOOTHING = Platform.OS === 'android' ? 0.15 : 1;
 let compass: number | undefined;
 let pointing: { x: number; y: number } | null = null;
@@ -61,15 +59,12 @@ export function useCompass() {
   return useSyncExternalStore(subscribeCompass, () => compass, () => compass);
 }
 
-// Everything that needs the location asks for it here, so the phone runs one GPS watch, not one per screen,
-// and only while something is using it. Navigation asks for the most accurate mode.
+// One shared GPS watch for every screen, running only while something uses it.
 const users = new Map<symbol, boolean>();
 let watch: { navigation: boolean; position: { remove: () => void }; heading?: Location.LocationSubscription } | null = null;
 let starting = false;
 
-// During directions the location comes from a background task, so guidance carries on with the app in the
-// background or the phone locked. iOS shows its blue location pill, and Android an ongoing notification, for
-// as long as it runs. It uses the while in use permission: it only ever starts from a tap in the app.
+// Directions use a background task that only starts from a tap, so guidance goes on with the screen locked.
 const NAVIGATION_TASK = 'csimap-navigation-location';
 
 type TaskData = { locations?: Location.LocationObject[] };
@@ -123,8 +118,7 @@ function publish(location: Location.LocationObject) {
 // How long the background service gets to start before directions use the plain foreground watch instead.
 const NAVIGATION_START_MS = 8_000;
 
-// Resolves with the watch, or rejects after the time limit. A service that starts after the limit is stopped
-// again, so it never keeps running with nothing listening.
+// Resolves with the watch, or rejects after the time limit.
 function withTimeout(start: Promise<{ remove: () => void }>, ms: number) {
   return new Promise<{ remove: () => void }>((resolve, reject) => {
     let late = false;
@@ -170,8 +164,7 @@ async function reconcile() {
       set({ status: 'denied' });
       return;
     }
-    // The new watch starts before the old one stops, so switching into directions never leaves a gap with no
-    // location at all.
+    // The new watch starts before the old one stops, so switching never leaves a gap.
     const previous = watch;
     const position = navigation
       ? // Android can refuse, or be slow, to start the background service on some phones and power settings.

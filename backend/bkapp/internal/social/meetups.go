@@ -355,8 +355,7 @@ func (s *Service) load(ctx context.Context, tx pgx.Tx, me auth.User, publicID st
 		return Meetup{}, err
 	}
 
-	// Public events at a named campus place are discoverable on the map heat layer for every signed-in
-	// student. Exact pins stay hidden until the event has started and you have joined.
+	// Public events at a named campus place are discoverable on the map heat layer for every signed-in student.
 	if m.Visibility == VisibilityPublic && destKind == DestinationPlace && destPlace != nil {
 		m.Destination = &Destination{Kind: DestinationPlace, PlaceID: *destPlace}
 	}
@@ -431,8 +430,7 @@ func (s *Service) GetMeetup(ctx context.Context, me auth.User, publicID string) 
 	return m, err
 }
 
-// setStatus changes the signed in member's own status in an active meetup and returns the new view. stayOut,
-// when leaving or saying no, means the host cannot invite them back into this meetup.
+// setStatus changes the signed in member's own status in an active meetup and returns the new view.
 func (s *Service) setStatus(ctx context.Context, me auth.User, publicID, status string, stayOut bool) (Meetup, error) {
 	if !validPublicID(publicID) {
 		return Meetup{}, ErrMeetupNotFound
@@ -523,8 +521,7 @@ func (s *Service) EndMeetup(ctx context.Context, me auth.User, publicID string) 
 	return m, err
 }
 
-// LiveTicket lets a joined member stream and share positions for a few minutes. The app asks for a
-// new one before it runs out, so leaving or being removed cuts access quickly.
+// LiveTicket lets a joined member stream and share positions for a few minutes.
 func (s *Service) LiveTicket(ctx context.Context, me auth.User, publicID string) (Ticket, error) {
 	m, err := s.GetMeetup(ctx, me, publicID)
 	if err != nil {

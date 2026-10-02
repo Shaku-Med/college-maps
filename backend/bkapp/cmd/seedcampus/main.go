@@ -1,6 +1,4 @@
-// Command seedcampus creates a campus bot account and a handful of public building events so the
-// map heat layer has something to show in development. Safe to run more than once: it replaces its
-// own previous seed meetups and leaves real student events alone.
+// Command seedcampus adds a campus bot and demo building events for development; safe to rerun.
 package main
 
 import (

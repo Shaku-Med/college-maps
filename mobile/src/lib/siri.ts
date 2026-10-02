@@ -5,8 +5,7 @@ import { AppState, Platform, Settings } from 'react-native';
 import { handleAppLink } from '@/lib/app-links';
 import { getDevicePrefs } from '@/lib/device-prefs';
 
-// Written by the Siri shortcuts (plugins/with-siri-shortcuts.js) into the app's own UserDefaults. A note left for
-// the app holds up when Siri starts it cold, where a link fired at launch can arrive before anything listens.
+// Written by the Siri shortcuts (plugins/with-siri-shortcuts.js) into the app's own UserDefaults.
 const HANDOFF_KEY = 'csimap.siriLink';
 
 function takeHandoff() {

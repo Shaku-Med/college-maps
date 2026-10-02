@@ -29,9 +29,7 @@ export const ISSUE_TEXT: Record<Exclude<RouteIssue, 'locating' | 'finding'>, str
   'street-failed': 'Directions are not loading right now. Check your connection and try again.',
 };
 
-// Campus walking directions only exist inside the campus path network. Anywhere outside it the route has to
-// come from the street network instead. A fix that lands just past the edge of the walking area, which GPS
-// does beside buildings, still counts as on campus while a campus walkway is this close.
+// Campus walking directions only exist inside the campus path network.
 const NEAR_CAMPUS_PATH_METERS = 40;
 const onCampusPaths = (point: Coordinate) =>
   contains(CAMPUS.map.walkingArea, point) ||
@@ -48,10 +46,7 @@ type Preview = {
   isOffCampus: boolean;
 };
 
-/**
- * The route to show before starting: campus paths on campus, or the street network from anywhere else, then on
- * from stop to stop along the campus paths.
- */
+/** The route to preview: campus paths on campus or streets from elsewhere, then on from stop to stop. */
 export function useRoutePreview(
   trip: Trip,
   position: Coordinate | undefined,

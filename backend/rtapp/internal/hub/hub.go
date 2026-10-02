@@ -1,5 +1,4 @@
-// Package hub fans live positions out to everyone in a meetup. Positions exist only in memory
-// and disappear when a member leaves, goes quiet, or the process restarts.
+// Package hub fans live positions out to everyone in a meetup.
 package hub
 
 import (
@@ -26,8 +25,7 @@ type Limits struct {
 	SubscriberBuffer int
 }
 
-// Sized for a college on shared Wi-Fi: many students share one public IP, and a reconnect
-// briefly overlaps the dying stream instead of taking a new slot forever.
+// Sized for shared campus Wi-Fi: many students share one IP, and reconnects briefly overlap.
 var DefaultLimits = Limits{
 	Rooms:            4000,
 	MembersPerRoom:   64,
@@ -66,8 +64,7 @@ func (s *Subscription) Events() <-chan Event {
 	return s.events
 }
 
-// owner is the device a member is sharing from. One account can be signed in on several phones, and only
-// one of them should move the member's dot, or it would jump between places.
+// owner is the device a member is sharing from.
 type owner struct {
 	device string
 	at     time.Time
@@ -124,8 +121,7 @@ func (h *Hub) Subscribe(roomID, member string) (*Subscription, []Position, error
 		}
 	}
 
-	// A reconnecting phone keeps the new stream. The idle one is dropped so flaky campus Wi-Fi
-	// does not fill the room with ghosts and then refuse the person who is actually here.
+	// A reconnecting phone keeps the new stream.
 	if mine >= h.limits.StreamsPerMember && oldest != nil {
 		h.closeSub(r, oldest)
 	}
@@ -165,9 +161,7 @@ func (h *Hub) Publish(roomID string, p Position) error {
 	return h.PublishFrom(roomID, p, "", false)
 }
 
-// PublishFrom records a position sent from one device. The device that shared last keeps the member's dot;
-// another device of the same account is turned away unless it claims sharing, which a device does when it
-// opens the meetup or the person taps to share from there. A device that goes quiet loses it.
+// PublishFrom records a position sent from one device.
 func (h *Hub) PublishFrom(roomID string, p Position, device string, claim bool) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()

@@ -8,8 +8,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// Account is a full user record for the app owner, with the email decrypted. It is only produced
-// for server-side tools and must never be returned from the public API.
+// Account is a full user record with the email decrypted, for server tools only, never the public API.
 type Account struct {
 	// Unreadable marks a row sealed under a different AUTH_SECRET, such as after the secret was replaced.
 	Unreadable  bool
@@ -20,8 +19,7 @@ type Account struct {
 	LastLoginAt *time.Time
 }
 
-// Admin reads accounts with the same keys the API uses, so whoever holds AUTH_SECRET and the
-// database URL can always get every email back. The database alone cannot.
+// Admin reads emails with the API's keys, so it needs AUTH_SECRET as well as the database.
 type Admin struct {
 	pool *pgxpool.Pool
 	keys *Keys

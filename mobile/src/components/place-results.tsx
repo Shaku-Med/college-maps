@@ -72,10 +72,7 @@ function PlaceList({ places, ...row }: Omit<RowProps, 'place'> & { places: reado
   );
 }
 
-/**
- * The campus search results everywhere a place is found or picked: a room code first, then the places that
- * match, or every place by kind when nothing is typed. Render it inside the screen's scroll view.
- */
+/** Campus search results: a room match first, then matching places, or every place by kind when empty. */
 export function PlaceResults({ query, header, ...row }: PlaceResultsProps) {
   const accentForeground = useThemeColor('accent-foreground');
   const trimmed = query.trim();

@@ -60,9 +60,7 @@ function syncBadge(count: number) {
   void Notifications.setBadgeCountAsync(getPhonePrefs().badge ? count : 0).catch(() => undefined);
 }
 
-// Every screen that shows friends or meetups shares one refresher, so opening a screen never starts another
-// timer or another fetch. It runs while the app is open, again when it comes back to the front, and as soon
-// as a notification arrives, since that means something changed.
+// One shared refresher for friends and meetups, run again on foreground and on every notification.
 let polling: { owner: string; users: number; stop: () => void } | null = null;
 
 function startPolling(owner: string) {

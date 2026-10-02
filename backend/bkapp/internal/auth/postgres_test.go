@@ -257,8 +257,7 @@ func checkRowLevelSecurity(t *testing.T, ctx context.Context, pool *pgxpool.Pool
 	})
 }
 
-// A burst of parallel code requests for one address must send one email, not one per request. Without the lock
-// every request passed the limits before any of them had stored its code.
+// A burst of parallel code requests for one address must send one email, not one per request.
 func TestParallelCodeRequestsSendOneEmail(t *testing.T) {
 	url := os.Getenv("TEST_DATABASE_URL")
 	if url == "" {

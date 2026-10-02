@@ -3,8 +3,7 @@ import { env as transformers } from "@huggingface/transformers";
 import { KokoroTTS, env } from "kokoro-js";
 
 const MODEL = "onnx-community/Kokoro-82M-v1.0-ONNX";
-// One exact version of the model files. A later change to that repository, by accident or by someone who
-// took it over, cannot change what devices download. Update it deliberately after listening to the result.
+// Pinned to one model version, so a change to that repository cannot change what devices download.
 const MODEL_REVISION = "1939ad2a8e416c0acfeecc08a694d14ef25f2231";
 
 // Served from this site by scripts/copy-onnx-runtime.mjs instead of the CDN transformers.js defaults to.
@@ -12,8 +11,7 @@ env.wasmPaths = "/ort/";
 transformers.remotePathTemplate = `{model}/resolve/${MODEL_REVISION}/`;
 const MAX_TEXT = 300;
 const MAX_JOBS = 60;
-// Only the model file counts toward progress. The small tokenizer files finish first and would otherwise make
-// it jump to 100 and back.
+// Only the model file counts toward progress.
 const COUNTED_BYTES = 1_000_000;
 const VOICES = new Set(["af_heart", "af_bella", "af_nicole", "bf_emma", "am_michael", "am_fenrir", "bm_george"]);
 
@@ -36,8 +34,7 @@ const isPriority = (value: unknown): value is Priority => value === 0 || value =
 let model: Promise<KokoroTTS> | null = null;
 let reported = { percent: -1, at: 0 };
 
-// Also sent every few seconds while bytes keep arriving, even when the percent has not moved, so the page
-// can tell a slow download from one that stopped.
+// Sent every few seconds while bytes arrive, so the page can tell a slow download from a stopped one.
 function reportProgress(info: { status: string; loaded?: number; total?: number }) {
   if (info.status !== "progress" || info.loaded === undefined || !info.total || info.total < COUNTED_BYTES) return;
   const percent = Math.min(100, Math.floor((info.loaded / info.total) * 100));
@@ -56,8 +53,7 @@ function load() {
   return model;
 }
 
-// One line at a time, most urgent first and in the order asked within each priority, because making speech
-// is slower than walking on a phone and only the next thing to say really matters.
+// One line at a time, most urgent first, since only the next thing to say matters on a slow phone.
 const jobs: Job[] = [];
 let busy = false;
 
@@ -104,8 +100,7 @@ self.onmessage = (event: MessageEvent<Request>) => {
     return;
   }
   if (message?.type === "reset") {
-    // The voice changed, so lines queued for the old one are not wanted any more. Lines asked for right now,
-    // like a sample someone is waiting to hear, are kept.
+    // The voice changed, so lines queued for the old one are not wanted any more.
     for (let i = jobs.length - 1; i >= 0; i--) {
       if (jobs[i].priority === 0) continue;
       const [job] = jobs.splice(i, 1);
@@ -114,8 +109,7 @@ self.onmessage = (event: MessageEvent<Request>) => {
     return;
   }
   if (message?.type === "clear") {
-    // A new route makes the old route's queued lines pointless. Lines being said right now and background
-    // phrases are kept: dropping them is how a reroute used to lose its own "Route updated".
+    // A new route makes the old route's queued lines pointless.
     for (let i = jobs.length - 1; i >= 0; i--) {
       if (jobs[i].priority !== 1) continue;
       const [job] = jobs.splice(i, 1);

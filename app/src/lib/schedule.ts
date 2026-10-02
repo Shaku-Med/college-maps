@@ -169,8 +169,7 @@ function findRoom(block: string): RoomMatch | undefined {
   return undefined;
 }
 
-// Best effort for text copied from a student portal's class schedule. Each class is found by its course code,
-// then the nearest days, time range, and room code (using rooms.pattern from campus.json) that follow it.
+// Best effort for text copied from a student portal's class schedule.
 export function parseScheduleText(text: string): NewClass[] {
   const clean = text.slice(0, 20_000).replace(/\r/g, "");
   const starts: number[] = [];

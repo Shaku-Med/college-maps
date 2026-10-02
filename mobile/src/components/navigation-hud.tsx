@@ -72,10 +72,7 @@ const STEPS_MAX_SHARE = 0.45;
 const PANEL_MOTION = LinearTransition.duration(240).easing(Easing.out(Easing.cubic));
 const PANEL_MOTION_MS = 400;
 
-/**
- * Animates the card's size only around opening or closing. Running it all the time made the glass resize on
- * every text change, like the instruction wrapping to a second line, and squeeze the content while it did.
- */
+/** Animates the card's size only around opening or closing. */
 function usePanelMotion(open: boolean, reduceMotion: boolean) {
   const [moving, setMoving] = useState(false);
   const [seen, setSeen] = useState(open);
@@ -93,11 +90,7 @@ function usePanelMotion(open: boolean, reduceMotion: boolean) {
 
 const DIMS_ON_PRESS = Platform.OS === 'ios' && !HAS_LIQUID_GLASS;
 
-/**
- * Gesture handler's Pressable, which Uniwind does not style, so its classes are resolved here; left alone they
- * were dropped, padding and all. By default the touch feels native: iOS 26 glass reacts by itself, Android gets
- * the system ripple, and older iPhones dim. `dim` dims on every platform instead.
- */
+/** Gesture handler's Pressable with its classes resolved, since Uniwind does not style it, and a native press. */
 function Press({ className = '', dim, ...props }: Omit<PressableProps, 'style'> & { className?: string; dim?: number }) {
   const base = useResolveClassNames(className);
   const pressedOpacity = dim ?? (DIMS_ON_PRESS ? 0.6 : undefined);
@@ -142,11 +135,7 @@ function StepRow({
   );
 }
 
-/**
- * The next turn, big and at the top, on blue glass like Apple Maps. Tapping it opens every turn still ahead with
- * how far each one is, in a list that scrolls on its own; tapping the turn again folds it back. Going the wrong way
- * turns the glass red. Touch feels native on each platform.
- */
+/** The next turn, big and at the top, on blue glass like Apple Maps. */
 export function NavigationBanner({
   route,
   progress,
@@ -368,10 +357,7 @@ function Setting({
   );
 }
 
-/**
- * Time and distance left, the voice switch, and End. Tapping the time opens the trip panel, where stairs, voice,
- * and how the map turns can change at any point of the walk.
- */
+/** Time and distance left, the voice switch, and End. */
 export function NavigationFooter({
   route,
   progress,

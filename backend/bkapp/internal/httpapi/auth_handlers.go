@@ -25,9 +25,7 @@ type cookieSettings struct {
 	secure bool
 }
 
-// The __Host- prefix makes browsers refuse the cookie unless it is Secure, host-only, and Path=/,
-// so it cannot be set by a sibling subdomain. Plain http on localhost cannot use it. SameSite=Strict
-// keeps the cookie off every request that starts on another site, on top of the Origin check.
+// __Host- forces Secure, host-only, Path=/, and SameSite=Strict keeps the cookie off cross site requests.
 func sessionCookie(production bool) cookieSettings {
 	if production {
 		return cookieSettings{name: "__Host-session", secure: true}
@@ -44,8 +42,7 @@ type authHandlers struct {
 	cookie   cookieSettings
 }
 
-// userResponse is only ever sent to the account owner. Anything shown to other people must
-// use a separate type without the email.
+// userResponse is only ever sent to the account owner; anything shown to others needs a type without the email.
 type userResponse struct {
 	Email        string `json:"email"`
 	Username     string `json:"username"`
@@ -105,9 +102,7 @@ func (a *authHandlers) verifyCode(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// The phone app keeps its session in the device keychain rather than a cookie, so it gets the token once,
-// here, and sends it back as a bearer token. Browsers always send Origin on this request, so a web page can
-// never use it to read a session token from script.
+// The phone gets its keychain token here once; browsers always send Origin, so no page can read it.
 func (a *authHandlers) verifyCodeForApp(w http.ResponseWriter, r *http.Request) {
 	if !fromApp(r) {
 		writeError(w, http.StatusForbidden, "only the CSI Map app can use this")
@@ -147,7 +142,6 @@ func (a *authHandlers) verify(w http.ResponseWriter, r *http.Request, signedIn f
 }
 
 // sessionToken reads the session from the phone app's bearer header or the browser's cookie.
-// A present but non-Bearer Authorization header is ignored so a junk proxy header cannot wipe cookie auth.
 func (a *authHandlers) sessionToken(r *http.Request) (string, bool) {
 	if header := r.Header.Get("Authorization"); header != "" {
 		if token, found := strings.CutPrefix(header, "Bearer "); found && token != "" {

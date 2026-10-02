@@ -13,16 +13,13 @@ import (
 	"time"
 )
 
-// Kept short because serverless hosts cut a request off after a few seconds. Gmail normally answers
-// in under two, so a slower server is a problem worth reporting rather than waiting on.
+// Kept short because serverless hosts cut a request off after a few seconds.
 const (
 	smtpTimeout = 8 * time.Second
 	dialTimeout = 5 * time.Second
 )
 
 // SMTP sends through any mail server with a login, such as a free Gmail account with an app password.
-// Port 465 uses TLS from the first byte; any other port must upgrade with STARTTLS, and the password
-// is never sent over an unencrypted connection.
 type SMTP struct {
 	host      string
 	port      int

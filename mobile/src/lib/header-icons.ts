@@ -5,8 +5,7 @@ import type { ComponentProps } from 'react';
 type HeaderIcon = ComponentProps<typeof Stack.Toolbar.Button>['icon'];
 type SymbolName = Extract<NonNullable<HeaderIcon>, string>;
 
-// Header buttons and menus are native on both platforms: iOS draws SF Symbols, while Android's header only
-// takes image sources and skips a button without one, so it gets Material vector drawables instead.
+// iOS headers take SF Symbols; Android's take only images and skip a button without one.
 const pick = (symbol: SymbolName, drawable: ImageSourcePropType): HeaderIcon => (Platform.OS === 'ios' ? symbol : drawable);
 
 export const HEADER_ICONS = {

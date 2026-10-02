@@ -1,7 +1,6 @@
 import { useSyncExternalStore } from 'react';
 
-// Which way the map is turned, kept outside React state so following it at 60 frames a second only redraws
-// the few things drawn relative to it, not the whole map screen.
+// Kept outside React state so following it every frame only redraws what is drawn relative to it.
 let bearing = 0;
 const listeners = new Set<() => void>();
 

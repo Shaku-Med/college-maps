@@ -19,8 +19,7 @@ function tap(onPress: () => void) {
   onPress();
 }
 
-// The map's sources, required by OpenStreetMap's license. Tucked behind a small button instead of sitting on
-// the map, the way Apple Maps does it.
+// The map's sources, required by OpenStreetMap's license.
 function showAttribution() {
   Alert.alert('Map data', 'Map tiles by OpenFreeMap. Data © OpenMapTiles and © OpenStreetMap contributors.', [
     { text: 'OpenStreetMap', onPress: () => void Linking.openURL('https://www.openstreetmap.org/copyright') },

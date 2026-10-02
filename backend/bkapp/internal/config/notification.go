@@ -22,10 +22,7 @@ func (c *Config) applyPush() {
 	c.PushAvailable = validPush(c.VAPIDPublic, c.VAPIDPrivate, c.VAPIDSubject) == nil
 }
 
-// LoadNotificationFile reads VAPID keys from .env.notification when one exists, such as on a laptop that
-// ran an older version of the API. It never creates the file: the keys are made and kept in the database
-// instead, because hosts like Vercel have no disk that lasts. Anything read here only seeds the database
-// the first time.
+// LoadNotificationFile only seeds the database from an old .env.notification; keys live in the database.
 func LoadNotificationFile() error {
 	if _, err := os.Stat(NotificationEnvFile); err != nil {
 		if errors.Is(err, os.ErrNotExist) {
@@ -36,8 +33,7 @@ func LoadNotificationFile() error {
 	return overlayVAPIDFromFile(NotificationEnvFile)
 }
 
-// overlayVAPIDFromFile copies VAPID values from .env.notification when the process does not
-// already have a non-empty value. Empty assignments in other env files do not block a real key.
+// overlayVAPIDFromFile fills VAPID values from .env.notification where the process has none.
 func overlayVAPIDFromFile(path string) error {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -70,8 +66,7 @@ func overlayVAPIDFromFile(path string) error {
 	return nil
 }
 
-// DefaultVAPIDSubject is the contact push services see for this server: the sending email address,
-// otherwise the site itself.
+// DefaultVAPIDSubject is the contact push services see: the sending email, otherwise the site.
 func DefaultVAPIDSubject() string {
 	if from, err := mail.ParseAddress(os.Getenv("EMAIL_FROM")); err == nil && from.Address != "" {
 		return "mailto:" + from.Address

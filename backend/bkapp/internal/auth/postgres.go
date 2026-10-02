@@ -47,9 +47,7 @@ func (p *PostgresStore) CodeStats(ctx context.Context, emailIndex []byte, since 
 	return count, *latest, nil
 }
 
-// IssueCode holds a lock on the email for the whole check and insert, so parallel requests for one address take
-// turns: the first passes the limits and every other one sees its code and is refused. Without it a burst could
-// send hundreds of emails to one person. Any unused code is retired so only the newest one can ever work.
+// IssueCode locks the email for the check and insert, so a burst sends one email and only the newest code works.
 func (p *PostgresStore) IssueCode(ctx context.Context, emailIndex, hash []byte, now, expiresAt time.Time, limits CodeLimits) (time.Duration, error) {
 	var wait time.Duration
 	err := db.WithScope(ctx, p.pool, db.Scope{EmailIndex: emailIndex}, func(tx pgx.Tx) error {
@@ -90,8 +88,7 @@ func (p *PostgresStore) IssueCode(ctx context.Context, emailIndex, hash []byte, 
 	return wait, err
 }
 
-// DeleteCodes drops every code for an email. Used when the email could not be sent, so a failure on
-// our side does not lock the person out of asking again.
+// DeleteCodes drops every code for an email, so a send that failed on our side never locks the person out.
 func (p *PostgresStore) DeleteCodes(ctx context.Context, emailIndex []byte) error {
 	return db.WithScope(ctx, p.pool, db.Scope{EmailIndex: emailIndex}, func(tx pgx.Tx) error {
 		_, err := tx.Exec(ctx, `delete from login_codes where email_index = $1`, emailIndex)
@@ -100,7 +97,6 @@ func (p *PostgresStore) DeleteCodes(ctx context.Context, emailIndex []byte) erro
 }
 
 // CheckCode locks the code row so parallel guesses are counted one at a time.
-// A correct code deletes every code for the email, so nothing reusable stays in the database.
 func (p *PostgresStore) CheckCode(ctx context.Context, emailIndex []byte, now time.Time, maxAttempts int, matches func([]byte) bool) (VerifyOutcome, int, error) {
 	outcome := CodeMissing
 	left := 0

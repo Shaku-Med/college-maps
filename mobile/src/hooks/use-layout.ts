@@ -1,8 +1,7 @@
 import { Platform, useWindowDimensions, type ViewStyle } from 'react-native';
 import { initialWindowMetrics, useSafeAreaInsets } from 'react-native-safe-area-context';
 
-// Past this width (an iPad, a tablet, or a big phone on its side) the map's panels sit in a column on the
-// left, like the web app, and pages keep their text at a readable width instead of stretching.
+// Past this width the map's panels sit in a left column, like the web, and text keeps a readable width.
 const WIDE_AT = 700;
 /** Short enough that a left-column directions card would crush its content (phone landscape). */
 const SHORT_AT = 520;
@@ -13,10 +12,7 @@ export const PANEL_WIDTH = 440;
 /** Comfortable reading width for lists and forms on tablets. */
 export const READABLE_MAX = 720;
 
-/**
- * Centers full-bleed tab pages on tablets with side gutters.
- * Do NOT use inside form sheets — sheets are already narrow; window gutters crush their content.
- */
+/** Centers full-bleed tab pages on tablets with side gutters. */
 export function useReadableStyle(): ViewStyle {
   const { width } = useWindowDimensions();
   const side = Math.max(0, (width - READABLE_MAX) / 2);
@@ -35,10 +31,7 @@ export function useShortViewport() {
   return useWindowDimensions().height < SHORT_AT;
 }
 
-/**
- * Map draws under the native tab bar on phones. On wide iPad with sidebarAdaptable tabs, navigation
- * sits in a side sidebar instead — only clear the home indicator, not a phone-sized bottom bar.
- */
+/** Map draws under the native tab bar on phones. */
 export function useMapChromeBottom(tabBarShown: boolean): number {
   const insets = useSafeAreaInsets();
   const wide = useWide();
@@ -55,10 +48,7 @@ export function useMapChromeBottom(tabBarShown: boolean): number {
 
 export type CameraPadding = { top: number; bottom: number; left: number; right: number };
 
-/**
- * Camera padding so routes and pins stay clear of the left column on tablets.
- * `bottomChrome` is the space taken by the tab bar and any bottom HUD.
- */
+/** Camera padding so routes and pins stay clear of the left column on tablets. */
 export function mapCameraPadding(
   wide: boolean,
   kind: 'preview' | 'follow' | 'step' | 'meetup' | 'place',

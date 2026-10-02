@@ -1,8 +1,7 @@
 import { useThemeColor } from 'heroui-native';
 import { View } from 'react-native';
 
-// Theme colors come back as hex or rgb(a). Anything else falls back to plain black or white, which still
-// reads fine under the status bar.
+// Theme colors come back as hex or rgb(a).
 function withAlpha(color: string, alpha: number, dark: boolean) {
   const hex = /^#([0-9a-f]{3}|[0-9a-f]{6})([0-9a-f]{2})?$/i.exec(color);
   let rgb: [number, number, number] | null = null;
@@ -17,11 +16,7 @@ function withAlpha(color: string, alpha: number, dark: boolean) {
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
-/**
- * A soft fade from the app's background at the edge of the map to clear, so what sits over it, the chips and
- * status bar at the top or the tab bar and buttons at the bottom, stays readable instead of blending into the
- * street and building labels underneath.
- */
+/** Fades the map edge into the background so the chips, status bar, and tab bar stay readable over it. */
 export function EdgeScrim({ edge, height, dark }: { edge: 'top' | 'bottom'; height: number; dark: boolean }) {
   const background = useThemeColor('background');
   const stop = (alpha: number) => withAlpha(background, alpha, dark);

@@ -3,8 +3,7 @@ import { Platform } from 'react-native';
 import type { RouteStep } from '@/lib/routing';
 import NavigationActivity, { type NavigationActivityProps } from '@/widgets/navigation-activity';
 
-// The trip on the Lock Screen and in the Dynamic Island, like Apple Maps. It starts from the tap on Start,
-// since iOS only allows that while the app is open, and the background location task keeps it current.
+// The trip on the Lock Screen and in the Dynamic Island, like Apple Maps.
 
 export type TripSnapshot = {
   instruction: string;

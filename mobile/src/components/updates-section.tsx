@@ -8,8 +8,7 @@ function formatUpdateDate(date: Date) {
   return date.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 }
 
-// Live updates: a new JavaScript bundle published with `eas update` reaches installed builds without a new
-// TestFlight build. The app checks on every launch; this checks and applies one right away.
+// Applies a new `eas update` bundle right away instead of waiting for the next launch.
 export function UpdatesSection() {
   const { toast } = useToast();
   const muted = useThemeColor('muted');

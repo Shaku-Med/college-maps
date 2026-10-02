@@ -65,11 +65,7 @@ function pointFeature(longitude: number, latitude: number): GeoJSON.Feature<GeoJ
   };
 }
 
-/**
- * You on the map: accent glow + facing flashlight, like Apple Maps / the web app.
- * The dot is a map layer (always visible). The beam is a fixed-size screen cone so it stays
- * readable at any zoom, not a tiny 70 m wedge on a city-wide preview.
- */
+/** You on the map: accent glow + facing flashlight, like Apple Maps / the web app. */
 export function UserPin({ fix, at }: { fix: Fix; at?: Coordinate | null }) {
   const accent = useThemeColor('accent');
   const mapBearing = useMapBearing();

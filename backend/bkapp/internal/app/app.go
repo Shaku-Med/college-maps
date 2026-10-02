@@ -1,5 +1,4 @@
-// Package app wires the API together. cmd/api runs it as a long lived server; api/index.go runs the
-// same thing as a serverless function, where the process only lives for a few requests.
+// Package app wires the API together.
 package app
 
 import (
@@ -29,8 +28,7 @@ type App struct {
 	api *httpapi.Server
 }
 
-// StartBackground starts the housekeeping the HTTP layer needs, such as forgetting old rate limit
-// counters. It stops when the channel closes.
+// StartBackground starts the housekeeping the HTTP layer needs, such as forgetting old rate limit counters.
 func (a *App) StartBackground(stop <-chan struct{}) {
 	a.api.StartBackground(stop)
 }

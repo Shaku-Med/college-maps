@@ -44,8 +44,7 @@ export default function SentScreen() {
 
   return (
     <>
-      {/* Stacked under the title: on iOS 26 an automatic bar can sink into the bottom toolbar, behind the
-          tab bar's own search, where it cannot be reached. */}
+      {/* Stacked: on iOS 26 an automatic bar can sink behind the tab bar's search, out of reach. */}
       <Stack.SearchBar
         placement="stacked"
         hideWhenScrolling={false}

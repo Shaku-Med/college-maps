@@ -155,8 +155,7 @@ func (s *Service) Export(ctx context.Context, me auth.User) ([]Subscription, err
 	return out, err
 }
 
-// Notify reaches each person on every device they turned notifications on for: browsers through Web Push when
-// its keys are set up, and iPhones through Expo, which needs no keys on this side.
+// Notify reaches every device a person turned notifications on for: Web Push, and Expo for iPhones.
 func (s *Service) Notify(ctx context.Context, senderID string, userIDs []string, msg Message) {
 	if s == nil || senderID == "" || len(userIDs) == 0 {
 		return
@@ -257,9 +256,7 @@ func (s *Service) send(ctx context.Context, sub webSub, payload []byte) {
 	}
 }
 
-// The push services browsers hand out subscriptions for. The server posts to a subscription's endpoint whenever
-// it notifies someone, so any other address would let a signed in user make the server call a host of their
-// choosing, including ones only reachable from inside its network.
+// The only push hosts allowed, so a subscription cannot make the server call an address of the user's choosing.
 var pushHosts = map[string]bool{
 	"fcm.googleapis.com":                true, // Chrome, Android, and other Chromium browsers
 	"updates.push.services.mozilla.com": true, // Firefox

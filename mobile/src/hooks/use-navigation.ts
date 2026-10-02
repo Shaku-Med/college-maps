@@ -45,8 +45,7 @@ const FOLLOW_AGAIN_MS = 8_000;
 const COURSE_SPEED_MPS = 0.7;
 const MAX_SPEED_SLACK = 8;
 const WALK_FOLLOW_ZOOM = 18;
-// Arriving takes two fixes in a row, and "near the building" only counts on a fix this sure of itself, so one
-// wild reading beside the destination is not an arrival.
+// Arriving takes two fixes in a row, and "near the building" only counts on a fix this accurate.
 const ARRIVAL_FIXES = 2;
 const ARRIVAL_ACCURACY_METERS = 30;
 // A fix that would mean moving faster than this since the last good one is a GPS jump, not the traveller.
@@ -54,8 +53,7 @@ const MAX_BELIEVABLE_MPS: Record<TravelMode, number> = { walk: 12, bike: 20, dri
 // A walk or bike ride that started on streets switches to the campus paths once the traveller is on them.
 const ON_CAMPUS_WALKWAY_METERS = 15;
 const ON_CAMPUS_FIXES = 2;
-// Following the steps by hand, a fix only takes over once it is this close to the route. Anywhere else (off
-// campus while reading directions from a building) it would be matched to the wrong part of the route.
+// Following the steps by hand, a fix only takes over once it is this close to the route.
 const TAKEOVER_METERS = 40;
 
 function offRouteLimit(accuracy: number) {
@@ -77,10 +75,7 @@ type Options = {
   facingUp: boolean;
 };
 
-/**
- * Live guidance along a route: progress, arrival, going the wrong way, rerouting from wherever the traveller
- * went, switching back to the route they left, and holding still while they ride a bus on walking directions.
- */
+/** Live guidance: progress, arrival, wrong way, rerouting, switching back, and holding still on a bus. */
 export function useNavigation({ destination, avoidStairs, follow, facingUp }: Options) {
   const [route, setRoute] = useState<Route | null>(null);
   const [progress, setProgress] = useState<RouteProgress>();
@@ -518,10 +513,7 @@ export function useNavigation({ destination, avoidStairs, follow, facingUp }: Op
     return true;
   }, [commit]);
 
-  /**
-   * Avoid stairs switched on or off mid route: the way is found again from where the traveller is now. Returns
-   * false when no step free way exists from here, and the current route stays.
-   */
+  /** Avoid stairs switched on or off mid route: the way is found again from where the traveller is now. */
   const changeAvoidStairs = useCallback(
     (avoid: boolean) => {
       const current = nav.current;

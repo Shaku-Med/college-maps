@@ -70,8 +70,7 @@ const MAX_SNAP_METERS = 250;
 // A staircase only counts as where someone is when it is clearly closer than the step-free path beside it.
 const STAIRS_CLEARLY_CLOSER_METERS = 6;
 const U_TURN_METERS = 25;
-// A building can be reached from any walkway beside it, not only the one nearest its center, which may be
-// round the back. Walkways this much further out than the nearest still count as a way in.
+// A building can be entered from any walkway beside it, within this much of the nearest one.
 const GOAL_SIDE_METERS = 40;
 const MAX_GOALS = 12;
 // Between two ways in, a closer one wins a near tie, but a much shorter walk always wins.
@@ -152,8 +151,7 @@ function snapToGraph(g: WalkGraph, p: Coordinate, avoidStairs: boolean): Walkway
   return best && best.distance <= MAX_SNAP_METERS ? best : undefined;
 }
 
-// Every walkway that reaches the destination: the nearest one, plus any other within GOAL_SIDE_METERS of it,
-// one point per walkway, so the route can arrive from whichever side is the shortest walk.
+// Every walkway reaching the destination within GOAL_SIDE_METERS, so the route uses the shortest side.
 function snapGoals(g: WalkGraph, p: Coordinate, avoidStairs: boolean): WalkwayMatch[] {
   const hits: WalkwayMatch[] = [];
   for (let e = 0; e < g.edgeA.length; e++) {
@@ -171,10 +169,7 @@ function snapGoals(g: WalkGraph, p: Coordinate, avoidStairs: boolean): WalkwayMa
   return hits.filter((hit) => hit.distance <= reach).slice(0, MAX_GOALS);
 }
 
-/**
- * The walkway someone is actually on, stairs included. With stairs avoided, a staircase only wins when
- * it is clearly closer than the step-free path, so GPS wobble beside a ramp is not read as taking the stairs.
- */
+/** The walkway someone is actually on, stairs included. */
 export function matchWalkway(g: WalkGraph, p: Coordinate, { avoidStairs }: { avoidStairs: boolean }) {
   const nearest = snapToGraph(g, p, false);
   if (!nearest || !nearest.stairs || !avoidStairs) return nearest;
@@ -249,7 +244,6 @@ export function findRoute(
   const farthestGoal = goals[goals.length - 1].distance;
 
   // Someone partway down a staircase has to finish it, and long ones are several stair segments in a row.
-  // The rest of that flight stays open even while stairs are avoided; every other staircase stays closed.
   const flight = avoidStairs && start.stairs ? stairFlight(g, start) : undefined;
 
   const nodeCount = g.lat.length;
@@ -278,8 +272,7 @@ export function findRoute(
     return [best, which];
   };
 
-  // Someone who took a shortcut should be led on from where they are heading, not turned around to
-  // save a few steps. The extra cost only steers the search; the distance shown is measured from the path.
+  // Someone who took a shortcut should be led on from where they are heading, not turned around to save a few steps.
   const turnBack = (node: number) => {
     const at = nodeCoord(g, node);
     if (heading === undefined || distanceMeters(start.point, at) < 1) return 0;
@@ -342,9 +335,7 @@ export function findRoute(
   nodes.reverse();
 
   const path: Coordinate[] = [from, start.point, ...nodes.map((i) => nodeCoord(g, i)), goal.point, to];
-  // A flag at index k marks the edge that ends at path[k]; graph node j lives at index j + 2. The first
-  // and last pieces run along the start and goal walkways, which is how a staircase someone is already
-  // on gets announced.
+  // A flag at index k marks the edge that ends at path[k]; graph node j lives at index j + 2.
   const goalIndex = 2 + nodes.length;
   const stairFlags = path.map((_, k) => {
     if (k === goalIndex) return goal.stairs;
@@ -355,8 +346,7 @@ export function findRoute(
   return buildRoute(g, dedupe(path, stairFlags), distanceMeters(goal.point, to));
 }
 
-// The stair nodes between a staircase someone is on and the nearest place in each direction where
-// they can step off onto a step-free path. It stops at those exits rather than following other stairs.
+// Stair nodes from the staircase someone is on to the nearest step-free exit each way.
 function stairFlight(g: WalkGraph, start: WalkwayMatch): Set<number> {
   const hasStepFreeExit = (n: number) => {
     for (let slot = g.offsets[n]; slot < g.offsets[n + 1]; slot++) if (!g.stairs[slot]) return true;
@@ -526,10 +516,7 @@ export function trackProgress(route: Route, position: Coordinate, hintSegment = 
   };
 }
 
-/**
- * Where someone would be after covering this much of the route. Used when there is no live location and the
- * walker is stepping through the directions themselves.
- */
+/** Where someone would be after covering this much of the route. */
 export function progressAtDistance(route: Route, meters: number): RouteProgress {
   const along = Math.max(0, Math.min(route.distance, meters));
   let segment = 1;
@@ -558,10 +545,7 @@ export function remainingPath(route: Route, progress: RouteProgress): Coordinate
 
 const ON_ROUTE_METERS = 15;
 
-/**
- * Walks the user to the nearest point of a route they picked, then follows that route to its end.
- * Used when someone taps their earlier route instead of the one they were re-routed onto.
- */
+/** Walks the user to the nearest point of a route they picked, then follows that route to its end. */
 export function routeVia(g: WalkGraph, from: Coordinate, via: Route, options: RouteOptions): Route | null {
   const joined = trackProgress(via, from);
   const rest = via.path.slice(joined.segmentIndex);

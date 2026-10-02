@@ -294,8 +294,7 @@ func (s *Service) Unfriend(ctx context.Context, me auth.User, rawUsername string
 	})
 }
 
-// Block removes any friendship or request between you and the other person, and stops them
-// from finding you, sending you requests, or adding you to meetups.
+// Block removes any friendship or request and stops the other person finding, asking, or adding you.
 func (s *Service) Block(ctx context.Context, me auth.User, rawUsername string) error {
 	handle, ok := normalizeUsername(rawUsername)
 	if !ok {
@@ -346,8 +345,7 @@ func (s *Service) Unblock(ctx context.Context, me auth.User, rawUsername string)
 	})
 }
 
-// lockUser makes one user's writes that count against a daily or active limit take turns, so a burst of parallel
-// requests cannot all pass the count before any of them has written. The lock ends with the transaction.
+// lockUser makes one user's limited writes take turns until the transaction ends, so bursts cannot pass.
 func lockUser(ctx context.Context, tx pgx.Tx, userID string) error {
 	_, err := tx.Exec(ctx, `select pg_advisory_xact_lock(hashtextextended($1::text, 7244))`, userID)
 	return err

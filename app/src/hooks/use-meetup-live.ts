@@ -15,10 +15,7 @@ type Live = { meetupId: string; positions: LivePosition[]; state: LiveState; els
 
 const nothing: Live = { meetupId: "", positions: [], state: "offline", elsewhere: false };
 
-/**
- * Streams the meetup's positions while it is open and shares yours. Passing a null id stops both,
- * which is what leaving, ending, or closing the meetup does.
- */
+/** Streams the meetup's positions while it is open and shares yours. */
 export function useMeetupLive(meetupId: string | null, fix?: { position: Coordinate; accuracy: number }) {
   const [live, setLive] = useState<Live>(nothing);
   const connectionRef = useRef<ReturnType<typeof joinMeetupLive> | null>(null);

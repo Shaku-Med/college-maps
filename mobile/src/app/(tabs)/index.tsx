@@ -156,8 +156,7 @@ export default function MapScreen() {
 
   const follow = useCallback(
     ({ point, zoom: level, bearing }: FollowTarget) => {
-      // A camera move that fails, which some Android map builds do while a style is still loading, must never
-      // stop guidance itself. The next fix moves the camera again.
+      // A failed camera move, which some Android builds do while the style loads, must never stop guidance.
       try {
         // Prefer the smoothed facing heading so follow and compass turns do not fight.
         const smoothed = facingUpRef.current ? smoothHeading.current() : undefined;
@@ -200,8 +199,7 @@ export default function MapScreen() {
     facingUpRef.current = facingUp;
   }, [facingUp]);
 
-  // Feed the smoother every compass/course reading; only ease the camera when it has settled enough
-  // and nothing else is already moving it (same idea as the web map's turnMapToFacing).
+  // Ease the camera only once the heading settles and nothing else moves it, like the web's turnMapToFacing.
   useEffect(() => {
     if (!navigating || !facingUp || !navigation.isFollowing || navigation.manualStep !== null) {
       return;
@@ -391,8 +389,7 @@ export default function MapScreen() {
     const route = preview.route;
     if (!route) return;
     const from = liveStart ? (location.fix?.position ?? null) : null;
-    // Starting must always get as far as guidance, so the first spoken line and the camera move are extras that
-    // can fail on their own without stopping it.
+    // Voice and camera are extras that may fail; starting must always reach guidance.
     try {
       voice.begin(route, navigation.facing());
     } catch {
@@ -564,13 +561,11 @@ export default function MapScreen() {
   const meetupSpot = meetupPlace?.coordinate ?? meetupPin;
   const meetupWhere = meetupPlace?.name ?? (meetupHost ? `Wherever ${meetupHost.displayName} is` : 'A pin on the map');
 
-  // Inside a tab, Android can report no bottom inset because the tab bar takes it, even though the map runs
-  // under both the bar and the system navigation. Chrome bottom clears the tab bar when it is showing.
+  // Android can report no bottom inset inside a tab, though the map runs under the tab and system bars.
   const tabBarShown = trip.phase === 'idle';
   const chromeBottom = useMapChromeBottom(tabBarShown);
 
-  // Showing a meetup frames everyone in it and the place you meet, and frames again as more people appear,
-  // but not on every move, so the map is still free to pan.
+  // Frames everyone in the meetup as people appear, but not on every move, so the map can still pan.
   const framed = useRef<{ id: string; count: number } | null>(null);
   const framePoints = meetup
     ? [
@@ -812,8 +807,7 @@ export default function MapScreen() {
       </Map>
 
       {navigating ? null : <TopScrim height={insets.top + 96} dark={scheme === 'dark'} />}
-      {/* Android's tab bar is see through, so the map fades out behind it the same way it does under the chips,
-          keeping the tab labels and the buttons above them readable. */}
+      {/* Android's tab bar is see through, so the map fades behind it to keep labels readable. */}
       {Platform.OS === 'android' && tabBarShown ? (
         <EdgeScrim edge="bottom" height={chromeBottom + 90} dark={scheme === 'dark'} />
       ) : null}
@@ -887,8 +881,7 @@ export default function MapScreen() {
         ) : null}
       </View>
 
-      {/* Browse map buttons stay on the right. During navigation, Point north / facing / Recenter sit in a
-          horizontal row above the footer, like the web app. */}
+      {/* Browse map buttons stay on the right. */}
       {wide && !navigating ? (
         <View
           pointerEvents="box-none"

@@ -2,8 +2,7 @@ import { useSyncExternalStore } from 'react';
 
 import { loadSchedule, saveSchedule, type ClassEntry } from '@/lib/schedule';
 
-// Classes stay on this phone only, like the web app keeps them in the browser. The shared schedule code
-// reads and writes localStorage, which the app provides through expo-sqlite.
+// Classes stay on this phone only, like the web app keeps them in the browser.
 let classes: ClassEntry[] | null = null;
 const listeners = new Set<() => void>();
 

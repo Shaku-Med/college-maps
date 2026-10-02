@@ -51,12 +51,10 @@ import {
 const OFF_CAMPUS_METERS = CAMPUS.map.onCampusRadiusMeters;
 const WALKING_AREA = CAMPUS.map.walkingArea;
 const NEAR_CAMPUS_PATH_METERS = 40;
-// Following the steps by hand, a fix only takes over once it is this close to the route. Anywhere else (off
-// campus while reading directions from a building) it would be matched to the wrong part of the route.
+// Following the steps by hand, a fix only takes over once it is this close to the route.
 const TAKEOVER_METERS = 40;
 
-// Campus walking directions only exist where the campus path network does. Anywhere outside it, even a
-// few hundred metres away on the expressway, the route has to come from the street network instead.
+// Campus walking directions only exist where the campus path network does.
 function onCampusPaths({ latitude, longitude }: Coordinate) {
   return (
     latitude >= WALKING_AREA.south &&
@@ -84,16 +82,14 @@ const DROP_PREVIOUS_METERS = 200;
 const WALKWAY_MATCH_METERS = 10;
 // How much closer another walkway has to be than the route before it counts as the path they took.
 const WALKWAY_GAP_METERS = 10;
-// Street routes come from a free shared server, so a preview is only refreshed after moving this far
-// and a reroute waits a few seconds after the last one.
+// Street routes come from a shared free server, so previews and reroutes are spaced out.
 const STREET_REFRESH_METERS = 75;
 const STREET_REROUTE_GAP_MS = 5_000;
 const FOLLOW_ZOOM: Record<TravelMode, number> = { walk: 17.5, bike: 16.5, drive: 15.5 };
 const STREET_ARRIVAL_METERS: Record<TravelMode, number> = { walk: 20, bike: 30, drive: 50 };
 // Faster travel covers more ground between fixes, so wrong way and off route need more room before firing.
 const TRAVEL_SLACK: Record<TravelMode, number> = { walk: 1, bike: 2, drive: 4 };
-// After someone moves the map during navigation, it goes back to following them once it has sat still
-// this long, so looking around never means losing the route.
+// After someone moves the map while navigating, following resumes once it has sat still this long.
 const FOLLOW_AGAIN_MS = 8_000;
 // Standing still, a phone's reported course is meaningless, so it only counts above a walking pace.
 const COURSE_SPEED_MPS = 0.7;
@@ -246,8 +242,7 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
   const [hasArrived, setHasArrived] = useState(false);
   const [walkwayPoint, setWalkwayPoint] = useState<Coordinate>();
   const [isRotated, setIsRotated] = useState(false);
-  // Navigation turns the map the way the walker faces, like every navigation app. The compass button flips
-  // it back to north up.
+  // Navigation turns the map the way the walker faces, like every navigation app.
   const [facingUp, setFacingUp] = useState(true);
   // Set when navigating without a live location: the walker moves through the steps themselves.
   const [manualStep, setManualStep] = useState<number | null>(null);
@@ -288,8 +283,7 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
   const { request: requestHeading, setCourse, compass } = useHeading(handleHeading);
   const motionRef = useRef(createMotionTracker());
   const motionStateRef = useRef<MotionState>({ speed: 0, motion: "still" });
-  // Set while the person is clearly going faster than the chosen way of travel allows, like walking
-  // directions on a bus. Guidance holds still until they are back to that pace.
+  // Set while moving faster than the way of travel allows, like walking directions on a bus.
   const ridingRef = useRef(false);
   const [isRiding, setIsRiding] = useState(false);
 
@@ -315,8 +309,7 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
   useEffect(() => () => clearTimeout(noticeTimerRef.current), []);
   useEffect(() => () => clearTimeout(followAgainRef.current), []);
 
-  // Picks up following where the walker is right now, not where they were when the timer started. The
-  // rotation they chose stays; only the position and zoom come back.
+  // Picks up following where the walker is right now, not where they were when the timer started.
   const followAgain = useCallback(() => {
     clearTimeout(followAgainRef.current);
     const nav = navRef.current;
@@ -438,9 +431,7 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
       const { graph, destination } = nav;
       const travel = route.travel;
 
-      // Walking directions on a bus would read every stop and turn it makes as getting lost, and reroute onto
-      // whatever walkway lies under the road. So while someone is moving faster than their way of travel
-      // allows, guidance holds its place, and picks up from wherever they get off.
+      // Too fast for the way of travel, like a bus, so guidance holds instead of rerouting onto the road.
       const riding =
         travel === "drive" ? false : travel === "bike" ? motionState.motion === "vehicle" : !isOnFoot(motionState.motion);
       const justGotOff = ridingRef.current && !riding;
@@ -448,8 +439,7 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
         ridingRef.current = riding;
         setIsRiding(riding);
       }
-      // Being sure someone is riding takes a few seconds. Rerouting holds from the first fast fix, so a bus
-      // pulling away from the route cannot trigger one while that is still being worked out.
+      // Being sure someone is riding takes a few seconds.
       const fastest = Math.max(motionState.speed, speed ?? 0);
       const holding =
         riding || (travel !== "drive" && fastest >= (travel === "bike" ? RIDING_MAX_MPS : ON_FOOT_MAX_MPS));
@@ -457,8 +447,7 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
       const slack = Math.max(TRAVEL_SLACK[travel ?? "walk"], Math.min(MAX_SPEED_SLACK, motionState.speed / 2));
       const limit = offRouteLimit(accuracy) * Math.sqrt(slack);
 
-      // Matching the fix to the walkway underfoot catches a shortcut, or stairs taken despite avoiding them,
-      // long before the walker strays far enough to count as lost. It also gives the dot a real path to sit on.
+      // Matching to the walkway underfoot catches shortcuts and stairs early, and gives the dot a path.
       const match =
         graph && !travel && !holding ? matchWalkway(graph, position, { avoidStairs: nav.avoidStairs }) : undefined;
       const walkway = match && match.distance <= WALKWAY_MATCH_METERS ? match : undefined;
@@ -534,9 +523,7 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
         !isOff &&
         (backtracked > WRONG_WAY_WARN_METERS * slack || (walkingOpposite && backtracked > COURSE_MIN_METERS * slack));
 
-      // Rerouting starts from the walkway they are on and carries on the way they are heading, so a shortcut
-      // is followed instead of undone.
-      // Stepping off somewhere away from the route means rerouting from there straight away.
+      // Reroutes from the walkway they are on, the way they head, so a shortcut is followed, not undone.
       const lost =
         offRouteCountRef.current >= 2 ||
         otherWalkwayCountRef.current >= 2 ||
@@ -576,7 +563,6 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
       const reachedEntrance =
         next.distanceAlong >= route.arrivalDistance - (travel ? STREET_ARRIVAL_METERS[travel] : ARRIVAL_METERS);
       // Riding past the place is not arriving at it.
-      // Only someone on the route reaches its end; being near its line from far off is not arriving.
       const onTheRoute = next.distanceFromRoute <= limit;
       const arrived =
         !holding &&
@@ -678,8 +664,7 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
   );
   const firstStop = plan?.targets[0];
   const originCoordinate = plan?.start ?? undefined;
-  // A fix just past the edge of the walking area, which GPS does beside buildings, still counts as on campus
-  // while a campus walkway is close by, so one stray reading never turns a campus walk into street directions.
+  // A fix just past the walking area still counts as campus while a walkway is close by.
   const isOffCampus = useMemo(() => {
     const position = geo.position;
     if (!plan?.live || position === undefined || onCampusPaths(position)) return false;
@@ -705,8 +690,7 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
     return found;
   }, [graph, plan?.targets, avoidStairs]);
 
-  // Off campus there is no reason to block directions: the campus paths do not reach, so the route comes
-  // from the street network instead, by whatever way the person is travelling.
+  // Off campus the route comes from the street network, by whatever way the person travels.
   const streetKey = mode === "directions" && isOffCampus && firstStop ? `${firstStop.id}|${travelMode}|${avoidStairs}` : null;
   // Roughly a 100 m grid, so the preview is reconsidered as someone moves but not on every GPS fix.
   const streetCell = geo.position ? `${geo.position.latitude.toFixed(3)},${geo.position.longitude.toFixed(3)}` : "";
@@ -848,15 +832,13 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
       setIsPeopleOpen(false);
       setIsAccountOpen(false);
       if (tab === "map") setIsSearchOpen(false);
-      // Focusing inside the tap is what lets a phone open its keyboard. With a sheet covering the field, the
-      // field opens on its own and a second tap types.
+      // Focusing inside the tap is what lets a phone open its keyboard.
       else if (searchInputRef.current) searchInputRef.current.focus();
       else setIsSearchOpen(true);
     }
   }
 
-  // Friends who are sharing right now, labelled with their initials. You already have a location
-  // dot, so you are never a person pin to find.
+  // Friends who are sharing right now, labelled with their initials.
   const meetupPeople: MapPerson[] = meetup
     ? live.positions
         .filter((position) => {
@@ -950,8 +932,7 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
     if (next === MY_LOCATION) geo.start();
   }
 
-  // iPhones show one permission dialog at a time and drop the rest, so the compass is only ever asked for
-  // once a location is in hand. Without a compass the map still turns, using the direction of travel.
+  // iPhones drop a second permission prompt, so the compass is only asked for after location.
   function requestCompass() {
     if (geo.position) requestHeading();
   }
@@ -1072,8 +1053,7 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
     commitRoute(chosen, nav.navRoute, geo.position, "switched");
   }
 
-  // Turning Avoid stairs on or off mid walk finds the way again from where the walker is now. With no step free
-  // way from here, the walk stays as it is.
+  // Turning Avoid stairs on or off mid walk finds the way again from where the walker is now.
   function changeAvoidStairs(avoid: boolean) {
     const nav = navRef.current;
     const route = nav.navRoute;

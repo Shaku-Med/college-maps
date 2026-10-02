@@ -35,8 +35,7 @@ const CAMPUS_BOUNDS: [[number, number], [number, number]] = [
   [east, north],
 ];
 const CAMPUS_MIN_ZOOM = 13;
-// Turning the map to match the way someone faces: small sensor wobble is ignored, and turns are spaced out
-// so the map glides instead of twitching on every compass reading.
+// Small compass wobble is ignored and turns are spaced out, so the map glides instead of twitching.
 const HEADING_UP_MIN_DEGREES = 4;
 const HEADING_UP_GAP_MS = 450;
 const HEADING_UP_MS = 500;
@@ -136,8 +135,7 @@ function routeFeature(
 
 type RouteLines = { active?: Coordinate[]; previous?: Coordinate[] };
 
-// isStyleLoaded() is false whenever any map tile is still loading, which is nearly always while the camera
-// follows someone. Updating a line needs nothing loaded, so only creating the layers waits for the style.
+// isStyleLoaded() is false while any tile loads, so only creating the layers waits for the style.
 function applyRouteLayers(map: MapLibreMap, { active, previous }: RouteLines) {
   const activeSource = map.getSource<GeoJSONSource>(ROUTE_SOURCE);
   if (activeSource) {
@@ -207,8 +205,7 @@ function applyRouteLayers(map: MapLibreMap, { active, previous }: RouteLines) {
 // Turning is allowed in building view and while getting directions. Anywhere else the map faces north.
 function applyBuildingView(map: MapLibreMap, on: boolean, camera: "ease" | "keep", rotatable: boolean) {
   applyViewCamera(map, on, camera, rotatable);
-  // The style's own sources exist once the style has loaded, even while tiles are still coming in, which is
-  // all adding or removing a layer needs. Before that, the style.load handler applies this again.
+  // The style's sources exist once it has loaded; before that the style.load handler applies this.
   if (!map.getSource("openmaptiles")) return;
 
   const dark = window.matchMedia(DARK_QUERY).matches;
@@ -286,8 +283,7 @@ function applyViewCamera(map: MapLibreMap, on: boolean, camera: "ease" | "keep",
   const turned = !rotatable && Math.abs(map.getBearing()) > 0.5;
   if (camera === "ease" && (tilted || turned)) {
     const settle = () => map.easeTo({ pitch: 0, ...(rotatable ? {} : { bearing: 0 }), duration: 650, essential: true });
-    // Only one camera move runs at a time. Ending navigation flies to the place first, and starting this
-    // right away would stop that flight halfway, so it waits for the camera to land.
+    // Only one camera move runs at a time.
     if (map.isMoving()) map.once("moveend", settle);
     else settle();
   }
@@ -313,8 +309,7 @@ function createUserMarker() {
   return el;
 }
 
-// A friend on the map: a round avatar with a little point underneath, like Apple Maps. Their name
-// only appears while you are following them, so a busy map stays readable.
+// A friend on the map: a round avatar with a little point underneath, like Apple Maps.
 function createPersonMarker() {
   const el = document.createElement("button");
   el.type = "button";
@@ -404,8 +399,7 @@ const GLIDE_MAX_METERS = 120;
 
 type Glide = { to: (coordinate: Coordinate) => void; stop: () => void };
 
-// Slides a marker to each new position instead of jumping, easing out so it settles gently. A new
-// position mid slide carries on from wherever the marker is, so it never snaps back first.
+// Slides a marker to each new position instead of jumping, easing out so it settles gently.
 function createGlide(marker: Marker, duration: number): Glide {
   let frame = 0;
   let landing: ReturnType<typeof setTimeout> | undefined;
@@ -433,8 +427,7 @@ function createGlide(marker: Marker, duration: number): Glide {
         else halt();
       };
       frame = requestAnimationFrame(step);
-      // A browser can stop handing out frames while the page still counts as visible, as battery
-      // saving and some embedded views do. The marker still has to end up where the person is.
+      // Some browsers stop frames while visible, and the marker still has to land where the person is.
       landing = setTimeout(() => {
         halt();
         marker.setLngLat(toLngLat(coordinate));
@@ -448,9 +441,7 @@ const FASTEST_MS = 20;
 const CALMEST_MS = 90;
 const SETTLED_DEGREES = 0.2;
 
-// Chases the latest compass reading every animation frame. The bigger the gap, the faster it moves:
-// a real turn lands in a few frames so the cone feels attached to the phone, while small sensor
-// wobble is eased out instead of shaking.
+// Chases the latest compass reading every animation frame.
 function createHeadingAnimator(render: (degrees: number | undefined) => void) {
   let target: number | undefined;
   let shown: number | undefined;
@@ -622,8 +613,7 @@ export function CampusMap({
   const [isReady, setIsReady] = useState(false);
 
   const onSelectRef = useRef(onSelect);
-  // A turn the map was asked to finish, such as back to north. Following moves the camera on every GPS fix,
-  // and each move would otherwise stop the turn wherever it had got to.
+  // A turn the map was asked to finish, such as back to north.
   const bearingGoalRef = useRef<number | null>(null);
   const onUserPanRef = useRef(onUserPan);
   const onUserSettleRef = useRef(onUserSettle);
@@ -680,8 +670,7 @@ export function CampusMap({
     activityByPlace,
   ]);
 
-  // Eases the map round to the way the person faces. Tiny corrections are skipped so a wobbling compass does
-  // not shake the map, and turns stay out of the way of the move that follows the walker.
+  // Eases the map round to the way the person faces.
   const turnMapToFacing = () => {
     const map = mapRef.current;
     const facing = facingRef.current;
@@ -805,7 +794,6 @@ export function CampusMap({
         });
       }
       // OpenFreeMap styles reference a few patterns (like wood-pattern) their sprite does not ship.
-      // A transparent placeholder keeps the console quiet and the area simply renders unpatterned.
       map.setMissingStyleImageResolver((id) => {
         if (!map.hasImage(id))
           map.addImage(id, { width: 1, height: 1, data: new Uint8Array(4) });
@@ -821,8 +809,7 @@ export function CampusMap({
           onSelectRef.current(undefined);
         }
       });
-      // A camera change the person makes carries the input event behind it. Programmatic moves, like
-      // following the walker, do not, so they never count as the person taking over the map.
+      // A camera change the person makes carries the input event behind it.
       let handling = false;
       map.on("movestart", (event) => {
         if (!event.originalEvent) return;
@@ -878,8 +865,7 @@ export function CampusMap({
       window.addEventListener("orientationchange", relayout);
       window.addEventListener("pageshow", relayout);
       document.addEventListener("visibilitychange", relayoutWhenShown);
-      // The first frame can be lost, leaving the base map black under the labels until the first touch. Measuring
-      // again once the page has settled gets it drawing, and costs nothing when it already is.
+      // The first frame can be lost, leaving the base map black under the labels until the first touch.
       settleTimer = window.setTimeout(relayout, 1200);
       media.addEventListener("change", handleScheme);
       setIsReady(true);

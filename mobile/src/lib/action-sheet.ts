@@ -2,10 +2,7 @@ import { ActionSheetIOS, Alert, Platform } from 'react-native';
 
 export type SheetAction = { label: string; destructive?: boolean; onPress: () => void };
 
-/**
- * A short menu of actions: the native action sheet on iOS, and a native dialog on Android, which holds up to
- * three actions and closes with Back or a tap outside. Menus in this app never need more than three.
- */
+/** A short native action menu: an action sheet on iOS, a dialog on Android, which allows up to three. */
 export function showActionSheet({ title, message, actions }: { title?: string; message?: string; actions: SheetAction[] }) {
   if (Platform.OS === 'ios') {
     const options = [...actions.map((action) => action.label), 'Cancel'];

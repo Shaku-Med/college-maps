@@ -1,5 +1,4 @@
-// Package settings keeps a student's app preferences with their account, so a choice made on one device
-// follows them to the next.
+// Package settings keeps a student's preferences with their account, so they follow them to any device.
 package settings
 
 import (
@@ -40,8 +39,7 @@ func defaults() Settings {
 
 var ErrInvalidVoice = errors.New("unknown voice")
 
-// The voices the app offers. "device" is the phone's own speech engine; the rest are Kokoro voices that
-// run on the phone. Anything else is refused, so the column only ever holds one of these.
+// The voices the app offers.
 var voices = map[string]bool{
 	"device":     true,
 	"af_heart":   true,

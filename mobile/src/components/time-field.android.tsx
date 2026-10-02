@@ -7,10 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { fromMinutes, toMinutes, type TimeFieldProps } from '@/components/time-field.shared';
 import { formatClock } from '@/lib/schedule';
 
-/**
- * The Android time field. Material's clock dial is meant for a dialog, not a form, so the form shows a compact
- * time, and tapping it opens the dial in a sheet at its full size.
- */
+/** The Android time field. */
 export function TimeField({ minutes, onChange, label }: TimeFieldProps) {
   const insets = useSafeAreaInsets();
   const accent = useThemeColor('accent');

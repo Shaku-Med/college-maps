@@ -17,8 +17,7 @@ import (
 	"csimap/bkapp/internal/db"
 )
 
-// Runs against a real database only when TEST_DATABASE_URL is set. It works on rows of its own and deletes
-// them, and never reads or writes the "vapid" row the running server uses.
+// Runs against a real database only when TEST_DATABASE_URL is set.
 func TestNotificationKeysLiveInTheDatabase(t *testing.T) {
 	url := os.Getenv("TEST_DATABASE_URL")
 	if url == "" {

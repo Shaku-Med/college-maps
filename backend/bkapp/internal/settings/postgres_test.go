@@ -17,7 +17,6 @@ import (
 )
 
 // Runs against a real database only when TEST_DATABASE_URL is set, and removes the accounts it creates.
-// It proves a student can only ever read and change their own settings.
 func TestSettingsBelongToTheirOwner(t *testing.T) {
 	url := os.Getenv("TEST_DATABASE_URL")
 	if url == "" {
@@ -63,8 +62,7 @@ func TestSettingsBelongToTheirOwner(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Turning one kind of notification off leaves the voice and the other kinds alone, and the server's check
-	// for whether to send one sees it.
+	// Turning one notification kind off leaves the rest alone, and the send check sees it.
 	off := false
 	saved, err := service.Save(ctx, alice, settings.Patch{MeetupJoins: &off})
 	if err != nil || saved.Voice != "af_bella" || saved.Notify.MeetupJoins || !saved.Notify.FriendRequests {

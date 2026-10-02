@@ -3,10 +3,7 @@ export function shortestTurn(from: number, to: number) {
   return ((to - from + 540) % 360) - 180;
 }
 
-/**
- * Smooths compass/course readings the way the web map does: exponential ease toward the
- * latest heading so the camera never jumps on every noisy reading.
- */
+/** Eases toward the latest compass or course heading, like the web map, so the camera never jumps. */
 export function createSmoothHeading(opts?: {
   /** Time constant when nearly settled (ms). Higher = calmer. */
   calmMs?: number;
@@ -75,10 +72,7 @@ export function createSmoothHeading(opts?: {
   };
 }
 
-/**
- * What the map camera is doing: the bearing it was last sent to, and until when a move is still playing, so
- * a compass turn never cuts a follow short. Kept behind methods so screens can update it from any handler.
- */
+/** Where the camera points and until when a move plays, so a compass turn never cuts a follow short. */
 export function createCameraMemory() {
   let bearing = 0;
   let busyUntil = 0;

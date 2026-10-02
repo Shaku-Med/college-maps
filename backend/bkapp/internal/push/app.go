@@ -16,8 +16,7 @@ import (
 	"csimap/bkapp/internal/db"
 )
 
-// The iPhone app gets notifications through Expo's free push service, which forwards them to Apple. Its address
-// is fixed, so nothing a user sends decides where the server connects.
+// Expo's push service has a fixed address, so nothing a user sends decides where the server connects.
 const (
 	expoPushURL      = "https://exp.host/--/api/v2/push/send"
 	maxAppTokens     = 8
@@ -29,9 +28,7 @@ var expoToken = regexp.MustCompile(`^ExponentPushToken\[[A-Za-z0-9_-]{8,128}\]$`
 
 var expoClient = &http.Client{Timeout: expoPushDeadline}
 
-// SaveAppToken keeps a phone's push token for the signed in user, moving it over if the phone last belonged to
-// another account.
-// SaveAppToken registers this phone, or refreshes it, along with whether it wants the icon badge.
+// SaveAppToken registers or refreshes a phone's push token, moving it from any previous account.
 func (s *Service) SaveAppToken(ctx context.Context, me auth.User, token string, badge bool) error {
 	if s == nil {
 		return ErrUnavailable
@@ -122,8 +119,7 @@ type expoTicket struct {
 	} `json:"details"`
 }
 
-// sendToApps delivers one notification to a person's phones, and forgets any phone Expo says has uninstalled
-// the app or turned notifications off for good.
+// sendToApps delivers to a person's phones and forgets any that Expo says uninstalled or opted out.
 func (s *Service) sendToApps(ctx context.Context, senderID string, tokens []appToken, badge int, msg Message) {
 	if len(tokens) == 0 {
 		return

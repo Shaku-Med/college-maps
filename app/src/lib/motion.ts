@@ -1,9 +1,7 @@
 import type { Coordinate } from "@/data/campus";
 import { distanceMeters } from "@/lib/geo";
 
-// How someone is moving, judged from their speed. In metres per second: a brisk walk is about 1.8, a jog 3,
-// a hard run 5 to 6. Nobody on foot keeps up more than about 6 for long, so anything steadily faster is a
-// bike, a bus, or a car, and past 12 it is certainly a vehicle.
+// How someone is moving, judged from their speed.
 export type Motion = "still" | "walking" | "running" | "riding" | "vehicle";
 
 /** Faster than anyone keeps up on foot. */
@@ -33,9 +31,7 @@ export function classifySpeed(speed: number): Motion {
 
 export const isOnFoot = (motion: Motion) => motion === "still" || motion === "walking" || motion === "running";
 
-// How long a new kind of movement has to hold before it is believed. Getting on something is quick to
-// notice. Getting off needs more: a bus waiting at a light is standing still, so only a long stop counts,
-// while actually walking away from the stop counts sooner.
+// How long a new kind of movement has to hold before it is believed.
 function settleSeconds(from: Motion, to: Motion) {
   if (isOnFoot(from) || !isOnFoot(to)) return 8;
   return to === "still" ? 90 : 20;

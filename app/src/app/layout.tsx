@@ -17,8 +17,7 @@ const geistSans = Geist({
   subsets: ["latin"],
 });
 
-// Runs before paint so HeroUI's .dark class matches the system theme without a flash.
-// Colors are validated as hex in campus.json, so this cannot inject arbitrary CSS.
+// campus.json colors are validated as hex, so this cannot inject arbitrary CSS.
 function themeVariables(colors: { accent?: string; accentForeground?: string } | undefined) {
   if (!colors?.accent || !colors.accentForeground) return "";
   return `--accent:${colors.accent};--accent-foreground:${colors.accentForeground};`;

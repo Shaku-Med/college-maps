@@ -1,12 +1,4 @@
-// Command gmailtoken does the one time Google sign in that EMAIL_MODE=gmail needs.
-//
-// Run it on your own computer, not on the server:
-//
-//	go run ./cmd/gmailtoken -id <client id> -secret <client secret>
-//
-// It prints a link, waits for you to approve it in the browser, and prints the refresh token to put
-// in GMAIL_REFRESH_TOKEN. The token is a password for sending mail as that account: paste it into
-// the host's environment settings and nowhere else.
+// Command gmailtoken, run locally: go run ./cmd/gmailtoken -id <id> -secret <secret>. Its token is a password.
 package main
 
 import (
@@ -52,8 +44,7 @@ func run() error {
 		return errors.New("pass -id and -secret from the Desktop app OAuth client you created")
 	}
 
-	// A loopback address is the redirect Google allows for a desktop client, and the code never
-	// leaves this machine. PKCE ties the code to this run so a stray copy of it is useless.
+	// A loopback address is the redirect Google allows for a desktop client, and the code never leaves this machine.
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		return err

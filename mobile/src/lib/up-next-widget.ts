@@ -40,8 +40,7 @@ function classItems(classes: ClassEntry[], now: Date): Item[] {
   return out;
 }
 
-// At a moment, the meetup and the class that matter: the one going on, or else the next to start. The widget
-// chooses between them by its own setting.
+// At a moment, the meetup and the class that matter: the one going on, or else the next to start.
 function current(items: Item[], at: number): UpNextItem | null {
   const going = items.find((item) => item.startsAt <= at && item.endsAt > at);
   const found = going ?? items.filter((item) => item.startsAt > at).sort((a, b) => a.startsAt - b.startsAt)[0];
@@ -55,10 +54,7 @@ function pick(items: Item[], at: number): UpNextProps {
   };
 }
 
-/**
- * Hands the home screen widget a timeline for the next day and a half, so it moves on to the next class or
- * meetup by itself, without the app running. Only meetups you are in count, never ones you were invited to.
- */
+/** Gives the widget a 36 hour timeline so it moves on by itself; only meetups you joined count. */
 export function updateUpNextWidget(classes: ClassEntry[], meetups: Meetup[]) {
   const now = Date.now();
   const items = [

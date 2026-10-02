@@ -45,8 +45,7 @@ func run(logger *slog.Logger) error {
 	api := server.New(cfg, logger, rooms)
 	api.StartBackground(ctx.Done())
 
-	// Streams stay open for minutes, so there is no server-wide write timeout. The stream handler
-	// sets a deadline on every write, and cancelling the base context ends streams on shutdown.
+	// Streams stay open for minutes, so there is no server-wide write timeout.
 	srv := &http.Server{
 		Addr:              fmt.Sprintf(":%d", cfg.Port),
 		Handler:           api.Handler(),

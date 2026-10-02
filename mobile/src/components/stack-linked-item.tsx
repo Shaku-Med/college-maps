@@ -9,18 +9,12 @@ type ItemProps = ComponentProps<typeof ListGroup.Item>;
 type StackLinkedItemProps = Omit<ItemProps, 'children'> & {
   /** True while this row's destination screen is open. */
   linked: boolean;
-  /**
-   * iOS stack push: fade selection with interactive pop (1 → 0).
-   * Sheets/modals: solid fill only — root presentations have no stack progress.
-   */
+  /** iOS stack push: fade selection with interactive pop (1 → 0). */
   gestureSync?: boolean;
   children: ReactNode;
 };
 
-/**
- * List row with a selected fill while its destination is open.
- * Reuse this everywhere a list row pushes or sheets a detail screen.
- */
+/** List row with a selected fill while its destination is open. */
 export function StackLinkedItem({
   linked,
   gestureSync = true,

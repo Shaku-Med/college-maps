@@ -2,21 +2,16 @@ import type { Coordinate } from "@/data/campus";
 import { distanceMeters, formatDuration, formatSeconds } from "@/lib/geo";
 import type { Route, RouteStep, TravelMode, TurnDirection } from "@/lib/routing";
 
-// Street directions for people who are not on campus yet. The campus path network only covers campus,
-// so these come from OpenStreetMap's public Valhalla server, run by FOSSGIS. It is free under fair use,
-// about one request a second per person, and asks apps to name themselves in X-Client-Id.
+// Street directions from OpenStreetMap's public Valhalla server: free under fair use, apps name themselves.
 export const STREET_ROUTING_ORIGIN = "https://valhalla1.openstreetmap.de";
 const CLIENT_ID = "csimap";
 const TIMEOUT_MS = 12_000;
 const MAX_SHAPE_CHARS = 400_000;
 const MAX_MANEUVERS = 1_000;
 const MAX_TEXT = 200;
-// Valhalla will happily snap a point to a road 14 km away. A start or end that far from any road is a
-// bad fix or open water, and a route from there would only look like the walker is lost.
+// Valhalla will happily snap a point to a road 14 km away.
 const MAX_SNAP_METERS = 1_000;
-// With a known direction of travel, the start is matched to a road running that way. Left to itself the
-// router only looks at the single nearest road, which on a divided road or a bridge can be the wrong
-// carriageway or the street underneath, so it is also given room to consider the others.
+// With a known direction of travel, the start is matched to a road running that way.
 const HEADING_TOLERANCE_DEGREES = 45;
 const HEADING_SEARCH_METERS: Record<TravelMode, number> = { walk: 15, bike: 25, drive: 35 };
 
@@ -47,10 +42,7 @@ const STAIRS = 40;
 
 export class StreetRoutingError extends Error {}
 
-/**
- * A street route from `from` to `to`. Resolves to null when no route exists, and rejects with a
- * StreetRoutingError when the service could not be reached, so the two can be told apart on screen.
- */
+/** A street route from `from` to `to`. */
 export async function fetchStreetRoute(
   from: Coordinate,
   to: Coordinate,

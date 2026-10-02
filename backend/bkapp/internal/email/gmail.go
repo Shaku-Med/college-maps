@@ -16,10 +16,7 @@ import (
 	"time"
 )
 
-// Gmail sends the same message as the SMTP sender, but over https instead of an SMTP port. Hosts
-// like Render's free plan block outbound 25, 465 and 587, so smtp mode times out there while this
-// keeps working. It acts as one Gmail account through an OAuth refresh token; cmd/gmailtoken
-// creates that token.
+// Gmail sends the same message as the SMTP sender, but over https instead of an SMTP port.
 const (
 	googleTokenURL = "https://oauth2.googleapis.com/token"
 	gmailSendURL   = "https://gmail.googleapis.com/gmail/v1/users/me/messages/send"
@@ -119,8 +116,7 @@ func (g *Gmail) post(ctx context.Context, payload []byte, refresh bool) (int, er
 	return res.StatusCode, nil
 }
 
-// accessToken trades the long lived refresh token for a short lived access token and keeps it until
-// it is nearly expired. The lock also stops a burst of sign ins from asking Google all at once.
+// accessToken caches a short lived token from the refresh token, locked so sign ins ask Google once.
 func (g *Gmail) accessToken(ctx context.Context, refresh bool) (string, error) {
 	g.mu.Lock()
 	defer g.mu.Unlock()

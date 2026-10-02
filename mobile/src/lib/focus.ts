@@ -2,8 +2,7 @@ import { useSyncExternalStore } from 'react';
 
 import { getPlace, type Place } from '@/data/campus';
 
-// The place the map should show, set by search results and the place sheet. A tiny store instead of
-// context, because the map tab and the sheet live in different navigators.
+// The place the map should show, set by search results and the place sheet.
 let focused: Place | null = null;
 const listeners = new Set<() => void>();
 

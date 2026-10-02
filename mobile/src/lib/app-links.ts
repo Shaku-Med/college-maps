@@ -20,18 +20,10 @@ function roomFrom(query: string) {
   return undefined;
 }
 
-/**
- * Links that open the app with something ready, shared by csimap:// links, the Shortcuts app, and Siri:
- *   directions/1N?room=215   walking directions to a place, and a room in it
- *   next-class               directions to the next class saved on this phone
- *   classes                  the classes tab
- * Returns where to go once it is handled, or null for any other path, which routes as usual. Anything that does
- * not name a real campus place or a valid room is ignored, since links can come from any app.
- */
+/** Handles csimap:// links (directions/<place>?room=, next-class, classes), ignoring anything not on campus. */
 export function handleAppLink(path: string): string | null {
   if (path.length > MAX_LINK_LENGTH) return null;
-  // Hand parsed: React Native's URL leaves most of the standard out. Works for csimap://directions/1N and for
-  // the bare /directions/1N the router passes in.
+  // Hand parsed: React Native's URL leaves most of the standard out.
   const [rest, query = ''] = path.replace(/^[a-z][a-z0-9+.-]*:\/\//i, '').split('?', 2);
   const parts = rest.split('/').filter(Boolean);
 

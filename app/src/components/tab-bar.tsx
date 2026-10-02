@@ -56,11 +56,7 @@ function TabButton({
   );
 }
 
-/**
- * The app's tab bar on phones, so the site works like the app someone would install. iPhones get the floating
- * capsule with search on its own; Android phones get the bar along the bottom with a pill behind the selected tab.
- * Tablets and computers never see it and keep the buttons by the search field.
- */
+/** The app's tab bar on phones, so the site works like the app someone would install. */
 export function TabBar({ selected, showFriends, showAccount, friendsWaiting, onSelect }: TabBarProps) {
   const tabs: Tab[] = [
     { id: "map", label: "Map", icon: MapIcon },

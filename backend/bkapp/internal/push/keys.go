@@ -18,10 +18,7 @@ import (
 	"csimap/bkapp/internal/config"
 )
 
-// The Web Push keypair has to be the same on every instance and survive every deploy: browsers subscribe
-// against the public key, so a new keypair silently breaks every subscription. Hosts like Vercel have no
-// disk that lasts, so the keypair lives in the database, made once and sealed with a key derived from
-// AUTH_SECRET. A copy of the database alone does not reveal the private key.
+// The Web Push keypair lives sealed in the database, so every instance and deploy shares it.
 
 const (
 	sealVersion     = 1
@@ -31,7 +28,6 @@ const (
 )
 
 // ErrKeysUnreadable means stored keys exist but cannot be opened, most likely because AUTH_SECRET changed.
-// Notifications stay off instead of quietly replacing keys that subscriptions depend on.
 var ErrKeysUnreadable = errors.New("stored notification keys could not be decrypted with this AUTH_SECRET")
 
 type vapidKeys struct {
@@ -40,9 +36,7 @@ type vapidKeys struct {
 	Subject string `json:"subject"`
 }
 
-// keyRow names the row for one AUTH_SECRET. Two setups with different secrets sharing a database, like a
-// laptop and production, each get their own keypair instead of finding one they cannot open. The name is a
-// one way fingerprint, so it says nothing about the secret.
+// keyRow names the row for one AUTH_SECRET.
 func keyRow(secret []byte) string {
 	mac := hmac.New(sha256.New, secret)
 	mac.Write([]byte(keyRowLabel))
@@ -84,11 +78,7 @@ func open(aead cipher.AEAD, name string, sealed []byte) ([]byte, error) {
 	return plain, nil
 }
 
-// ResolveKeys settles the keypair every instance uses and writes it into cfg. Keys already in the database
-// win. Without them, keys already configured on this machine seed the database, so subscriptions made with
-// them keep working, and failing that a new keypair is made. When two instances start at once, both end up
-// with whichever keypair was stored first. It connects as the database owner, the only role that can read
-// app_keys.
+// ResolveKeys settles the keypair every instance uses and writes it into cfg.
 func ResolveKeys(ctx context.Context, pool *pgxpool.Pool, cfg *config.Config) error {
 	return resolveKeys(ctx, pool, cfg, keyRow(cfg.AuthSecret))
 }

@@ -227,8 +227,7 @@ func TestSharedIPAllowsAClassOfStreams(t *testing.T) {
 	}
 }
 
-// The phone app has no origin and sends its client header instead. A browser request always carries Origin,
-// so a foreign page with the header is still refused.
+// The phone app has no origin and sends its client header instead.
 func TestPhoneAppNeedsItsHeader(t *testing.T) {
 	srv := newTestServer(t)
 	token := sign(t, "meetup_room01", "member_alice1", "Alice")

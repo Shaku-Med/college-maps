@@ -2,8 +2,7 @@ import { useSyncExternalStore } from 'react';
 
 import { getPlace } from '@/data/campus';
 
-// Places opened or walked to lately, newest first, kept on this phone only. They become suggestions in the
-// menu from holding the app icon.
+// Places opened or walked to lately, newest first, kept on this phone only.
 const KEY = 'csimap.recent-places';
 const MAX = 4;
 const listeners = new Set<() => void>();

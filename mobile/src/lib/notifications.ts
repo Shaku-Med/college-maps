@@ -6,15 +6,13 @@ import { Platform } from 'react-native';
 
 import { apiCall } from '@/lib/api';
 
-// Friend requests and meetup invites reach the phone through Expo's push service, the same notifications the
-// web app sends to browsers. The choice is kept on this phone; the server only ever holds the token.
+// Push through Expo, matching the web's browser notifications; the server only ever holds the token.
 const PREFERENCE_KEY = 'csimap.notifications';
 const TOKEN_PATTERN = /^ExponentPushToken\[[A-Za-z0-9_-]{8,128}\]$/;
 
 let registered: string | null = null;
 
-// Choices that belong to this phone rather than the account: the icon badge, banners while the app is open,
-// and sound. All start on.
+// Choices that belong to this phone rather than the account: the icon badge, banners while the app is open, and sound.
 export type PhonePrefs = { badge: boolean; banners: boolean; sound: boolean };
 const PHONE_KEY = 'csimap.notifications.phone';
 const PHONE_DEFAULTS: PhonePrefs = { badge: true, banners: true, sound: true };
@@ -95,8 +93,7 @@ async function phoneToken() {
   return TOKEN_PATTERN.test(data) ? data : null;
 }
 
-// Android 13 and later only show the permission prompt once the app has a channel to post to. Expo's push
-// service sends to the channel named default when a message names none.
+// Android 13 and later only show the permission prompt once the app has a channel to post to.
 async function ensureChannel() {
   if (Platform.OS !== 'android') return;
   await Notifications.setNotificationChannelAsync('default', {
@@ -141,10 +138,7 @@ export async function disableNotifications() {
   if (token) await apiCall<void>('/v1/push/app-tokens', 'DELETE', { token });
 }
 
-/**
- * Registers the phone again after signing in or launching, when notifications were on. Apple can change a
- * phone's token, so the server keeps the current one.
- */
+/** Registers the phone again after signing in or launching, when notifications were on. */
 export async function syncNotifications() {
   if (!readPreference()) return;
   const permission = await Notifications.getPermissionsAsync();

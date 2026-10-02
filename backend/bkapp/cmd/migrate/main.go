@@ -1,5 +1,4 @@
 // Command migrate applies the SQL files in migrations/ without starting the API.
-// The API also runs this on startup, so it is only needed to prepare a database ahead of time.
 package main
 
 import (

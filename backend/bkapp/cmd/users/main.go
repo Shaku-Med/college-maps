@@ -1,10 +1,4 @@
-// Command users shows accounts with their decrypted emails, for the app owner only.
-//
-//	go run ./cmd/users                        list every account
-//	go run ./cmd/users -find name@school.edu  look up one account
-//	go run ./cmd/users -csv > users.csv       export for a spreadsheet
-//
-// It uses the same settings file as the API, so APP_ENV=production reads the production database.
+// Command users, owner only: go run ./cmd/users [-find name@school.edu] [-csv > users.csv]
 package main
 
 import (

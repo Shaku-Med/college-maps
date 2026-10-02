@@ -5,8 +5,7 @@ import { stepText } from '@/lib/instructions';
 import type { Route, RouteProgress, RouteStep, TravelMode } from '@/lib/routing';
 import { readVoicePreference, saveVoicePreference, speak, spokenDistance, stopSpeaking, warmUpVoice } from '@/lib/voice';
 
-// The same timing as the web app. Walkers need a few steps of warning; drivers need a block or more, and
-// faster travel needs more: the heads up comes about ten seconds out and the call a few seconds before.
+// The same timing as the web app.
 const CUES: Record<TravelMode, { prepare: number; act: number }> = {
   walk: { prepare: 30, act: 8 },
   bike: { prepare: 90, act: 20 },

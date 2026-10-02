@@ -7,10 +7,7 @@ import { findUpcoming, formatClock, type ClassEntry } from '@/lib/schedule';
 // iOS draws SF Symbols; Android shortcuts show the app icon, so they go without.
 const icon = (symbol: string) => (Platform.OS === 'ios' ? `symbol:${symbol}` : null);
 
-/**
- * The menu from holding the app icon: directions to the next class, places opened lately, and the two screens
- * people jump to most. Kept to four, the most iOS shows.
- */
+/** The app icon menu: next class, recent places, and the two most used screens, four at most for iOS. */
 export function updateQuickActions(classes: ClassEntry[], recent: string[]) {
   const items: QuickActions.Action[] = [];
   const next = findUpcoming(classes, new Date());

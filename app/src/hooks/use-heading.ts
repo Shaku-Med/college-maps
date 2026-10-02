@@ -5,8 +5,7 @@ import { useCallback, useEffect, useRef } from "react";
 type OrientationWithCompass = DeviceOrientationEvent & { webkitCompassHeading?: number };
 type OrientationPermission = { requestPermission?: () => Promise<"granted" | "denied"> };
 
-// Sensor events pass straight through; the map animates between them every frame, so there is no
-// smoothing delay here. Changes under half a degree are sensor noise and skipped.
+// Sensor events pass straight through; the map animates between them every frame, so there is no smoothing delay here.
 const MIN_CHANGE_DEGREES = 0.5;
 const COMPASS_FRESH_MS = 3000;
 
@@ -18,18 +17,14 @@ function screenAngle() {
   return typeof screen !== "undefined" && screen.orientation ? screen.orientation.angle : 0;
 }
 
-/**
- * Compass heading in degrees clockwise from north. iOS only allows it after a user gesture,
- * so call `request` from a tap. Emits through `onHeading` instead of state to avoid re-rendering on every sensor tick.
- */
+/** Compass heading in degrees clockwise from north. */
 export function useHeading(onHeading: (heading: number) => void) {
   const headingRef = useRef<number | undefined>(undefined);
   const emittedRef = useRef<number | undefined>(undefined);
   const listeningRef = useRef(false);
   const compassSeenAtRef = useRef(0);
   const compassRef = useRef<number | undefined>(undefined);
-  // While moving fast the direction of travel is the truth: a phone held sideways on a bus or lying on a car
-  // seat points anywhere. Until this time, compass readings do not steer the map.
+  // Moving fast, the direction of travel wins over a compass pointing anywhere from a pocket or seat.
   const courseWinsUntilRef = useRef(0);
   const callbackRef = useRef(onHeading);
 

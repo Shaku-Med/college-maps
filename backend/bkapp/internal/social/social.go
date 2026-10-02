@@ -1,5 +1,4 @@
-// Package social handles friends, blocks, and private meetups. People are always addressed by
-// username; database ids never leave this package.
+// Package social handles friends, blocks, and private meetups. Database ids never leave this package.
 package social
 
 import (
@@ -100,8 +99,7 @@ func (s *Service) publicID() (string, error) {
 	return base64.RawURLEncoding.EncodeToString(raw), nil
 }
 
-// liveID gives each member a different opaque id in every meetup, so realtime traffic cannot be
-// linked to an account or followed from one meetup to the next.
+// liveID is a different opaque id per member per meetup, so realtime traffic cannot be tied to accounts.
 func (s *Service) liveID(meetupPublicID, userID string) string {
 	mac := hmac.New(sha256.New, s.ticketSecret)
 	mac.Write([]byte("csimap-live-member:v1:" + meetupPublicID + ":" + userID))

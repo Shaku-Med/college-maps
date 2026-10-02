@@ -15,11 +15,7 @@ import {
   type VoiceId,
 } from "@/lib/voice";
 
-/**
- * The navigation voice. Signed in, the choice is kept with the account and follows the student to any
- * device; signed out, it is kept on this device. Signing in brings the account's choice to this device, or,
- * when the account has none yet, takes the one made here up to the account.
- */
+/** The navigation voice. */
 export function useVoiceChoice(account: AccountState) {
   const [voice, setVoice] = useState<VoiceId>(() => readVoiceChoice() ?? DEFAULT_VOICE);
   const signedIn = account.status === "signed-in";

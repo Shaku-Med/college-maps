@@ -373,8 +373,7 @@ func TestPublicMeetups(t *testing.T) {
 		t.Fatalf("created: %+v", later)
 	}
 
-	// Anyone signed in sees it in the campus list. Named campus places show for the heat layer;
-	// pin coordinates stay hidden until the event starts and they join.
+	// Anyone signed in sees it in the campus list.
 	list, err := s.ListPublicMeetups(ctx, student)
 	if err != nil {
 		t.Fatal(err)
@@ -466,8 +465,7 @@ func TestPublicMeetups(t *testing.T) {
 	}
 }
 
-// A burst of parallel creates must not get past the limits. Without the per user lock every request passed the
-// count before any of them had written.
+// A burst of parallel creates must not get past the limits.
 func TestParallelCreatesKeepTheLimit(t *testing.T) {
 	h, ctx := setup(t)
 	host := h.person(t, ctx, "burst")
@@ -505,8 +503,7 @@ func TestParallelCreatesKeepTheLimit(t *testing.T) {
 	}
 }
 
-// Phone push tokens follow the same rule as web push: only someone with a live invite relationship can reach
-// them, a phone that changes hands moves to the new account, and removing a token stops it.
+// Phone push tokens follow web push rules: live invites only, moved on handover, gone on removal.
 func TestAppPushTokens(t *testing.T) {
 	h, ctx := setup(t)
 	owner := h.person(t, ctx, "ophelia")

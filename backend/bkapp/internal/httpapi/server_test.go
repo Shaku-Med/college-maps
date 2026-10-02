@@ -459,8 +459,7 @@ func TestClientIPUsesLastProxyEntry(t *testing.T) {
 	}
 }
 
-// The phone app signs in without cookies: it gets its token once from the app verify route and sends it as a
-// bearer token, marking every request with its client header.
+// The phone signs in without cookies, using the app verify token as a bearer and its client header.
 func TestPhoneAppSignIn(t *testing.T) {
 	env := newTestEnv(t)
 	srv := httptest.NewServer(env.handler)

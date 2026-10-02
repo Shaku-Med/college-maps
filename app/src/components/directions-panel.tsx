@@ -139,8 +139,7 @@ export function DirectionsPanel({
 }: DirectionsPanelProps) {
   const [showSteps, setShowSteps] = useState(false);
   const [allStops, setAllStops] = useState(false);
-  // A rough fix is enough to set off; the route tightens as better ones arrive. With no location at all, a
-  // walk from a chosen building can still be followed step by step.
+  // A rough fix is enough to set off; the route tightens as better ones arrive.
   const live = (plan?.live ?? false) && located;
   const canStart = route !== null && (live || origin !== MY_LOCATION);
   const mode = TRAVEL_MODES.find((option) => option.id === (travel ?? "walk")) ?? TRAVEL_MODES[1];

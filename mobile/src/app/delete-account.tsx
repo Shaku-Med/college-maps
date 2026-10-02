@@ -11,8 +11,7 @@ import { deleteAccount, useAccount } from '@/lib/account';
 import { setClasses } from '@/lib/classes';
 import { disableNotifications } from '@/lib/notifications';
 
-// The same confirmation as the web app: say what goes, then ask for the username typed out, so a stray tap
-// can never erase an account.
+// Same confirmation as the web: the username must be typed, so a stray tap never erases an account.
 export default function DeleteAccountScreen() {
   const sheet = useSheetInsets();
   const account = useAccount();

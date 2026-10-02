@@ -4,7 +4,6 @@ import { AppState } from 'react-native';
 import { API_ORIGIN } from '@/lib/config';
 
 // Pure JS reachability — no native NetInfo module, so OTA / existing dev builds keep working.
-// Any HTTP response (even 404) means the phone can reach the network; a throw means offline.
 
 const PING_MS = 4_000;
 const RECHECK_ONLINE_MS = 30_000;

@@ -16,11 +16,7 @@ export type TripPlan = {
   targets: Place[];
 };
 
-/**
- * The order a trip visits places in. A starting building the traveller is not at becomes the first stop, so
- * "from 1C to 1N" while off campus means: get to 1C, then go on to 1N. Already at it, or with no location yet,
- * the walk starts at that building.
- */
+/** The order a trip visits places in. */
 export function tripPlan({
   origin,
   stops,

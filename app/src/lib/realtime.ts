@@ -50,8 +50,7 @@ function retryDelay(attempt: number) {
   return wait * (0.5 + Math.random());
 }
 
-// A random id for this phone or browser, so one account signed in on two of them shares its location from
-// one place at a time instead of jumping between both.
+// A random id per device, so an account signed in on two shares its location from one at a time.
 const DEVICE_KEY = "csimap.device";
 const DEVICE_PATTERN = /^[A-Za-z0-9_-]{8,64}$/;
 let sessionDevice: string | null = null;
@@ -69,11 +68,7 @@ function deviceId() {
   }
 }
 
-/**
- * Keeps one meetup's live positions flowing: it streams everyone else's positions and sends yours,
- * swapping in a fresh pass before the old one runs out. Nothing is stored anywhere; closing the
- * connection stops the sharing.
- */
+/** Streams a meetup's live positions and shares yours, renewing the pass; closing stops sharing. */
 export function joinMeetupLive(meetupId: string, { onPositions, onState, onElsewhere }: Handlers) {
   const origin = apiOriginFor(window.location.hostname, REALTIME_ORIGIN);
   if (!origin) {

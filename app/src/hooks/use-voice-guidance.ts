@@ -18,8 +18,7 @@ import {
   warmUpVoice,
 } from "@/lib/voice";
 
-// When a maneuver is announced ahead of time, and when it is said again at the turn. Walkers need a few
-// steps of warning; drivers need a block or more.
+// When a maneuver is announced ahead of time, and when it is said again at the turn.
 const CUES: Record<TravelMode, { prepare: number; act: number }> = {
   walk: { prepare: 30, act: 8 },
   bike: { prepare: 90, act: 20 },
@@ -36,8 +35,7 @@ const RIDING_LINES = {
   walk: "Looks like you're riding. Walking directions will pick up when you're back on foot.",
   bike: "Looks like you're in a vehicle. Directions will pick up when you're back on your bike.",
 };
-// Moving faster needs more warning: the heads up comes about ten seconds before the turn and the call itself
-// a few seconds before, never less than the usual distance for that way of travel.
+// Faster travel needs more warning: heads up about ten seconds out, the call a few seconds before.
 const HEADS_UP_SECONDS = 10;
 const CALL_SECONDS = 3.5;
 // Within this of the way the route leaves, the person is already facing it.
@@ -48,17 +46,14 @@ const FACING_TURNS = ["Turn around", "Turn right", "Turn left"] as const;
 // How many turns ahead get their lines made in advance. Making speech takes a moment on a phone.
 const LOOKAHEAD_STEPS = 2;
 
-// Each line comes with a plainer stand in, like "Turn right." for "Turn right onto Fort Place.", that is
-// always kept ready in the natural voice. When the exact line has not been made in time, the stand in is
-// said instead, so the voice never switches to the phone's own mid trip.
+// Each line has a plainer stand in kept ready in the natural voice, said when the exact line is late.
 type StepLines = { prepare?: string; act: string; prepareStandIn?: string; actStandIn: string };
 type Spoken = { route: Route | null; prepared: Set<number>; acted: Set<number>; lines: Map<number, StepLines> };
 
 const lowerFirst = (text: string) => text.charAt(0).toLowerCase() + text.slice(1);
 const arrivalLine = (destination: string) => `You have arrived at ${destination}.`;
 
-// Every campus walk is made of the same few instructions. Making them once, in the background, means that
-// from the second walk on nearly every line is already in the natural voice before it is needed.
+// Every campus walk is made of the same few instructions.
 const CAMPUS_TURNS: TurnDirection[] = ["slight-left", "left", "sharp-left", "slight-right", "right", "sharp-right"];
 const plainStep = (kind: RouteStep["kind"], direction?: TurnDirection, bearing?: number): RouteStep => ({
   kind,
@@ -77,8 +72,7 @@ function standInAct(step: RouteStep, destination: string) {
 const standInHeadsUp = (step: RouteStep, destination: string) =>
   `Coming up, ${lowerFirst(standInAct(step, destination))}`;
 
-// Every stand in there is: one per kind of turn and the stairs. They are few and short, so they are made
-// once in the background and kept. The calls at a turn come first, because those never wait.
+// Every stand in there is: one per kind of turn and the stairs.
 const STAND_IN_STEPS = [
   plainStep("turn", "straight"),
   ...(["slight-left", "left", "sharp-left", "slight-right", "right", "sharp-right"] as const).map((turn) =>
@@ -91,10 +85,7 @@ const STAND_IN_LINES = [
   ...STAND_IN_STEPS.map((step) => standInHeadsUp(step, "")),
 ];
 
-/**
- * Makes the lines every trip falls back on in the voice just picked. A new voice has nothing saved yet, so
- * without this its first trip keeps dropping to the phone's own voice while each line is made.
- */
+/** Makes the lines every trip falls back on in the voice just picked. */
 export function prepareEverydayLines() {
   prepareSpeech([...STAND_IN_LINES, NOTICE_LINES.rerouted, WRONG_WAY_LINE], { later: true });
 }
@@ -120,8 +111,7 @@ function cueFor(travel: TravelMode | undefined, speed: number) {
   return { prepare: Math.max(base.prepare, speed * HEADS_UP_SECONDS), act: Math.max(base.act, speed * CALL_SECONDS) };
 }
 
-// "Head west" only helps someone who knows which way west is. When the way they face is known, the first
-// instruction says which way to turn to set off.
+// "Head west" only helps someone who knows which way west is.
 function departLine(route: Route, destination: string, facing: number | undefined) {
   const line = actLine(route, 0, destination);
   const step = route.steps[0];
@@ -136,10 +126,7 @@ function departLine(route: Route, destination: string, facing: number | undefine
 const departVariants = (route: Route, destination: string) =>
   FACING_TURNS.map((lead) => `${lead}, then ${lowerFirst(actLine(route, 0, destination))}`);
 
-// What to make, in order. A phone makes a phrase every few seconds, so on a first trip there is only time for
-// what is needed soonest: setting off, the first turns, and the lines a reroute or a wrong turn needs at once.
-// Everything else waits in the background, stand ins first, since a late line falls back to those. The
-// start in each facing comes last: if it is not ready, the plain start line is said in the natural voice.
+// What to make, in order.
 function voicePlan(route: Route, destination: string, planned: readonly string[]) {
   return {
     now: [actLine(route, 0, destination), ...planned, NOTICE_LINES.rerouted, WRONG_WAY_LINE],
@@ -155,8 +142,7 @@ function voicePlan(route: Route, destination: string, planned: readonly string[]
   };
 }
 
-// The heads up names a distance. It is fixed when the line is planned, so the clip made in advance is
-// exactly what gets said. A turn that is already close only gets the call at the turn.
+// The heads up names a distance.
 function planLines(route: Route, index: number, from: number, destination: string, speed: number): StepLines {
   const step = route.steps[index];
   const cue = cueFor(route.travel, speed);
@@ -164,8 +150,7 @@ function planLines(route: Route, index: number, from: number, destination: strin
   const actStandIn = standInAct(step, destination);
   const ahead = step.startDistance - from;
   if (ahead <= cue.act) return { act, actStandIn };
-  // Walking turns come close together, so the heads up always names the same distance and one clip serves
-  // every turn of that kind. A turn too close for that only gets the call at the turn.
+  // Walking heads ups name one fixed distance so a single clip serves every turn of that kind.
   const walking = (route.travel ?? "walk") === "walk";
   if (walking && ahead < cue.act * 2) return { act, actStandIn };
   const distance = walking ? cue.prepare : Math.min(ahead, cue.prepare);
@@ -245,8 +230,7 @@ export function useVoiceGuidance({
     prepareSpeech(plan.later, { later: true });
   }, []);
 
-  /** Speaks the first instruction. Call it from the tap that starts navigation: iPhones only allow sound
-   * that begins inside a tap, and after that the rest of the trip can talk freely. */
+  /** Speaks the first instruction. */
   const begin = useCallback((next: Route, facing?: number) => {
     const primed = primedRef.current;
     spokenRef.current = {
@@ -292,8 +276,7 @@ export function useVoiceGuidance({
     if (!route) stopSpeaking();
   }, [route]);
 
-  // Declared before the turn cues on purpose: effects run in order, so "Route updated" is said before the
-  // first instruction of the new route rather than after it.
+  // Declared before the turn cues so "Route updated" is said before the new route's first line.
   useEffect(() => {
     if (notice && enabledRef.current) speak(NOTICE_LINES[notice]);
   }, [notice]);
@@ -318,8 +301,7 @@ export function useVoiceGuidance({
     }
     const speed = speedRef.current?.() ?? 0;
     if (spoken.route !== route) {
-      // A new route after rerouting stays quiet about steps that are already behind the walker, and the
-      // lines still queued for the old route give way to the new one.
+      // A new route skips steps already behind the walker, and the old route's queued lines give way.
       if (spoken.route) clearPreparedSpeech();
       spoken.route = route;
       spoken.prepared = new Set();

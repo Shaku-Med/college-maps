@@ -11,9 +11,7 @@ import (
 
 var envKey = regexp.MustCompile(`^[A-Z_][A-Z0-9_]*$`)
 
-// LoadEnvFile reads .env.development or .env.production based on APP_ENV. Hosts set APP_ENV=production
-// themselves; when it is unset the server assumes a laptop and uses development. Production never
-// falls back to development values, because config.Load still rejects anything unsafe for production.
+// LoadEnvFile reads .env.development or .env.production based on APP_ENV.
 func LoadEnvFile() (env, file string, err error) {
 	env = os.Getenv("APP_ENV")
 	if env == "" {
@@ -33,8 +31,7 @@ func LoadEnvFile() (env, file string, err error) {
 	return env, file, nil
 }
 
-// LoadDotEnv fills unset variables from a KEY=value file. Variables already set in the environment win,
-// and a missing file is fine because hosts usually set variables directly.
+// LoadDotEnv fills unset variables from a KEY=value file.
 func LoadDotEnv(path string) error {
 	data, err := os.ReadFile(path)
 	if errors.Is(err, fs.ErrNotExist) {

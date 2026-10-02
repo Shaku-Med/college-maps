@@ -1,5 +1,4 @@
-// Package ticket signs the short-lived passes rtapp checks. It must stay identical to rtapp/internal/ticket;
-// the shared test vector in both modules fails if they drift apart.
+// Package ticket signs the passes rtapp checks. It must stay identical to rtapp/internal/ticket.
 package ticket
 
 import (

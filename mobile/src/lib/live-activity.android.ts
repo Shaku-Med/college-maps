@@ -1,5 +1,4 @@
-// Live Activities are an iOS feature. Android shows the ongoing "Directions are on" notification from the
-// background location task instead, so these do nothing and the iOS-only widget modules never load here.
+// Live Activities are an iOS feature.
 import type { TripSnapshot } from './live-activity';
 
 export type { TripSnapshot };

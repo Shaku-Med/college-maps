@@ -76,7 +76,6 @@ func loadMigrations() ([]migration, error) {
 }
 
 // Migrate applies pending SQL files in one transaction and returns the names it ran.
-// The lock is transaction scoped because Neon's pooled connections do not keep session locks.
 func Migrate(ctx context.Context, pool *pgxpool.Pool) ([]string, error) {
 	list, err := loadMigrations()
 	if err != nil {

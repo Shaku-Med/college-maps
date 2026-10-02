@@ -14,8 +14,7 @@ import { useSocial } from '@/lib/social';
 import { planTrip, useTrip } from '@/lib/trip';
 import { updateUpNextWidget } from '@/lib/up-next-widget';
 
-// The campus accent in both themes. On iOS the tab bar is native glass and takes a native dynamic color, which
-// only exists there; Android takes the theme's accent directly.
+// The campus accent in both themes.
 const iosAccent = Platform.OS === 'ios' ? DynamicColorIOS({ light: '#1268D2', dark: '#83C8EF' }) : undefined;
 
 export default function TabLayout() {
@@ -58,14 +57,12 @@ export default function TabLayout() {
 
   return (
     // Directions and navigation take the whole screen, so the tab bar steps aside for them.
-    // On iPad / macOS, tabs move into the system sidebar instead of a bottom bar.
     <NativeTabs
       tintColor={accent}
       sidebarAdaptable
       minimizeBehavior="onScrollDown"
       hidden={trip.phase !== 'idle'}
-      // Android's bar is a solid Material surface by default. Clear, it sits on the map's fade the way the chips
-      // at the top do, and on the page background everywhere else. iOS draws its own Liquid Glass.
+      // Android's bar is a solid Material surface by default.
       backgroundColor={Platform.OS === 'android' ? 'transparent' : undefined}
       screenListeners={{
         tabPress: (e) => {

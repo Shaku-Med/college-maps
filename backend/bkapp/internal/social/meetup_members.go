@@ -11,8 +11,7 @@ import (
 	"csimap/bkapp/internal/db"
 )
 
-// busyElsewhere stops someone being in two meetups at once: it fails when they already joined another live
-// meetup whose time overlaps from..until. Invites still arrive; they leave the other one to accept.
+// busyElsewhere stops joining two live meetups whose times overlap; invites still arrive.
 func (s *Service) busyElsewhere(ctx context.Context, tx pgx.Tx, userID, exceptPublicID string, from, until time.Time) error {
 	var busy bool
 	if err := tx.QueryRow(ctx,
@@ -38,8 +37,7 @@ func meetupStart(m Meetup) time.Time {
 	return m.CreatedAt
 }
 
-// othersInMeetup is who hears that someone joined: everyone already in a private meetup, or the host of a
-// public one, where telling every attendee about every other would be noise.
+// othersInMeetup is who hears of a join: everyone in a private meetup, only the host of a public one.
 func (s *Service) othersInMeetup(ctx context.Context, tx pgx.Tx, meID, publicID string) ([]string, error) {
 	rows, err := tx.Query(ctx,
 		`select mm.user_id::text from meetup_members mm join meetups m on m.id = mm.meetup_id
@@ -66,8 +64,7 @@ func (s *Service) pingJoined(me auth.User, userIDs []string, m Meetup) {
 	s.ping(NotifyJoin, me.ID, userIDs, s.site.AppName, displayName(me)+" joined "+what, "/")
 }
 
-// InviteToMeetup adds friends to a live private meetup the host runs, including anyone who left or said no,
-// so a mistaken tap on Leave is easy to undo. Someone who asked to stay out is not invited again.
+// InviteToMeetup adds friends to the host's live private meetup, again after Leave, never after stay out.
 func (s *Service) InviteToMeetup(ctx context.Context, me auth.User, publicID string, friends []string) (Meetup, error) {
 	if err := ready(me); err != nil {
 		return Meetup{}, err

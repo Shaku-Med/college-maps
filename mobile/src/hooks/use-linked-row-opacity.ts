@@ -6,11 +6,7 @@ import { useTransitionProgress } from 'react-native-screens';
 const STATIC_ONE = new Animated.Value(1);
 const STATIC_ZERO = new Animated.Value(0);
 
-/**
- * Opacity for a list row selected under a pushed stack screen.
- * Full (1) while the child is open; fades to 0 in sync with interactive pop.
- * Sheets/modals pass `gestureSync: false` for a solid fill (no stack progress).
- */
+/** Opacity for a list row selected under a pushed stack screen. */
 export function useLinkedRowOpacity(
   active: boolean,
   gestureSync = true,
@@ -21,8 +17,7 @@ export function useLinkedRowOpacity(
   return useMemo(() => {
     if (!active) return STATIC_ZERO;
     if (!ios || !gestureSync) return STATIC_ONE;
-    // progress 0 = covered by child → selected at full opacity
-    // progress 1 = hub revealed (swipe back) → selection gone
+    // 0 while the child covers the row, 1 once a swipe back has revealed it.
     return progress.interpolate({
       inputRange: [0, 1],
       outputRange: [1, 0],

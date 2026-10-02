@@ -3,7 +3,6 @@ import { CAMPUS, PLACES, getPlace, type Place, type PlaceCategory } from "@/data
 export const MAX_QUERY_LENGTH = 60;
 
 // The order people browse campus in, most asked for first, limited to the kinds of places this campus has.
-// Shared by the web and the app, so a list of places reads the same everywhere.
 export const BROWSE_ORDER: PlaceCategory[] = (
   ["student", "academic", "dining", "admin", "health", "athletics", "housing", "services", "parking", "transit"] as const
 ).filter((category) => PLACES.some((place) => place.category === category));

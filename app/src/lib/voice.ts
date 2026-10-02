@@ -1,13 +1,9 @@
-// Spoken directions. The voice is Kokoro, a small neural model that runs on the device in a worker, so
-// it sounds like a person and nothing said is sent anywhere. Making a line takes a moment on a phone,
-// so lines are prepared before they are needed and kept between trips. Whenever a line is not ready in
-// time, the device's own speech engine says it instead, because late directions are worse than plain ones.
+// Spoken directions.
 
 const STORAGE_KEY = "csimap.voice";
 const CHOICE_KEY = "csimap.voiceName";
 
-// The voices on offer, best first. The Kokoro ones run on the phone; "device" is the phone's own speech
-// engine, for anyone who would rather not download a voice. The account API accepts exactly these ids.
+// The voices on offer, best first.
 export const VOICE_OPTIONS = [
   { id: "af_heart", name: "Heart", description: "Warm, American" },
   { id: "af_bella", name: "Bella", description: "Bright, American" },
@@ -28,18 +24,15 @@ export const isVoiceId = (value: unknown): value is VoiceId =>
 
 let voice: VoiceId = DEFAULT_VOICE;
 const MAX_TEXT = 300;
-// How long a heads up may wait for its own clip. Heads ups come about ten seconds before a turn, so there is
-// room to wait, and past this a natural stand in, or failing that the device voice, says it instead.
+// How long a heads up may wait for its own clip.
 const WAIT_FOR_CLIP_MS = 4_000;
 const MAX_CLIPS_IN_MEMORY = 160;
 const MAX_CLIPS_STORED = 250;
 // The same heads up twice in a row, as happens right after a reroute, is said once.
 const REPEAT_WINDOW_MS = 8_000;
-// Loading the model again after it failed is only worth a few tries: a download cut off by a weak signal
-// may work later, a phone without the memory for it never will.
+// A failed model load is worth a few retries for a weak signal, never for a phone short on memory.
 const MAX_LOAD_ATTEMPTS = 3;
-// A voice engine that is busy but has said nothing for this long is stuck, like a download that stopped
-// partway, and is restarted instead of leaving every line waiting on it.
+// A busy voice engine silent this long is stuck, and is restarted instead of holding up every line.
 const STALL_MS = 60_000;
 const DB_NAME = "csimap-voice";
 const DB_STORE = "clips";
@@ -275,10 +268,7 @@ function synthesize(text: string, priority: Priority, speaker: VoiceId = voice):
   return entry.job;
 }
 
-/**
- * Gets lines ready ahead of time, so they play in the natural voice the moment they are needed. Lines
- * for the route being walked are made first; `later` lines wait until those are done.
- */
+/** Gets lines ready ahead of time, so they play in the natural voice the moment they are needed. */
 export function prepareSpeech(lines: readonly string[], { later = false } = {}) {
   if (!neuralAllowed()) return;
   for (const line of lines) {
@@ -341,8 +331,7 @@ function playNext() {
     playNext();
   };
   source.onended = finish;
-  // A phone call or the system can pause audio mid clip, and then "ended" never comes. Without this the
-  // rest of the trip would queue up behind a clip that is not playing.
+  // A phone call or the system can pause audio mid clip, and then "ended" never comes.
   setTimeout(finish, buffer.duration * 1000 + 1_000);
   current = source;
   source.start();
@@ -434,12 +423,7 @@ function speakWithDevice(text: string) {
 
 // ---- Speaking ---------------------------------------------------------------------------------------
 
-/**
- * Says a line. Urgent lines, like the turn right now, cut off anything still playing and never wait. When
- * the exact line is not ready yet, the `fallback` line is said instead if it already exists in the natural
- * voice, such as "Turn right." for "Turn right onto Fort Place.", so the voice does not switch mid trip. The
- * device voice only speaks when neither is ready.
- */
+/** Says a line. */
 let lastSpoken = { text: "", at: 0 };
 
 export function speak(line: string, { urgent = false, fallback }: { urgent?: boolean; fallback?: string } = {}) {
@@ -485,10 +469,7 @@ export function stopSpeaking() {
   silenceAll();
 }
 
-/**
- * Plays a short sample of a voice. Call it from a tap, so a phone lets the sound start. The first sample of
- * a Kokoro voice waits for the model to download and the line to be made, so it can take a while.
- */
+/** Plays a short sample of a voice. */
 export async function previewVoice(id: VoiceId): Promise<"played" | "unsupported" | "failed"> {
   silenceAll();
   if (id === "device") {

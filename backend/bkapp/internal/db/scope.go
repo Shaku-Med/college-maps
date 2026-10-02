@@ -21,8 +21,6 @@ type Scope struct {
 }
 
 // WithScope runs fn in a transaction that has dropped to the restricted role with the scope applied.
-// Every setting is transaction local, so it ends at commit and never leaks to the next request,
-// even through Neon's pooled connections.
 func WithScope(ctx context.Context, pool *pgxpool.Pool, sc Scope, fn func(tx pgx.Tx) error) error {
 	return pgx.BeginFunc(ctx, pool, func(tx pgx.Tx) error {
 		maintenance := ""

@@ -73,9 +73,7 @@ func cors(allowed map[string]struct{}) func(http.Handler) http.Handler {
 	}
 }
 
-// The CSI Map phone app marks its requests with this header. Browsers send Origin on every write, and a
-// page on another site cannot add a custom header without a CORS preflight, which only listed origins pass.
-// So a write with no Origin and this header cannot be a request forged by a browser.
+// The phone app sends this instead of Origin; a page on another site cannot add it without a CORS preflight.
 const (
 	appClientHeader = "X-CSIMap-Client"
 	appClientValue  = "app"
@@ -85,9 +83,7 @@ func fromApp(r *http.Request) bool {
 	return r.Header.Get("Origin") == "" && r.Header.Get(appClientHeader) == appClientValue
 }
 
-// Writes authenticate with a cookie, so they must come from a listed origin. Requiring the Origin
-// header blocks cross-site request forgery even from browsers that skip SameSite rules. The phone app
-// has no origin and proves itself with its header instead.
+// Writes authenticate with a cookie, so requiring a listed Origin blocks cross-site request forgery.
 func sameOriginWrites(allowed map[string]struct{}) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -164,9 +160,7 @@ func isSafeMethod(method string) bool {
 	return method == http.MethodGet || method == http.MethodHead || method == http.MethodOptions
 }
 
-// clientIPFunc trusts a proxy header only when one is configured. When a proxy appends to a list
-// header like X-Forwarded-For, the earlier entries come from the client and can be forged, so only
-// the last entry, written by the proxy itself, is used.
+// clientIPFunc trusts a configured proxy header, and only its last entry, the one the proxy wrote itself.
 func clientIPFunc(header string) func(*http.Request) string {
 	return func(r *http.Request) string {
 		if header != "" {

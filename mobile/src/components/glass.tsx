@@ -5,8 +5,7 @@ import { View, type ColorValue, type StyleProp, type ViewStyle } from 'react-nat
 import { withUniwind } from 'uniwind';
 
 export const HAS_LIQUID_GLASS = isLiquidGlassAvailable();
-// GlassView is a native view, which Tailwind classes do not reach on their own. Without this its size and
-// rounded corners are dropped and it stretches to fill its parent.
+// GlassView is a native view, which Tailwind classes do not reach on their own.
 const StyledGlassView = withUniwind(GlassView);
 
 type GlassProps = {

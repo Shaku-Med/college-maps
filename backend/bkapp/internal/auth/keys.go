@@ -18,8 +18,7 @@ const (
 
 var errCorruptEmail = errors.New("stored email could not be decrypted")
 
-// Keys are derived from AUTH_SECRET with HMAC-SHA256 under distinct labels, so each purpose gets an
-// independent 256 bit key and a leak of one derived value says nothing about the others.
+// Keys come from AUTH_SECRET by HMAC-SHA256 under separate labels, so one leak reveals no other.
 type Keys struct {
 	code    []byte
 	index   []byte
@@ -65,8 +64,7 @@ func keyedHash(key []byte, parts ...[]byte) []byte {
 	return mac.Sum(nil)
 }
 
-// EmailIndex is a blind index: the database can find and deduplicate accounts by email
-// without ever holding the address, and the hash is useless without the server key.
+// EmailIndex is a blind index: the database finds accounts by email without ever holding it.
 func (k *Keys) EmailIndex(email string) []byte {
 	return keyedHash(k.index, []byte(email))
 }
@@ -79,8 +77,7 @@ func (k *Keys) tokenHash(token string) []byte {
 	return keyedHash(k.session, []byte(token))
 }
 
-// sealEmail encrypts with AES-256-GCM. The blind index is authenticated as associated data, so a
-// ciphertext copied onto another account's row fails to decrypt instead of showing the wrong email.
+// sealEmail encrypts with AES-256-GCM, bound to the blind index so a copied ciphertext fails on another row.
 func (k *Keys) sealEmail(email string, index []byte) ([]byte, error) {
 	out := make([]byte, 1+nonceSize, 1+nonceSize+len(email)+k.email.Overhead())
 	out[0] = emailCipherVersion

@@ -16,13 +16,7 @@ import (
 	"time"
 )
 
-// buildMessage lays the email out the way mail apps expect for an HTML body with an attached logo:
-//
-//	multipart/alternative
-//	  text/plain
-//	  multipart/related
-//	    text/html
-//	    image/png (Content-ID matches cid: in the HTML)
+// buildMessage nests text/plain and multipart/related (HTML plus the cid: logo) inside multipart/alternative.
 func buildMessage(from *mail.Address, to string, msg Rendered, logo []byte, now time.Time) ([]byte, error) {
 	for _, value := range []string{to, msg.Subject} {
 		if strings.ContainsAny(value, "\r\n") {

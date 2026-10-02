@@ -93,8 +93,7 @@ func distinctBytes(value string) int {
 	return len(seen)
 }
 
-// isLocalHost covers this computer and addresses on the home or campus network, so a phone on the
-// same Wi-Fi can reach a development server. Production only ever accepts https.
+// isLocalHost allows this computer and the local network for development; production only takes https.
 func isLocalHost(host string) bool {
 	if host == "localhost" {
 		return true

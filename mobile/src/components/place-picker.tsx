@@ -14,10 +14,7 @@ type PlacePickerProps = {
   header?: ReactNode;
 };
 
-/**
- * Picks a campus place with the same search and results as the Search tab. The search box is the screen's native
- * header search bar, so this has to be the screen's outermost view.
- */
+/** Picks a campus place with the same search and results as the Search tab. */
 export function PlacePicker({ onPick, selectedId, header }: PlacePickerProps) {
   const readable = useReadableStyle();
   const [query, setQuery] = useState('');

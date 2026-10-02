@@ -1,7 +1,6 @@
 import { useSyncExternalStore } from 'react';
 
-// The meetup whose people are shown live on the map. Only one at a time, and nothing is shared unless one is
-// open here.
+// The meetup whose people are shown live on the map.
 let shown: string | null = null;
 const listeners = new Set<() => void>();
 

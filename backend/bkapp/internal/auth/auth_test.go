@@ -441,8 +441,7 @@ func TestSendFailureDoesNotSpendATry(t *testing.T) {
 	}
 }
 
-// A reviewer cannot receive a school email, so one configured account signs in with a fixed code. It still
-// goes through every normal limit, and nobody else is affected.
+// A reviewer cannot receive a school email, so one configured account signs in with a fixed code.
 func TestReviewAccount(t *testing.T) {
 	const reviewer = "review@stu-mail.csi.cuny.edu"
 	const code = "48213957"

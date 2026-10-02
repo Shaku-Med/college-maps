@@ -74,8 +74,7 @@ export function useGeolocation({ onPosition, onError }: GeoOptions = {}) {
       watchIdRef.current = navigator.geolocation.watchPosition(
         handleFix,
         (error) => {
-          // Only a refusal is final. A timeout or a lost signal is normal indoors, so the watch is rebuilt
-          // instead of giving up, which used to leave the app unable to navigate until it was reopened.
+          // Only a refusal is final.
           if (error.code === error.PERMISSION_DENIED) {
             stop();
             setStatus("denied");

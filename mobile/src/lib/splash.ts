@@ -1,13 +1,11 @@
 import * as SplashScreen from 'expo-splash-screen';
 import { useSyncExternalStore } from 'react';
 
-// The splash stays up until the account is known and the map has drawn, so the app opens on a finished screen
-// instead of a blank one. A slow network never holds it longer than the cap.
+// Holds the splash until the account is known and the map has drawn, never longer than the cap.
 const MAX_WAIT_MS = 5000;
 
 void SplashScreen.preventAutoHideAsync().catch(() => undefined);
-// The launch overlay draws the same logo in the same spot underneath, so the system splash can go at once and the
-// logo animates on from where it was.
+// The launch overlay draws the same logo underneath, so the system splash can go at once.
 SplashScreen.setOptions({ duration: 0, fade: false });
 
 const waiting = new Set<'account' | 'map'>(['account', 'map']);

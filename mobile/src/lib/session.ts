@@ -1,7 +1,6 @@
 import * as SecureStore from 'expo-secure-store';
 
-// The session token lives in the iOS keychain, readable only by this app and only after the phone has been
-// unlocked once since it started.
+// In the iOS keychain, readable only by this app once the phone has been unlocked since it started.
 const TOKEN_KEY = 'csimap.session';
 const TOKEN_PATTERN = /^[A-Za-z0-9_-]{20,128}$/;
 const OPTIONS: SecureStore.SecureStoreOptions = { keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY };

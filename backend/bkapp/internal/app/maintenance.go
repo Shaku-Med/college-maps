@@ -10,12 +10,7 @@ import (
 
 const maintenanceTimeout = 50 * time.Second
 
-// Maintenance runs the cleanup jobs that the long lived server runs on a timer. Serverless hosts kill
-// background goroutines when a response is sent, so there a scheduler calls this instead.
-//
-// The secret is the only thing guarding it. Without one the route answers 404 like any unknown path,
-// so a missing setting can never leave it open. Vercel's scheduler sends `Authorization: Bearer
-// $CRON_SECRET`, which is the header this expects.
+// Maintenance runs the timed cleanup for serverless hosts; with no CRON_SECRET the route answers 404.
 func Maintenance(secret string, jobs []func(context.Context) error, logger *slog.Logger) http.Handler {
 	want := []byte("Bearer " + secret)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

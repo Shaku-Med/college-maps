@@ -29,8 +29,7 @@ const (
 	MaxCodeAttempts      = 5
 	codesPerWindow       = 3
 	codeWindow           = 15 * time.Minute
-	// With 8 digit codes, 5 tries each and 8 codes a day, a guesser has about a 1 in 2.5 million
-	// chance per day against one account, no matter how many IPs they use.
+	// 8 digits, 5 tries each, 8 codes a day: about 1 in 2.5 million a day per account, whatever the IPs.
 	codesPerDay      = 8
 	codeCooldown     = 60 * time.Second
 	sessionTokenSize = 32
@@ -88,8 +87,7 @@ var reservedUsernames = map[string]bool{
 	"www": true, "mail": true, "noreply": true, "no_reply": true, "everyone": true, "anonymous": true,
 }
 
-// User is the signed in person. Email is private: only the user's own /v1/me response carries it,
-// and friends will only ever see Username and DisplayName.
+// User is the signed in person. Email is private: only the owner's own /v1/me response carries it.
 type User struct {
 	ID          string
 	Email       string
@@ -146,8 +144,7 @@ type CodeLimits struct {
 
 type Store interface {
 	CodeStats(ctx context.Context, emailIndex []byte, since time.Time) (count int, latest time.Time, err error)
-	// IssueCode checks the limits and stores a new code in one step, one request per email at a time, so a
-	// burst of parallel requests cannot all pass the limits together. A positive wait means it was refused.
+	// IssueCode checks the limits and stores a code in one locked step; a positive wait means refused.
 	IssueCode(ctx context.Context, emailIndex, hash []byte, now, expiresAt time.Time, limits CodeLimits) (wait time.Duration, err error)
 	DeleteCodes(ctx context.Context, emailIndex []byte) error
 	CheckCode(ctx context.Context, emailIndex []byte, now time.Time, maxAttempts int, matches func(hash []byte) bool) (outcome VerifyOutcome, attemptsLeft int, err error)
@@ -182,10 +179,7 @@ func WithClock(now func() time.Time) Option {
 	return func(s *Service) { s.now = now }
 }
 
-// WithReviewAccount lets one school address sign in with a fixed code instead of an emailed one, for App
-// Store review. The code still goes through every normal limit: tries per code, cooldowns, and daily caps.
-// It stops working at until, so a code that leaks from review notes is not a way in forever: after that the
-// address gets a random emailed code like anyone, to an inbox nobody reads.
+// WithReviewAccount gives one school address a fixed code for App Store review, under every normal limit, until a date.
 func WithReviewAccount(address, code string, until time.Time) Option {
 	return func(s *Service) {
 		s.reviewEmail = strings.ToLower(strings.TrimSpace(address))
@@ -284,8 +278,7 @@ func (s *Service) RequestCode(ctx context.Context, rawEmail string) error {
 		return nil
 	}
 	if err := s.mailer.SendLoginCode(ctx, addr, code); err != nil {
-		// Nobody received this code, so it should not spend one of the sender's tries or hold the
-		// cooldown open. WithoutCancel so the row still goes away when the request is cut short.
+		// Nobody received this code, so it should not spend one of the sender's tries or hold the cooldown open.
 		_ = s.store.DeleteCodes(context.WithoutCancel(ctx), index)
 		return fmt.Errorf("%w: %v", ErrSendFailed, err)
 	}
@@ -408,8 +401,7 @@ func alphanumeric(value string) string {
 	return b.String()
 }
 
-// revealsEmail blocks names built from the school email, since school addresses follow a
-// predictable pattern and a friend could otherwise work out the full address.
+// revealsEmail blocks names built from the school email, which would give the full address away.
 func revealsEmail(value, addr string) bool {
 	local, _, _ := strings.Cut(addr, "@")
 	key := alphanumeric(local)

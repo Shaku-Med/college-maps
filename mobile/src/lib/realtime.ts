@@ -55,8 +55,7 @@ function retryDelay(attempt: number) {
   return wait * (0.5 + Math.random());
 }
 
-// A random id for this phone or browser, so one account signed in on two of them shares its location from
-// one place at a time instead of jumping between both.
+// A random id per device, so an account signed in on two shares its location from one at a time.
 const DEVICE_KEY = 'csimap.device';
 const DEVICE_PATTERN = /^[A-Za-z0-9_-]{8,64}$/;
 let sessionDevice: string | null = null;
@@ -74,11 +73,7 @@ function deviceId() {
   }
 }
 
-/**
- * The phone's version of the web app's live meetup connection: it streams everyone else's positions and sends
- * yours, renewing the pass before it runs out. React Native has no EventSource, so the event stream is read
- * from a streaming fetch. Nothing is stored anywhere; closing it stops the sharing.
- */
+/** Live meetup positions over a streaming fetch, since React Native has no EventSource. */
 export function joinMeetupLive(meetupId: string, { onPositions, onState, onElsewhere }: Handlers) {
   const positions = new Map<string, LivePosition>();
   let controller: AbortController | null = null;

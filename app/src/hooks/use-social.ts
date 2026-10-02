@@ -11,10 +11,7 @@ const noFriends: FriendsOverview = { friends: [], incoming: [], outgoing: [], bl
 
 type Social = { owner: string; friends: FriendsOverview; meetups: Meetup[]; campus: Meetup[] };
 
-/**
- * Friends and meetups for the signed in user. It refreshes on a slow timer, and only while the tab
- * is visible, so a phone in a pocket is not making requests all day.
- */
+/** Friends and meetups for the signed in user. */
 export function useSocial(account: AccountState) {
   const user = account.status === "signed-in" ? account.user : undefined;
   const signedIn = Boolean(user && !user.needsProfile);

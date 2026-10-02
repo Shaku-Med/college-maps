@@ -23,8 +23,7 @@ const (
 	maxPublicMinutes   = 8 * 60
 )
 
-// NewPublicMeetup is a campus wide meetup: a name, when it starts, and where. Named campus places are
-// shown on the map heat layer; pin spots stay hidden until the event starts.
+// NewPublicMeetup is a campus wide meetup: a name, when it starts, and where.
 type NewPublicMeetup struct {
 	Title       string           `json:"title"`
 	Note        string           `json:"note"`
@@ -148,8 +147,7 @@ func (s *Service) CreatePublicMeetup(ctx context.Context, me auth.User, in NewPu
 	return created, err
 }
 
-// ListPublicMeetups shows what is coming up on campus, soonest first. Events from anyone either side has
-// blocked are left out, the same as opening one directly.
+// ListPublicMeetups shows what is coming up on campus, soonest first.
 func (s *Service) ListPublicMeetups(ctx context.Context, me auth.User) ([]Meetup, error) {
 	out := []Meetup{}
 	err := db.WithScope(ctx, s.pool, db.Scope{UserID: me.ID}, func(tx pgx.Tx) error {

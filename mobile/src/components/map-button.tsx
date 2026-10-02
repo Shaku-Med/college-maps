@@ -25,10 +25,7 @@ type MapButtonProps = {
   style?: StyleProp<ViewStyle>;
 };
 
-/**
- * The buttons that float over the map. They look like HeroUI's, but the press is recognised natively by the
- * gesture handler, so a busy JS thread or the map under them cannot cancel a tap on Android.
- */
+/** The buttons that float over the map. */
 export function MapButton({
   label,
   onPress,
