@@ -2,82 +2,41 @@ const fs = require('fs');
 const path = require('path');
 const { IOSConfig, withDangerousMod, withInfoPlist, withXcodeProject } = require('expo/config-plugins');
 
-// Siri and the Shortcuts app: "Get directions to Campus Center on CSI Map", "Take me to class with CSI Map",
-// "Show my classes in CSI Map". Each one opens the app and leaves the request in UserDefaults, which
-// src/lib/siri.ts picks up, so it also works when Siri starts the app cold. The places come from the same
-// campus.json the map uses.
+const PHRASES = require('./siri-phrases.json');
 
 const FILE_NAME = 'CSIMapShortcuts.swift';
-// The campus data lives in the web app beside this one, at the repository root.
-const campusJson = (projectRoot) => path.join(projectRoot, '..', 'app', 'campus', 'campus.json');
 const HANDOFF_KEY = 'csimap.siriLink';
-const MAX_SYNONYMS = 9;
+const MAX_SYNONYMS = 14;
+// Apple's cap for one app, where a phrase with {place} counts once per place.
+const MAX_PHRASES = 1000;
+const DIGIT_WORDS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'];
 
-// How people actually ask. Siri hands a request to the app only when it is close to one of these, and anything
-// that sounds like plain directions goes to Apple Maps otherwise, so the common ways of saying it are all here:
-// in, on, and with the app's name, and the usual verbs. {place} is the campus place, {app} the app's name.
-const PHRASES = {
-  directions: [
-    'Directions to {place} in {app}',
-    'Directions to {place} on {app}',
-    'Get directions to {place} in {app}',
-    'Get directions to {place} on {app}',
-    'Get directions to {place} with {app}',
-    'Take me to {place} with {app}',
-    'Take me to {place} on {app}',
-    'Navigate to {place} with {app}',
-    'How do I get to {place} in {app}',
-    'How do I get to {place} on {app}',
-    'How do I go to {place} in {app}',
-    'How do I go to {place} on {app}',
-    'Go to {place} with {app}',
-    'Go to {place} on {app}',
-    '{app} directions to {place}',
-    'Get directions with {app}',
-    'Get directions on {app}',
-  ],
-  nextClass: [
-    'Take me to class with {app}',
-    'Take me to class on {app}',
-    'Directions to my next class in {app}',
-    'Directions to my next class on {app}',
-    'Get me to class with {app}',
-  ],
-  classes: [
-    'Show my classes in {app}',
-    'Show my classes on {app}',
-    'Open my schedule in {app}',
-    'What are my classes in {app}',
-  ],
-};
+const campusJson = (projectRoot) => path.join(projectRoot, '..', 'app', 'campus', 'campus.json');
 
-const swiftPhrases = (list) =>
-  list
-    .map(
-      (phrase) =>
-        `                "${phrase.replace('{place}', () => '\\(\\.$place)').replace('{app}', () => '\\(.applicationName)')}",`,
-    )
-    .join('\n');
-
-// Safe inside a Swift string literal: no quotes, backslashes (which would start interpolation), or control
-// characters can get through from the data file.
+// Quotes, backslashes, and control characters would break out of the Swift string literal.
 const swiftString = (value) => `"${String(value).replace(/[\\"]/g, '').replace(/[\u0000-\u001f\u007f]/g, '').trim()}"`;
+
+function codeForms(code) {
+  const spaced = code.replace(/(\d)(?=[A-Za-z])|([A-Za-z])(?=\d)/g, '$1$2 ');
+  const words = spaced.replace(/\b\d\b/g, (digit) => DIGIT_WORDS[Number(digit)]);
+  return { code, spaced, words };
+}
+
+const fill = (template, forms) => template.replace(/\{(code|spaced|words)\}/g, (_, key) => forms[key]);
 
 function readPlaces(projectRoot) {
   const campus = JSON.parse(fs.readFileSync(campusJson(projectRoot), 'utf8'));
   const places = campus.places.filter((place) => /^[A-Za-z0-9]{1,10}$/.test(place.id) && typeof place.name === 'string');
   return places.map((place) => {
-    // People say the code as often as the hall's name: "2N", "2 N", or "building 2N".
-    const spaced = place.id.replace(/(\d)([A-Za-z])/, '$1 $2');
-    const codes = place.isBuilding ? [`Building ${place.id}`, `Building ${spaced}`] : [];
-    // A search keyword that is part of another place's name would send Siri there instead, like "library"
-    // on a parking lot beside CSI Library.
+    const forms = codeForms(place.id);
+    const templates = [...PHRASES.placeNames.all, ...(place.isBuilding ? PHRASES.placeNames.buildings : [])];
+    // A keyword inside another place's name, like "library" on a lot, would send Siri to the wrong place.
     const otherNames = places.filter((other) => other !== place).map((other) => other.name.toLowerCase());
     const keywords = (place.keywords ?? []).filter(
       (word) => typeof word === 'string' && !otherNames.some((name) => name.includes(word.toLowerCase())),
     );
     const seen = new Set([place.name.toLowerCase()]);
-    const synonyms = [place.id, spaced, ...codes, place.label, ...keywords].filter((word) => {
+    const synonyms = [...templates.map((template) => fill(template, forms)), place.label, ...keywords].filter((word) => {
       if (typeof word !== 'string' || !word.trim() || seen.has(word.toLowerCase())) return false;
       seen.add(word.toLowerCase());
       return true;
@@ -86,7 +45,30 @@ function readPlaces(projectRoot) {
   });
 }
 
+function checkPhraseBudget(placeCount) {
+  const all = [...PHRASES.directions, ...PHRASES.nextClass, ...PHRASES.classes];
+  const total = all.reduce((sum, phrase) => sum + (phrase.includes('{place}') ? placeCount : 1), 0);
+  const missingApp = all.filter((phrase) => !phrase.includes('{app}'));
+  if (missingApp.length) throw new Error(`Siri phrases need {app}: ${missingApp.join(', ')}`);
+  if (total > MAX_PHRASES) {
+    throw new Error(`Siri phrases add up to ${total}, over Apple's ${MAX_PHRASES}. Trim siri-phrases.json.`);
+  }
+  return total;
+}
+
+const swiftPhrases = (list) =>
+  list
+    .map(
+      (phrase) =>
+        `                "${phrase
+          .replace(/[\\"]/g, '')
+          .replace('{place}', () => '\\(\\.$place)')
+          .replace('{app}', () => '\\(.applicationName)')}",`,
+    )
+    .join('\n');
+
 function swiftSource(places) {
+  checkPhraseBudget(places.length);
   const cases = places.map((place) => `    case place${place.id} = ${swiftString(place.id)}`).join('\n');
   const names = places
     .map(
@@ -95,7 +77,7 @@ function swiftSource(places) {
     )
     .join('\n');
 
-  return `// Generated by plugins/with-siri-shortcuts.js from app/campus/campus.json on every prebuild. Do not edit.
+  return `// Generated by plugins/with-siri-shortcuts.js from siri-phrases.json and campus.json. Do not edit.
 import AppIntents
 import Foundation
 
@@ -191,12 +173,8 @@ ${swiftPhrases(PHRASES.classes)}
 }
 
 module.exports = function withSiriShortcuts(config) {
-  // Other ways Siri may hear the name, so "CSI Maps" or a spelled out "C S I Map" still reaches the app.
   config = withInfoPlist(config, (mod) => {
-    mod.modResults.INAlternativeAppNames = [
-      { INAlternativeAppName: 'CSI Maps' },
-      { INAlternativeAppName: 'C S I Map', INAlternativeAppNamePronunciationHint: 'see ess eye map' },
-    ];
+    mod.modResults.INAlternativeAppNames = PHRASES.appNames.map((name) => ({ INAlternativeAppName: name }));
     return mod;
   });
 
@@ -220,5 +198,5 @@ module.exports = function withSiriShortcuts(config) {
   });
 };
 
-// Exposed for a quick look at the generated Swift without a full prebuild.
 module.exports.swiftSource = (projectRoot = path.resolve()) => swiftSource(readPlaces(projectRoot));
+module.exports.phraseCount = (projectRoot = path.resolve()) => checkPhraseBudget(readPlaces(projectRoot).length);
