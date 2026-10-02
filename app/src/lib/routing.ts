@@ -16,6 +16,8 @@ export type WalkGraph = {
   offsets: Int32Array;
   targets: Int32Array;
   lengths: Float64Array;
+  /** Lengths with roads counted longer, so routes keep to the walkways when that costs little extra. */
+  costs: Float64Array;
   stairs: Uint8Array;
   edgeA: Int32Array;
   edgeB: Int32Array;
@@ -81,8 +83,16 @@ const DEPART_LOOK_METERS = 35;
 const MIN_TURN_DEGREES = 32;
 const MIN_STEP_METERS = 8;
 
+// Edge kinds from scripts/build-walk-graph.mjs, and how much longer each counts than it is when choosing a route.
+const EDGE_STEPS = 1;
+const KIND_COST = [1, 1, 1.6, 2.5];
+// The walkway route is used while its extra walk stays within 12% of the shortest, at least 40 m and at most 100 m.
+const WALKWAY_DETOUR_SHARE = 0.12;
+const WALKWAY_DETOUR_MIN_METERS = 40;
+const WALKWAY_DETOUR_MAX_METERS = 100;
+
 export function parseGraph(raw: RawWalkGraph): WalkGraph {
-  if (raw.version !== 1 || raw.nodes.length % 2 !== 0 || raw.edges.length % 3 !== 0) {
+  if ((raw.version !== 1 && raw.version !== 2) || raw.nodes.length % 2 !== 0 || raw.edges.length % 3 !== 0) {
     throw new Error("Unsupported walk graph");
   }
 
@@ -98,6 +108,7 @@ export function parseGraph(raw: RawWalkGraph): WalkGraph {
   const edgeA = new Int32Array(edgeCount);
   const edgeB = new Int32Array(edgeCount);
   const edgeStairs = new Uint8Array(edgeCount);
+  const edgeCost = new Float64Array(edgeCount);
   const degree = new Int32Array(nodeCount + 1);
   for (let e = 0; e < edgeCount; e++) {
     const a = raw.edges[e * 3];
@@ -105,7 +116,10 @@ export function parseGraph(raw: RawWalkGraph): WalkGraph {
     if (a >= nodeCount || b >= nodeCount) throw new Error("Walk graph edge out of range");
     edgeA[e] = a;
     edgeB[e] = b;
-    edgeStairs[e] = raw.edges[e * 3 + 2] ? 1 : 0;
+    // Version 1 only marked stairs with a 1; anything else was a plain walkway.
+    const kind = raw.version === 1 ? (raw.edges[e * 3 + 2] ? EDGE_STEPS : 0) : raw.edges[e * 3 + 2];
+    edgeStairs[e] = kind === EDGE_STEPS ? 1 : 0;
+    edgeCost[e] = KIND_COST[kind] ?? KIND_COST[KIND_COST.length - 1];
     degree[a + 1]++;
     degree[b + 1]++;
   }
@@ -116,6 +130,7 @@ export function parseGraph(raw: RawWalkGraph): WalkGraph {
   const cursor = offsets.slice(0, nodeCount);
   const targets = new Int32Array(edgeCount * 2);
   const lengths = new Float64Array(edgeCount * 2);
+  const costs = new Float64Array(edgeCount * 2);
   const stairs = new Uint8Array(edgeCount * 2);
   for (let e = 0; e < edgeCount; e++) {
     const a = edgeA[e];
@@ -128,11 +143,12 @@ export function parseGraph(raw: RawWalkGraph): WalkGraph {
       const slot = cursor[from]++;
       targets[slot] = to;
       lengths[slot] = length;
+      costs[slot] = length * edgeCost[e];
       stairs[slot] = edgeStairs[e];
     }
   }
 
-  return { lat, lng, offsets, targets, lengths, stairs, edgeA, edgeB, edgeStairs };
+  return { lat, lng, offsets, targets, lengths, costs, stairs, edgeA, edgeB, edgeStairs };
 }
 
 const nodeCoord = (g: WalkGraph, i: number): Coordinate => ({ latitude: g.lat[i], longitude: g.lng[i] });
@@ -229,11 +245,23 @@ class MinHeap {
   }
 }
 
-export function findRoute(
+export function findRoute(g: WalkGraph, from: Coordinate, to: Coordinate, options: RouteOptions): Route | null {
+  const preferred = searchRoute(g, from, to, options, g.costs);
+  const shortest = searchRoute(g, from, to, options, g.lengths);
+  if (!preferred || !shortest) return preferred ?? shortest;
+  const allowance = Math.min(
+    WALKWAY_DETOUR_MAX_METERS,
+    Math.max(WALKWAY_DETOUR_MIN_METERS, shortest.distance * WALKWAY_DETOUR_SHARE),
+  );
+  return preferred.distance <= shortest.distance + allowance ? preferred : shortest;
+}
+
+function searchRoute(
   g: WalkGraph,
   from: Coordinate,
   to: Coordinate,
   { avoidStairs, heading, start: startOn }: RouteOptions,
+  weights: Float64Array,
 ): Route | null {
   const start = startOn ?? snapToGraph(g, from, avoidStairs);
   const goals = snapGoals(g, to, avoidStairs);
@@ -318,7 +346,7 @@ export function findRoute(
       const next = g.targets[slot];
       if (avoidStairs && g.stairs[slot] && !(flight?.has(node) && flight.has(next))) continue;
       if (closed[next]) continue;
-      const candidate = cost[node] + g.lengths[slot];
+      const candidate = cost[node] + weights[slot];
       if (candidate < cost[next]) {
         cost[next] = candidate;
         previous[next] = node;

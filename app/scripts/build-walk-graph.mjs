@@ -25,6 +25,20 @@ const walkable = (tags) => {
   return true;
 };
 
+// Saved with each edge so routing can favor real walkways over the roads kept for reach. Matches routing.ts.
+const KIND = { walkway: 0, steps: 1, road: 2, parking: 3 };
+const WALKWAYS = new Set(["footway", "path", "pedestrian", "corridor", "cycleway", "track"]);
+
+const kindOf = (tags) => {
+  if (tags.highway === "steps") return KIND.steps;
+  if (WALKWAYS.has(tags.highway)) return KIND.walkway;
+  if (tags.highway === "service" && tags.service === "parking_aisle") return KIND.parking;
+  return KIND.road;
+};
+
+// Two ways over the same stretch: stairs stay stairs, otherwise the more walkable kind wins.
+const mergeKind = (a, b) => (a === KIND.steps || b === KIND.steps ? KIND.steps : Math.min(a, b));
+
 const edges = new Map();
 const adjacency = new Map();
 const link = (a, b) => {
@@ -36,13 +50,14 @@ const link = (a, b) => {
 
 for (const el of elements) {
   if (el.type !== "way" || !el.tags || !walkable(el.tags)) continue;
-  const isSteps = el.tags.highway === "steps";
+  const kind = kindOf(el.tags);
   for (let i = 1; i < el.nodes.length; i++) {
     const a = el.nodes[i - 1];
     const b = el.nodes[i];
     if (a === b || !coords.has(a) || !coords.has(b)) continue;
     const key = a < b ? `${a}:${b}` : `${b}:${a}`;
-    edges.set(key, { a, b, isSteps: isSteps || edges.get(key)?.isSteps === true });
+    const existing = edges.get(key);
+    edges.set(key, { a, b, kind: existing ? mergeKind(existing.kind, kind) : kind });
     link(a, b);
   }
 }
@@ -82,17 +97,17 @@ for (const id of largest) {
 }
 
 const edgeList = [];
-let stepEdges = 0;
-for (const { a, b, isSteps } of edges.values()) {
+const counts = [0, 0, 0, 0];
+for (const { a, b, kind } of edges.values()) {
   if (!index.has(a) || !index.has(b)) continue;
-  edgeList.push(index.get(a), index.get(b), isSteps ? 1 : 0);
-  if (isSteps) stepEdges++;
+  edgeList.push(index.get(a), index.get(b), kind);
+  counts[kind]++;
 }
 
-const graph = { version: 1, scale: SCALE, baseLat, baseLng, nodes, edges: edgeList };
+const graph = { version: 2, scale: SCALE, baseLat, baseLng, nodes, edges: edgeList };
 const out = join(APP_DIR, "src", "data", "walk-graph.json");
 writeFileSync(out, JSON.stringify(graph));
 
 console.log(
-  `nodes ${largest.length}, edges ${edgeList.length / 3}, stair edges ${stepEdges}, dropped nodes ${adjacency.size - largest.length}`,
+  `nodes ${largest.length}, edges ${edgeList.length / 3} (walkway ${counts[KIND.walkway]}, steps ${counts[KIND.steps]}, road ${counts[KIND.road]}, parking ${counts[KIND.parking]}), dropped nodes ${adjacency.size - largest.length}`,
 );
