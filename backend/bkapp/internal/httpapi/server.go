@@ -43,6 +43,10 @@ func New(
 	friendUser := newRateLimiter(40, 15*time.Minute)
 	blockUser := newRateLimiter(40, 15*time.Minute)
 	meetupUser := newRateLimiter(30, 15*time.Minute)
+	profileUser := newRateLimiter(30, 15*time.Minute)
+	sessionUser := newRateLimiter(10, 15*time.Minute)
+	undoUser := newRateLimiter(60, 15*time.Minute)
+	meetupActionUser := newRateLimiter(120, 15*time.Minute)
 
 	a := &authHandlers{
 		service:  authService,
@@ -61,10 +65,10 @@ func New(
 	mux.Handle("POST /v1/auth/verify", limitRoute(codeChecks, ip, http.HandlerFunc(a.verifyCode)))
 	mux.Handle("POST /v1/app/auth/verify", limitRoute(codeChecks, ip, http.HandlerFunc(a.verifyCodeForApp)))
 	mux.HandleFunc("POST /v1/auth/signout", a.signOut)
-	mux.HandleFunc("POST /v1/auth/signout-all", a.requireUser(a.signOutEverywhere))
+	mux.HandleFunc("POST /v1/auth/signout-all", a.requireUser(limitUser(sessionUser, a.signOutEverywhere)))
 	mux.HandleFunc("GET /v1/me", a.requireUser(a.me))
 	mux.Handle("GET /v1/me/export", limitRoute(accountDataIP, ip, a.requireUser(limitUser(exportUser, a.exportMe))))
-	mux.HandleFunc("PATCH /v1/me", a.requireUser(a.updateMe))
+	mux.HandleFunc("PATCH /v1/me", a.requireUser(limitUser(profileUser, a.updateMe)))
 	mux.Handle("DELETE /v1/me", limitRoute(accountDataIP, ip, a.requireUser(limitUser(wipeUser, a.deleteMe))))
 	mux.HandleFunc("GET /v1/push/config", ph.config)
 	mux.Handle("POST /v1/push/subscriptions", limitRoute(accountDataIP, ip, a.requireUser(limitUser(pushUser, ph.save))))
@@ -81,10 +85,10 @@ func New(
 		mux.HandleFunc("GET /v1/friends", a.requireUser(sh.overview))
 		mux.Handle("POST /v1/friends/requests", a.requireUser(limitUser(friendUser, sh.sendRequest)))
 		mux.Handle("POST /v1/friends/requests/{username}/accept", a.requireUser(limitUser(friendUser, sh.acceptRequest)))
-		mux.HandleFunc("DELETE /v1/friends/requests/{username}", a.requireUser(sh.removeRequest))
-		mux.HandleFunc("DELETE /v1/friends/{username}", a.requireUser(sh.unfriend))
+		mux.HandleFunc("DELETE /v1/friends/requests/{username}", a.requireUser(limitUser(undoUser, sh.removeRequest)))
+		mux.HandleFunc("DELETE /v1/friends/{username}", a.requireUser(limitUser(undoUser, sh.unfriend)))
 		mux.Handle("POST /v1/blocks", a.requireUser(limitUser(blockUser, sh.block)))
-		mux.HandleFunc("DELETE /v1/blocks/{username}", a.requireUser(sh.unblock))
+		mux.HandleFunc("DELETE /v1/blocks/{username}", a.requireUser(limitUser(undoUser, sh.unblock)))
 		mux.HandleFunc("POST /v1/reports", a.requireUser(limitUser(reportUser, sh.report)))
 		mux.HandleFunc("GET /v1/meetups", a.requireUser(sh.listMeetups))
 		mux.Handle("POST /v1/meetups", a.requireUser(limitUser(meetupUser, sh.createMeetup)))
@@ -92,11 +96,11 @@ func New(
 		mux.Handle("POST /v1/meetups/public", a.requireUser(limitUser(meetupUser, sh.createPublicMeetup)))
 		mux.HandleFunc("GET /v1/meetups/{id}", a.requireUser(sh.getMeetup))
 		mux.Handle("POST /v1/meetups/{id}/join", a.requireUser(limitUser(meetupUser, sh.joinPublicMeetup)))
-		mux.HandleFunc("POST /v1/meetups/{id}/respond", a.requireUser(sh.respond))
-		mux.HandleFunc("POST /v1/meetups/{id}/leave", a.requireUser(sh.leave))
+		mux.HandleFunc("POST /v1/meetups/{id}/respond", a.requireUser(limitUser(meetupActionUser, sh.respond)))
+		mux.HandleFunc("POST /v1/meetups/{id}/leave", a.requireUser(limitUser(meetupActionUser, sh.leave)))
 		mux.Handle("POST /v1/meetups/{id}/invite", a.requireUser(limitUser(inviteUser, sh.invite)))
-		mux.HandleFunc("POST /v1/meetups/{id}/end", a.requireUser(sh.end))
-		mux.HandleFunc("POST /v1/meetups/{id}/ticket", a.requireUser(sh.liveTicket))
+		mux.HandleFunc("POST /v1/meetups/{id}/end", a.requireUser(limitUser(meetupActionUser, sh.end)))
+		mux.HandleFunc("POST /v1/meetups/{id}/ticket", a.requireUser(limitUser(meetupActionUser, sh.liveTicket)))
 	}
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "not found")
@@ -111,7 +115,7 @@ func New(
 		sameOriginWrites(cfg.AllowedOrigins),
 		limitBody,
 	)
-	return &Server{handler: handler, limiters: []*rateLimiter{general, codeRequests, codeChecks, accountDataIP, wipeUser, exportUser, pushUser, settingsUser, inviteUser, reportUser, friendUser, blockUser, meetupUser}}
+	return &Server{handler: handler, limiters: []*rateLimiter{general, codeRequests, codeChecks, accountDataIP, wipeUser, exportUser, pushUser, settingsUser, inviteUser, reportUser, friendUser, blockUser, meetupUser, profileUser, sessionUser, undoUser, meetupActionUser}}
 }
 
 func (s *Server) Handler() http.Handler {

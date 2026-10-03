@@ -73,7 +73,7 @@ export function AccountPanel({
       role="region"
       aria-label="Account"
       className="animate-sheet-in flex max-h-[82dvh] flex-col rounded-t-[28px] shadow-2xl md:max-h-[calc(100dvh-2rem)] md:rounded-3xl">
-      <SheetGrabber onCollapse={onCollapse} />
+      <SheetGrabber />
 
       <div className="flex items-center gap-3 px-5 pb-2 pt-3">
         <span className="flex size-9 items-center justify-center rounded-xl bg-accent-soft text-accent-soft-foreground">

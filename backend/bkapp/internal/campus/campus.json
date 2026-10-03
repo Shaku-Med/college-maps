@@ -4,6 +4,7 @@
     "name": "CSI Map",
     "shortName": "CSI Map",
     "description": "Find any building or room at the College of Staten Island.",
+    "url": "https://csimap.vercel.app",
     "disclaimer": "Unofficial student project. Not affiliated with the College of Staten Island."
   },
   "college": {

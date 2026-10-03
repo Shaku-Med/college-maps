@@ -153,7 +153,7 @@ export function DirectionsPanel({
         role="region"
         aria-label="Stops on the way"
         className="animate-sheet-in flex max-h-[78dvh] flex-col rounded-t-[28px] shadow-2xl md:max-h-[calc(100dvh-8rem)] md:rounded-3xl">
-        <SheetGrabber onCollapse={onCollapse} />
+        <SheetGrabber />
         <div className="flex items-center gap-1 px-3 pt-2 md:pt-3">
           <Button isIconOnly variant="ghost" aria-label="Back to directions" onPress={() => setAllStops(false)} className="rounded-full">
             <ArrowLeft aria-hidden />
@@ -189,7 +189,7 @@ export function DirectionsPanel({
       role="region"
       aria-label={`Directions to ${destination.name}`}
       className="animate-sheet-in flex max-h-[78dvh] flex-col rounded-t-[28px] shadow-2xl md:max-h-[calc(100dvh-8rem)] md:rounded-3xl">
-      <SheetGrabber onCollapse={onCollapse} />
+      <SheetGrabber />
 
       <div className="flex items-center gap-1 px-3 pt-2 md:pt-3">
         <Button isIconOnly variant="ghost" aria-label="Back to place" onPress={onBack} className="rounded-full">

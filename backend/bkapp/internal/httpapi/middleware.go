@@ -126,6 +126,9 @@ func recoverPanics(logger *slog.Logger) func(http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			defer func() {
 				if rec := recover(); rec != nil {
+					if rec == http.ErrAbortHandler {
+						panic(rec)
+					}
 					logger.Error("panic", "path", r.URL.Path, "error", rec)
 					writeError(w, http.StatusInternalServerError, "internal error")
 				}

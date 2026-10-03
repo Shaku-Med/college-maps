@@ -60,7 +60,7 @@ export function PlaceSheet({
       role="region"
       aria-label={place.name}
       className="animate-sheet-in rounded-t-[28px] px-5 pb-[max(1.25rem,var(--map-safe-bottom))] pt-0 shadow-2xl md:rounded-3xl md:pb-5 md:pt-5">
-      <SheetGrabber onCollapse={onCollapse} />
+      <SheetGrabber />
 
       <div className="flex items-start gap-3 pt-3 md:pt-0">
         <span className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-accent-soft text-accent-soft-foreground">

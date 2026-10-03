@@ -180,7 +180,7 @@ export function SheetLayer({
   );
 }
 
-export function SheetGrabber({ onCollapse: _onCollapse }: { onCollapse?: () => void } = {}) {
+export function SheetGrabber() {
   return (
     <div data-sheet-grab className="flex shrink-0 cursor-grab touch-none justify-center pt-2.5 md:hidden">
       <div className="h-1 w-10 rounded-full bg-separator" aria-hidden />

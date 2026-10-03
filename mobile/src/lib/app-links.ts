@@ -7,7 +7,7 @@ import { isValidRoom } from '@/lib/search';
 import { planTrip } from '@/lib/trip';
 
 const MAX_LINK_LENGTH = 200;
-const PLACE_ID = /^[A-Za-z0-9]{1,10}$/;
+const PLACE_ID = /^[A-Za-z0-9][A-Za-z0-9-]{0,15}$/;
 
 function roomFrom(query: string) {
   for (const pair of query.split('&')) {
@@ -47,7 +47,8 @@ export function handleAppLink(path: string): string | null {
   if (parts[0] === 'place' && parts.length === 2 && PLACE_ID.test(parts[1]) && usesTabRail()) {
     const place = getPlace(parts[1].toUpperCase());
     if (!place) return null;
-    openPlacePanel(place.id, roomFrom(query));
+    const room = roomFrom(query);
+    openPlacePanel(place.id, isValidRoom(room) ? room : undefined);
     return '/';
   }
   return null;
