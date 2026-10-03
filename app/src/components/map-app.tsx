@@ -8,6 +8,7 @@ import { AccountPanel, initials } from "@/components/account-panel";
 import { CampusMap, type CampusMapHandle, type MapPerson } from "@/components/campus-map";
 import { DirectionsPanel, type RouteIssue } from "@/components/directions-panel";
 import { DragScroll } from "@/components/drag-scroll";
+import { LaunchSplash } from "@/components/launch-splash";
 import { NavigationHud, type RouteNotice } from "@/components/navigation-hud";
 import { MeetupPeek, MeetupSheet } from "@/components/meetup-sheet";
 import { PeoplePanel, initialsFor } from "@/components/people-panel";
@@ -203,6 +204,7 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   const [mode, setMode] = useState<Mode>("browse");
+  const [mapLoaded, setMapLoaded] = useState(false);
   const [selectedId, setSelectedId] = useState(initialPlaceId);
   const [room, setRoom] = useState(initialRoom);
   const [filter, setFilter] = useState<MapFilter>("all");
@@ -1204,6 +1206,7 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
         initialFocus={selected?.coordinate}
         getFocusPadding={meetupSheetOpen || peopleExpanded || scheduleExpanded || accountExpanded || (mode === "directions" && isDirectionsExpanded) ? sheetPadding : hasPeek ? peekPadding : sheetPadding}
         onSelect={selectPlace}
+        onLoad={() => setMapLoaded(true)}
         activityByPlace={activityByPlace}
         onUserPan={() => {
           if (mode !== "navigate") return;
@@ -1628,6 +1631,7 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
           onEnd={endNavigation}
         />
       ) : null}
+      <LaunchSplash ready={mapLoaded} />
     </main>
   );
 }

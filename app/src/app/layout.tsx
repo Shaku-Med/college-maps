@@ -9,6 +9,7 @@ import { CAMPUS } from "@/data/campus";
 import iconBuild from "@/data/icon-version.json";
 import { APPEARANCE_SCRIPT } from "@/lib/appearance";
 import { COVER_SCRIPT } from "@/lib/cover-viewport";
+import { LAUNCH_SCRIPT } from "@/lib/launch";
 
 import "./globals.css";
 
@@ -23,10 +24,12 @@ function themeVariables(colors: { accent?: string; accentForeground?: string } |
   return `--accent:${colors.accent};--accent-foreground:${colors.accentForeground};`;
 }
 
+// The launch splash keeps the light accent in dark mode too, like the phone app's.
+const BRAND = themeVariables(CAMPUS.theme).replaceAll("--accent", "--brand");
 const LIGHT_THEME = themeVariables(CAMPUS.theme);
 const DARK_THEME = themeVariables(CAMPUS.theme.dark);
 const THEME_OVERRIDES = [
-  LIGHT_THEME && `:root{${LIGHT_THEME}}`,
+  (LIGHT_THEME || BRAND) && `:root{${LIGHT_THEME}${BRAND}}`,
   DARK_THEME && `:root.dark{${DARK_THEME}}`,
   DARK_THEME && `@media (prefers-color-scheme: dark){:root{${DARK_THEME}}}`,
 ]
@@ -122,6 +125,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
         <script nonce={nonce} dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
         <script nonce={nonce} dangerouslySetInnerHTML={{ __html: COVER_SCRIPT }} />
         <script nonce={nonce} dangerouslySetInnerHTML={{ __html: APPEARANCE_SCRIPT }} />
+        <script nonce={nonce} dangerouslySetInnerHTML={{ __html: LAUNCH_SCRIPT }} />
         {THEME_OVERRIDES ? <style nonce={nonce}>{THEME_OVERRIDES}</style> : null}
         <script nonce={nonce} type="application/ld+json" dangerouslySetInnerHTML={{ __html: STRUCTURED_DATA }} />
       </head>

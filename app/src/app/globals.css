@@ -38,7 +38,136 @@
   }
 }
 
+/* The phone app's launch-overlay timings: hold 140, dip 140, rise 260, fall 220, then a small squash on landing. */
+.launch-splash {
+  --launch-soft: cubic-bezier(0.455, 0.03, 0.515, 0.955);
+  --launch-out: cubic-bezier(0.215, 0.61, 0.355, 1);
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  background: var(--brand);
+  animation: launch-giveup 300ms ease 6s forwards;
+}
+
+.launch-splash[data-leaving] {
+  pointer-events: none;
+  animation: launch-exit 380ms var(--launch-soft) 880ms forwards;
+}
+
+html[data-launched] .launch-splash {
+  display: none;
+}
+
+.launch-stage {
+  position: relative;
+  width: 96px;
+  height: 96px;
+}
+
+/* 933 of 1024 is the pin's tip, so it presses into the ground instead of shrinking toward its middle. */
+.launch-grow,
+.launch-pin {
+  display: block;
+  transform-origin: 50% 91.11%;
+}
+
+.launch-ripple {
+  position: absolute;
+  left: 16px;
+  top: 77.5px;
+  width: 64px;
+  height: 20px;
+  border: 2px solid var(--brand-foreground);
+  border-radius: 20px;
+  opacity: 0;
+}
+
+.launch-splash[data-leaving] .launch-pin {
+  animation: launch-hop 890ms 140ms;
+}
+
+.launch-splash[data-leaving] .launch-ripple {
+  animation: launch-ripple 560ms var(--launch-out) 760ms forwards;
+}
+
+.launch-splash[data-leaving] .launch-grow {
+  animation: launch-grow 380ms var(--launch-soft) 880ms forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .launch-splash[data-leaving] {
+    animation: launch-exit 260ms var(--launch-soft) forwards;
+  }
+
+  .launch-splash[data-leaving] :is(.launch-pin, .launch-ripple, .launch-grow) {
+    animation: none;
+  }
+}
+
+@keyframes launch-hop {
+  0% {
+    transform: none;
+    animation-timing-function: cubic-bezier(0.455, 0.03, 0.515, 0.955);
+  }
+  15.73% {
+    transform: translateY(3px) scale(1.05, 0.92);
+    animation-timing-function: cubic-bezier(0.215, 0.61, 0.355, 1);
+  }
+  44.94% {
+    transform: translateY(-16px) scale(0.97, 1.04);
+    animation-timing-function: cubic-bezier(0.55, 0.085, 0.68, 0.53);
+  }
+  69.66% {
+    transform: none;
+    animation-timing-function: cubic-bezier(0.215, 0.61, 0.355, 1);
+  }
+  79.78% {
+    transform: scale(1.04, 0.95);
+    animation-timing-function: cubic-bezier(0.455, 0.03, 0.515, 0.955);
+  }
+  100% {
+    transform: none;
+  }
+}
+
+@keyframes launch-ripple {
+  from {
+    opacity: 0.55;
+    transform: scale(0.35);
+  }
+  to {
+    opacity: 0;
+    transform: scale(1.5);
+  }
+}
+
+@keyframes launch-grow {
+  to {
+    transform: scale(1.18);
+  }
+}
+
+@keyframes launch-exit {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes launch-giveup {
+  to {
+    opacity: 0;
+    visibility: hidden;
+  }
+}
+
 @layer base {
+  :root {
+    --brand: var(--accent);
+    --brand-foreground: var(--accent-foreground);
+  }
+
   html {
     /* Safari tab: 100dvh matches the visible viewport. Installed iPhone app:
        WebKit lies about dvh/svh/innerHeight (bug 254868) and 100vh is the

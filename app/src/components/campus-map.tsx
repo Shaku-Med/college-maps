@@ -87,6 +87,8 @@ type CampusMapProps = {
   initialFocus?: Coordinate;
   getFocusPadding?: () => Partial<PaddingOptions>;
   onSelect: (place: Place | undefined) => void;
+  /** The style and first tiles have drawn. */
+  onLoad?: () => void;
   /** The person started moving the map themselves: drag, pinch, twist, or scroll. */
   onUserPan?: () => void;
   /** The map came to rest after the person moved it, including any glide after letting go. */
@@ -587,6 +589,7 @@ export function CampusMap({
   initialFocus,
   getFocusPadding,
   onSelect,
+  onLoad,
   onUserPan,
   onUserSettle,
   onRotatedChange,
@@ -613,6 +616,7 @@ export function CampusMap({
   const [isReady, setIsReady] = useState(false);
 
   const onSelectRef = useRef(onSelect);
+  const onLoadRef = useRef(onLoad);
   // A turn the map was asked to finish, such as back to north.
   const bearingGoalRef = useRef<number | null>(null);
   const onUserPanRef = useRef(onUserPan);
@@ -643,6 +647,7 @@ export function CampusMap({
 
   useEffect(() => {
     onSelectRef.current = onSelect;
+    onLoadRef.current = onLoad;
     onUserPanRef.current = onUserPan;
     onUserSettleRef.current = onUserSettle;
     onRotatedChangeRef.current = onRotatedChange;
@@ -657,6 +662,7 @@ export function CampusMap({
     activityRef.current = activityByPlace;
   }, [
     onSelect,
+    onLoad,
     onUserPan,
     onUserSettle,
     onRotatedChange,
@@ -859,6 +865,7 @@ export function CampusMap({
       }
       mapRef.current = map;
       map.on("load", relayout);
+      map.once("load", () => onLoadRef.current?.());
       ro = new ResizeObserver(relayout);
       ro.observe(containerRef.current);
       window.visualViewport?.addEventListener("resize", relayout);
