@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { CAMPUS, contains, type Coordinate, type Place } from '@/data/campus';
 import { walkGraph } from '@/data/walk-graph';
 import type { RouteNotice } from '@/hooks/use-voice-guidance';
-import { fetchStreetRoute } from '@/lib/directions';
+import { fetchTripRoute } from '@/lib/directions';
 import { bearingDegrees, distanceMeters, turnAngle } from '@/lib/geo';
 import { currentCompass, onFix, type Fix } from '@/lib/location';
 import { createMotionTracker, isOnFoot, ON_FOOT_MAX_MPS, RIDING_MAX_MPS, type MotionState } from '@/lib/motion';
@@ -53,6 +53,7 @@ const MAX_BELIEVABLE_MPS: Record<TravelMode, number> = { walk: 12, bike: 20, dri
 // A walk or bike ride that started on streets switches to the campus paths once the traveller is on them.
 const ON_CAMPUS_WALKWAY_METERS = 15;
 const ON_CAMPUS_FIXES = 2;
+const PARKED_METERS = 60;
 // Following the steps by hand, a fix only takes over once it is this close to the route.
 const TAKEOVER_METERS = 40;
 
@@ -160,8 +161,9 @@ export function useNavigation({ destination, avoidStairs, follow, facingUp }: Op
     [facing],
   );
 
+  // Without a notice the change is a handover to the same way on, so nothing is left behind on the map.
   const commit = useCallback(
-    (chosen: Route, leaving: Route, position: Coordinate, kind: RouteNotice) => {
+    (chosen: Route, leaving: Route, position: Coordinate, kind?: RouteNotice) => {
       const leftAt = trackProgress(leaving, position, hint.current);
       const next = trackProgress(chosen, position, 0);
       hint.current = next.segmentIndex;
@@ -172,12 +174,12 @@ export function useNavigation({ destination, avoidStairs, follow, facingUp }: Op
       previousStartAlong.current = leftAt.distanceAlong;
       previousMatches.current = 0;
       lastRecheck.current = { at: Date.now(), along: next.distanceAlong };
-      nav.current = { ...nav.current, route: chosen, previous: leaving };
+      nav.current = { ...nav.current, route: chosen, previous: kind ? leaving : null };
       setRoute(chosen);
-      setPreviousPath(remainingPath(leaving, leftAt));
+      setPreviousPath(kind ? remainingPath(leaving, leftAt) : null);
       setProgress(next);
       setIsWrongWay(false);
-      showNotice(kind);
+      if (kind) showNotice(kind);
     },
     [showNotice],
   );
@@ -193,11 +195,11 @@ export function useNavigation({ destination, avoidStairs, follow, facingUp }: Op
       state.inflight = true;
       state.at = Date.now();
       const heading = travelHeading();
-      fetchStreetRoute(position, target.coordinate, travel, { avoidStairs: stairs, heading })
+      fetchTripRoute(walkGraph(), position, target, travel, { avoidStairs: stairs, heading })
         .then((candidate) =>
           candidate || heading === undefined
             ? candidate
-            : fetchStreetRoute(position, target.coordinate, travel, { avoidStairs: stairs }),
+            : fetchTripRoute(walkGraph(), position, target, travel, { avoidStairs: stairs }),
         )
         .then((candidate) => {
           const current = nav.current;
@@ -275,8 +277,14 @@ export function useNavigation({ destination, avoidStairs, follow, facingUp }: Op
       const match = graph && !holding ? matchWalkway(graph, position, { avoidStairs: current.avoidStairs }) : undefined;
       const walkway = match && match.distance <= WALKWAY_MATCH_METERS ? match : undefined;
 
-      // A walk that began off campus follows streets; once on the campus paths, the paths are the way.
-      if ((travel === 'walk' || travel === 'bike') && trusted && !holding && contains(CAMPUS.map.walkingArea, position)) {
+      // A trip from off campus follows streets until the campus paths, and a drive until the car is parked.
+      const parked =
+        travel === 'drive' &&
+        active.campusFrom !== undefined &&
+        isOnFoot(state.motion) &&
+        next.distanceAlong >= active.campusFrom - PARKED_METERS;
+      const onFoot = (travel === 'walk' || travel === 'bike') && !holding;
+      if ((onFoot || parked) && trusted && contains(CAMPUS.map.walkingArea, position)) {
         const onPath = matchWalkway(walkGraph(), position, { avoidStairs: current.avoidStairs });
         onCampusCount.current = onPath && onPath.distance <= ON_CAMPUS_WALKWAY_METERS ? onCampusCount.current + 1 : 0;
         if (onCampusCount.current >= ON_CAMPUS_FIXES) {
@@ -287,7 +295,7 @@ export function useNavigation({ destination, avoidStairs, follow, facingUp }: Op
             start: onPath,
           });
           if (campus) {
-            commit(campus, active, position, 'rerouted');
+            commit(campus, active, position, active.campusFrom === undefined ? 'rerouted' : undefined);
             return;
           }
         }

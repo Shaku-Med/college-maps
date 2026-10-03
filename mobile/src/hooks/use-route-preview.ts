@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { CAMPUS, contains, type Coordinate } from '@/data/campus';
 import { walkGraph } from '@/data/walk-graph';
-import { fetchStreetRoute } from '@/lib/directions';
+import { fetchTripRoute } from '@/lib/directions';
 import { distanceMeters } from '@/lib/geo';
 import type { LocationStatus } from '@/lib/location';
 import { findRoute, matchWalkway, type Route } from '@/lib/routing';
@@ -106,7 +106,7 @@ export function useRoutePreview(
 
     const controller = new AbortController();
     let settled = false;
-    fetchStreetRoute(from, first.coordinate, trip.travelMode, {
+    fetchTripRoute(walkGraph(), from, first, trip.travelMode, {
       avoidStairs: trip.avoidStairs,
       heading: heading(),
       signal: controller.signal,

@@ -344,6 +344,10 @@
           "isBuilding": {
             "type": "boolean",
             "description": "true if rooms can be inside it"
+          },
+          "staffOnly": {
+            "type": "boolean",
+            "description": "true for a parking lot students and visitors cannot use, so driving directions never end there"
           }
         }
       }

@@ -28,6 +28,7 @@ export type Place = {
   details?: string;
   keywords?: string[];
   isBuilding: boolean;
+  staffOnly?: boolean;
 };
 
 export type ThemeColors = { accent?: string; accentForeground?: string };
@@ -220,6 +221,8 @@ function places(errors: ConfigErrors, source: unknown, area: Bounds): Place[] {
       errors.add(`${path}.keywords`, "must be up to 20 words, each up to 40 characters");
     }
     if (typeof item.isBuilding !== "boolean") errors.add(`${path}.isBuilding`, "must be true or false");
+    if (item.staffOnly !== undefined && typeof item.staffOnly !== "boolean")
+      errors.add(`${path}.staffOnly`, "must be true or false");
 
     return [
       {
@@ -231,6 +234,7 @@ function places(errors: ConfigErrors, source: unknown, area: Bounds): Place[] {
         details: text(errors, item, "details", path, 200, true),
         keywords: Array.isArray(keywords) ? keywords.map((k) => String(k).toLowerCase()) : undefined,
         isBuilding: item.isBuilding === true,
+        ...(item.staffOnly === true ? { staffOnly: true } : {}),
       },
     ];
   });

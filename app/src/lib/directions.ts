@@ -1,6 +1,15 @@
-import type { Coordinate } from "@/data/campus";
-import { distanceMeters, formatDuration, formatSeconds } from "@/lib/geo";
-import type { Route, RouteStep, TravelMode, TurnDirection } from "@/lib/routing";
+import { CAMPUS, contains, PLACES, type Coordinate, type Place } from "@/data/campus";
+import { distanceMeters, formatDuration, formatSeconds, WALK_SPEED_MPS } from "@/lib/geo";
+import {
+  findRoute,
+  joinRoutes,
+  matchWalkway,
+  type Route,
+  type RouteStep,
+  type TravelMode,
+  type TurnDirection,
+  type WalkGraph,
+} from "@/lib/routing";
 
 // Street directions from OpenStreetMap's public Valhalla server: free under fair use, apps name themselves.
 export const STREET_ROUTING_ORIGIN = "https://valhalla1.openstreetmap.de";
@@ -101,6 +110,64 @@ export async function fetchStreetRoute(
     clearTimeout(timer);
     signal?.removeEventListener("abort", abort);
   }
+}
+
+// A street route point this close to a campus walkway is where the trip can carry on along the paths.
+const CAMPUS_JOIN_METERS = 20;
+
+type TripOptions = { avoidStairs: boolean; heading?: number; signal?: AbortSignal };
+
+/** A trip from off campus: streets until the campus paths, then the paths. Drivers park in the closest open lot and walk. */
+export async function fetchTripRoute(
+  g: WalkGraph | null,
+  from: Coordinate,
+  to: Place,
+  travel: TravelMode,
+  options: TripOptions,
+): Promise<Route | null> {
+  if (!g) return fetchStreetRoute(from, to.coordinate, travel, options);
+  if (travel === "drive") return driveAndWalk(g, from, to, options);
+  const street = await fetchStreetRoute(from, to.coordinate, travel, options);
+  if (!street) return null;
+  const entry = street.path.findIndex(
+    (point, i) =>
+      i > 0 &&
+      contains(CAMPUS.map.walkingArea, point) &&
+      (matchWalkway(g, point, { avoidStairs: options.avoidStairs })?.distance ?? Infinity) <= CAMPUS_JOIN_METERS,
+  );
+  const campus = entry > 0 ? findRoute(g, street.path[entry], to.coordinate, { avoidStairs: options.avoidStairs }) : null;
+  if (!campus) return street;
+  const pace = street.duration ? street.distance / street.duration : WALK_SPEED_MPS;
+  return joinRoutes(street, entry, campus, { campusSpeed: pace });
+}
+
+async function driveAndWalk(g: WalkGraph, from: Coordinate, to: Place, options: TripOptions) {
+  const lot = to.category === "parking" ? null : closestLot(g, to, options.avoidStairs);
+  if (!lot) return fetchStreetRoute(from, to.coordinate, "drive", options);
+  const drive = await fetchStreetRoute(from, lot.coordinate, "drive", options);
+  if (!drive) return fetchStreetRoute(from, to.coordinate, "drive", options);
+  const parked = drive.path.length - 1;
+  const walk = findRoute(g, drive.path[parked], to.coordinate, { avoidStairs: options.avoidStairs });
+  if (!walk) return drive;
+  return joinRoutes(drive, parked, walk, {
+    campusSpeed: WALK_SPEED_MPS,
+    handoff: {
+      text: `Park in ${lot.name} and walk the rest of the way`,
+      alert: `Park in ${lot.name}.`,
+      spoken: `Park in ${lot.name}, then walk the rest of the way.`,
+    },
+  });
+}
+
+/** The lot with the shortest walk to the place, among the ones anyone may park in. */
+function closestLot(g: WalkGraph, to: Place, avoidStairs: boolean) {
+  let best: { lot: Place; meters: number } | null = null;
+  for (const lot of PLACES) {
+    if (lot.category !== "parking" || lot.staffOnly) continue;
+    const walk = findRoute(g, lot.coordinate, to.coordinate, { avoidStairs });
+    if (walk && (!best || walk.distance < best.meters)) best = { lot, meters: walk.distance };
+  }
+  return best?.lot ?? null;
 }
 
 const text = (value: unknown) => (typeof value === "string" ? value.slice(0, MAX_TEXT) : undefined);

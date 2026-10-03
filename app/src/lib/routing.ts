@@ -55,6 +55,8 @@ export type Route = {
   travel?: TravelMode;
   /** Travel time in seconds when the router knows it, such as driving at road speeds. */
   duration?: number;
+  /** How far along a trip from off campus picks up the campus paths, which it follows from there. */
+  campusFrom?: number;
 };
 
 /** A point on the walkway someone is on, found by matching their position to the nearest path. */
@@ -569,6 +571,43 @@ export function progressAtDistance(route: Route, meters: number): RouteProgress 
 
 export function remainingPath(route: Route, progress: RouteProgress): Coordinate[] {
   return [progress.point, ...route.path.slice(progress.segmentIndex)];
+}
+
+/** A street route as far as `cutIndex` on its path, then a campus walk starting from that point, as one trip. */
+export function joinRoutes(
+  street: Route,
+  cutIndex: number,
+  campus: Route,
+  { handoff, campusSpeed }: { handoff?: Pick<RouteStep, "text" | "alert" | "spoken">; campusSpeed: number },
+): Route {
+  const cut = street.cumulative[cutIndex];
+  const path = [...street.path.slice(0, cutIndex + 1), ...campus.path.slice(1)];
+  const cumulative = [...street.cumulative.slice(0, cutIndex + 1), ...campus.cumulative.slice(1).map((d) => d + cut)];
+  const stairs = [...street.stairs.slice(0, cutIndex + 1), ...campus.stairs.slice(1)];
+  const distance = cumulative[cumulative.length - 1];
+
+  const steps: RouteStep[] = street.steps
+    .filter((step, i) => i === 0 || (step.kind !== "arrive" && step.startDistance < cut - MIN_STEP_METERS))
+    .map((step) => ({ ...step }));
+  const comingIn = bearingDegrees(pointAtDistance(path, cumulative, cut - TURN_LOOK_METERS), path[cutIndex]);
+  const direction = classifyTurn(turnAngle(comingIn, campus.steps[0].bearing ?? comingIn));
+  if (handoff || direction !== "straight") steps.push({ kind: "turn", direction, startDistance: cut, length: 0, ...handoff });
+  for (const step of campus.steps.slice(1)) steps.push({ ...step, startDistance: step.startDistance + cut });
+  for (let i = 0; i < steps.length - 1; i++) steps[i].length = Math.max(0, steps[i + 1].startDistance - steps[i].startDistance);
+
+  return {
+    path,
+    cumulative,
+    distance,
+    arrivalDistance: cut + campus.arrivalDistance,
+    steps,
+    hasStairs: stairs.some(Boolean) || steps.some((step) => step.kind === "stairs"),
+    stairs,
+    travel: street.travel,
+    duration:
+      street.duration === undefined ? undefined : street.duration * (cut / Math.max(1, street.distance)) + campus.distance / campusSpeed,
+    campusFrom: cut,
+  };
 }
 
 const ON_ROUTE_METERS = 15;

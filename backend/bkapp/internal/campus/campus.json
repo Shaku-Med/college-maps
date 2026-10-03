@@ -260,7 +260,8 @@
       "longitude": -74.152036,
       "details": "Faculty and staff lot by North Administration. Overnight parking only with Public Safety approval.",
       "keywords": ["parking", "car", "faculty", "staff", "administration", "overnight"],
-      "isBuilding": false
+      "isBuilding": false,
+      "staffOnly": true
     },
     {
       "id": "LOT2",
