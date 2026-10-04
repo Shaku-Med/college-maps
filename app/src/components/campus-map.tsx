@@ -57,7 +57,10 @@ export type CampusMapHandle = {
   follow: (coordinate: Coordinate, padding?: Partial<PaddingOptions>, zoom?: number) => void;
   fitPath: (path: Coordinate[], padding?: Partial<PaddingOptions>) => void;
   showCampus: () => void;
+  /** The cone on the dot: where the phone points. */
   setHeading: (degrees: number | undefined) => void;
+  /** Where heading up turns the map. */
+  setFacing: (degrees: number) => void;
   resetNorth: () => void;
 };
 
@@ -725,11 +728,12 @@ export function CampusMap({
         essential: true,
       });
     },
+    setFacing(degrees) {
+      if (!headingUpRef.current) return;
+      facingRef.current = degrees;
+      turnMapToFacing();
+    },
     setHeading(degrees) {
-      if (headingUpRef.current && degrees !== undefined) {
-        facingRef.current = degrees;
-        turnMapToFacing();
-      }
       headingRef.current ??= createHeadingAnimator((shown) => {
         // The map never rotates today, but subtracting the bearing keeps the cone true if it ever does.
         const bearing = mapRef.current?.getBearing() ?? 0;

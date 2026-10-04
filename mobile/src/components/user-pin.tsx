@@ -70,9 +70,8 @@ export function UserPin({ fix, at }: { fix: Fix; at?: Coordinate | null }) {
   const accent = useThemeColor('accent');
   const mapBearing = useMapBearing();
   const compass = useCompass();
-  // Moving, the phone's course says where someone is going; standing still, the compass (or last course).
-  const heading =
-    (fix.speed ?? 0) >= 0.7 && fix.heading !== undefined ? fix.heading : (compass ?? fix.heading);
+  // The cone shows where the phone points at any speed; GPS course only stands in on a phone without a compass.
+  const heading = compass ?? fix.heading;
   // During directions the dot sits on the route, or the walkway underfoot, instead of raw GPS.
   const { longitude, latitude } = useGlide(at ?? fix.position);
 

@@ -98,7 +98,7 @@ const TRAVEL_SLACK: Record<TravelMode, number> = { walk: 1, bike: 2, drive: 4 };
 const FOLLOW_AGAIN_MS = 8_000;
 // Standing still, a phone's reported course is meaningless, so it only counts above a walking pace.
 const COURSE_SPEED_MPS = 0.7;
-// Above this, the way the phone points stops meaning anything: it is in a pocket, a bag, or a hand on a bus.
+// Above this, heading up turns the map with the road; the cone on the dot still follows the compass.
 const COURSE_OVER_COMPASS_MPS = 5;
 // Fast movement puts GPS fixes further behind, so the off route and wrong way limits widen with speed.
 const MAX_SPEED_SLACK = 8;
@@ -286,7 +286,8 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
   const previousMatchesRef = useRef(0);
 
   const handleHeading = useCallback((degrees: number) => mapRef.current?.setHeading(degrees), []);
-  const { request: requestHeading, setCourse, compass } = useHeading(handleHeading);
+  const handleFacing = useCallback((degrees: number) => mapRef.current?.setFacing(degrees), []);
+  const { request: requestHeading, setCourse, compass } = useHeading(handleHeading, handleFacing);
   const motionRef = useRef(createMotionTracker());
   const motionStateRef = useRef<MotionState>({ speed: 0, motion: "still" });
   // Set while moving faster than the way of travel allows, like walking directions on a bus.

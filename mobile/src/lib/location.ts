@@ -30,23 +30,49 @@ function set(next: Partial<Snapshot>) {
 
 // Kept apart so Android's many compass readings a second never re-render the map screen.
 const COMPASS_STEP = 3;
-// iOS hands over a fused, steady heading.
-const COMPASS_SMOOTHING = Platform.OS === 'android' ? 0.15 : 1;
+// Android's raw readings jitter, so it eases toward the latest one over time; iOS hands over a fused, steady heading.
+const COMPASS_EASE_MS = Platform.OS === 'android' ? 220 : 0;
+const COMPASS_TICK_MS = 33;
 let compass: number | undefined;
 let pointing: { x: number; y: number } | null = null;
+let aim: { x: number; y: number } | null = null;
+let easing: ReturnType<typeof setInterval> | undefined;
 const compassListeners = new Set<() => void>();
+
+const turnBetween = (a: number, b: number) => Math.abs(((a - b + 540) % 360) - 180);
+const degreesOf = (v: { x: number; y: number }) => ((Math.atan2(v.y, v.x) * 180) / Math.PI + 360) % 360;
+
+function publishCompass(settled: boolean) {
+  if (!pointing) return;
+  const degrees = degreesOf(pointing);
+  if (compass !== undefined && turnBetween(degrees, compass) < (settled ? 0.5 : COMPASS_STEP)) return;
+  compass = degrees;
+  for (const listener of compassListeners) listener();
+}
+
+// Expo only reports a turn of 2 degrees or more, so a phone that stops turning sends nothing more: the easing finishes on a timer.
+function easeCompass() {
+  if (!pointing || !aim) return;
+  const share = 1 - Math.exp(-COMPASS_TICK_MS / COMPASS_EASE_MS);
+  pointing = { x: pointing.x + (aim.x - pointing.x) * share, y: pointing.y + (aim.y - pointing.y) * share };
+  const settled = turnBetween(degreesOf(pointing), degreesOf(aim)) < 0.5;
+  if (settled) {
+    pointing = aim;
+    clearInterval(easing);
+    easing = undefined;
+  }
+  publishCompass(settled);
+}
 
 function setCompass(reading: number) {
   const radians = (reading * Math.PI) / 180;
-  const x = Math.cos(radians);
-  const y = Math.sin(radians);
-  pointing = pointing
-    ? { x: pointing.x + (x - pointing.x) * COMPASS_SMOOTHING, y: pointing.y + (y - pointing.y) * COMPASS_SMOOTHING }
-    : { x, y };
-  const degrees = ((Math.atan2(pointing.y, pointing.x) * 180) / Math.PI + 360) % 360;
-  if (compass !== undefined && Math.abs(((degrees - compass + 540) % 360) - 180) < COMPASS_STEP) return;
-  compass = degrees;
-  for (const listener of compassListeners) listener();
+  aim = { x: Math.cos(radians), y: Math.sin(radians) };
+  if (!pointing || COMPASS_EASE_MS === 0) {
+    pointing = aim;
+    publishCompass(false);
+    return;
+  }
+  easing ??= setInterval(easeCompass, COMPASS_TICK_MS);
 }
 
 function subscribeCompass(listener: () => void) {

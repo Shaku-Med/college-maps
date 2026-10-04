@@ -17,20 +17,22 @@ function screenAngle() {
   return typeof screen !== "undefined" && screen.orientation ? screen.orientation.angle : 0;
 }
 
-/** Compass heading in degrees clockwise from north. */
-export function useHeading(onHeading: (heading: number) => void) {
+/** Compass heading from north: `onHeading` for the cone at any speed, `onFacing` for turning the map. */
+export function useHeading(onHeading: (heading: number) => void, onFacing: (heading: number) => void) {
   const headingRef = useRef<number | undefined>(undefined);
   const emittedRef = useRef<number | undefined>(undefined);
   const listeningRef = useRef(false);
   const compassSeenAtRef = useRef(0);
   const compassRef = useRef<number | undefined>(undefined);
-  // Moving fast, the direction of travel wins over a compass pointing anywhere from a pocket or seat.
+  // Moving fast, the map follows the direction of travel instead of a phone turned toward a window.
   const courseWinsUntilRef = useRef(0);
   const callbackRef = useRef(onHeading);
+  const facingRef = useRef(onFacing);
 
   useEffect(() => {
     callbackRef.current = onHeading;
-  }, [onHeading]);
+    facingRef.current = onFacing;
+  }, [onHeading, onFacing]);
 
   const handleOrientation = useCallback((event: Event) => {
     const e = event as OrientationWithCompass;
@@ -45,7 +47,6 @@ export function useHeading(onHeading: (heading: number) => void) {
 
     const heading = normalize(raw + screenAngle());
     compassRef.current = heading;
-    if (Date.now() < courseWinsUntilRef.current) return;
     headingRef.current = heading;
 
     const last = emittedRef.current;
@@ -54,6 +55,7 @@ export function useHeading(onHeading: (heading: number) => void) {
       emittedRef.current = heading;
       callbackRef.current(heading);
     }
+    if (Date.now() >= courseWinsUntilRef.current) facingRef.current(heading);
   }, []);
 
   const request = useCallback(async () => {
@@ -67,13 +69,16 @@ export function useHeading(onHeading: (heading: number) => void) {
     await permission?.().catch(() => undefined);
   }, [handleOrientation]);
 
-  // GPS course is a fallback for devices without a compass, and the only thing to trust when moving fast.
+  // GPS course turns the map when moving fast, and stands in for the compass on devices without one.
   const setCourse = useCallback((course: number, preferCourse = false) => {
+    const heading = normalize(course);
+    const compassFresh = Date.now() - compassSeenAtRef.current < COMPASS_FRESH_MS;
     if (preferCourse) courseWinsUntilRef.current = Date.now() + COMPASS_FRESH_MS;
-    else if (Date.now() - compassSeenAtRef.current < COMPASS_FRESH_MS) return;
-    headingRef.current = normalize(course);
-    emittedRef.current = headingRef.current;
-    callbackRef.current(headingRef.current);
+    if (preferCourse || !compassFresh) facingRef.current(heading);
+    if (compassFresh) return;
+    headingRef.current = heading;
+    emittedRef.current = heading;
+    callbackRef.current(heading);
   }, []);
 
   useEffect(
