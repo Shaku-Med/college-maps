@@ -1,17 +1,18 @@
 import type * as GeoJSON from 'geojson';
-import { GeoJSONSource, Layer, Marker } from '@maplibre/maplibre-react-native';
+import { GeoJSONSource, Images, Layer } from '@maplibre/maplibre-react-native';
 import { useThemeColor } from 'heroui-native';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { View } from 'react-native';
-import Svg, { Defs, Path, RadialGradient, Stop } from 'react-native-svg';
+import { useColorScheme } from 'react-native';
 
 import type { Coordinate } from '@/data/campus';
 import { distanceMeters } from '@/lib/geo';
 import { useCompass, type Fix } from '@/lib/location';
-import { useMapBearing } from '@/lib/map-bearing';
 
-const BEAM = 140;
-const HALF = BEAM / 2;
+// Drawn by `npm run user-beam` from the campus accent.
+const BEAM_IMAGES = {
+  light: { 'user-beam': require('../../assets/images/user-beam-light.png') },
+  dark: { 'user-beam': require('../../assets/images/user-beam-dark.png') },
+};
 // Fixes come about once a second; the dot glides between them over about the same time, like the camera.
 const GLIDE_MS = 1000;
 const FRAME_MS = 33;
@@ -65,22 +66,34 @@ function pointFeature(longitude: number, latitude: number): GeoJSON.Feature<GeoJ
   };
 }
 
-/** You on the map: accent glow + facing flashlight, like Apple Maps / the web app. */
+/** You on the map: glow, dot, and facing cone, drawn by the map from one source so they move and turn together. */
 export function UserPin({ fix, at }: { fix: Fix; at?: Coordinate | null }) {
   const accent = useThemeColor('accent');
-  const mapBearing = useMapBearing();
+  const scheme = useColorScheme() === 'dark' ? 'dark' : 'light';
   const compass = useCompass();
-  // The cone shows where the phone points at any speed; GPS course only stands in on a phone without a compass.
+  // The cone shows where the phone points at any speed; GPS course only stands in while there is no compass.
   const heading = compass ?? fix.heading;
   // During directions the dot sits on the route, or the walkway underfoot, instead of raw GPS.
   const { longitude, latitude } = useGlide(at ?? fix.position);
-
   const point = useMemo(() => pointFeature(longitude, latitude), [longitude, latitude]);
-  const rotation = heading === undefined ? 0 : (((heading - mapBearing) % 360) + 360) % 360;
 
   return (
     <>
+      <Images images={BEAM_IMAGES[scheme]} />
       <GeoJSONSource id="user-location" data={point}>
+        <Layer
+          id="user-beam"
+          type="symbol"
+          layout={{
+            'icon-image': 'user-beam',
+            'icon-rotate': heading ?? 0,
+            'icon-rotation-alignment': 'map',
+            'icon-pitch-alignment': 'map',
+            'icon-allow-overlap': true,
+            'icon-ignore-placement': true,
+          }}
+          paint={{ 'icon-opacity': heading === undefined ? 0 : 1 }}
+        />
         <Layer
           id="user-glow"
           type="circle"
@@ -103,34 +116,6 @@ export function UserPin({ fix, at }: { fix: Fix; at?: Coordinate | null }) {
           }}
         />
       </GeoJSONSource>
-
-      {heading !== undefined ? (
-        <Marker id="user-beam" lngLat={[longitude, latitude]} anchor="center">
-          <View
-            pointerEvents="none"
-            style={{
-              width: BEAM,
-              height: BEAM,
-              alignItems: 'center',
-              justifyContent: 'center',
-              transform: [{ rotate: `${rotation}deg` }],
-            }}>
-            <Svg width={BEAM} height={BEAM}>
-              <Defs>
-                <RadialGradient id="user-beam-fill" cx={HALF} cy={HALF} r={HALF - 4} gradientUnits="userSpaceOnUse">
-                  <Stop offset="0" stopColor={accent} stopOpacity={0.7} />
-                  <Stop offset="0.45" stopColor={accent} stopOpacity={0.28} />
-                  <Stop offset="1" stopColor={accent} stopOpacity={0} />
-                </RadialGradient>
-              </Defs>
-              <Path
-                d={`M${HALF} ${HALF} L${HALF - 40} ${8} A${HALF - 6} ${HALF - 6} 0 0 1 ${HALF + 40} ${8} Z`}
-                fill="url(#user-beam-fill)"
-              />
-            </Svg>
-          </View>
-        </Marker>
-      ) : null}
     </>
   );
 }

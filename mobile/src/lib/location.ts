@@ -28,12 +28,17 @@ function set(next: Partial<Snapshot>) {
   for (const listener of listeners) listener();
 }
 
-// Kept apart so Android's many compass readings a second never re-render the map screen.
-const COMPASS_STEP = 3;
-// Android's raw readings jitter, so it eases toward the latest one over time; iOS hands over a fused, steady heading.
-const COMPASS_EASE_MS = Platform.OS === 'android' ? 220 : 0;
+// Only the cone redraws on a turn, so a degree is a fine enough step.
+const COMPASS_STEP = 1;
+// Android's raw readings jitter more than the heading iOS fuses, so it eases toward them more calmly.
+const COMPASS_EASE_MS = Platform.OS === 'android' ? 220 : 120;
 const COMPASS_TICK_MS = 33;
+// iOS ends the heading stream for good on a heading failure, such as strong interference in a car, so it is restarted.
+const COMPASS_RETRY_MS = 2000;
+// A stream that has said nothing this long is restarted in case it died without saying so.
+const COMPASS_SILENT_MS = 15_000;
 let compass: number | undefined;
+let compassAt = 0;
 let pointing: { x: number; y: number } | null = null;
 let aim: { x: number; y: number } | null = null;
 let easing: ReturnType<typeof setInterval> | undefined;
@@ -42,20 +47,24 @@ const compassListeners = new Set<() => void>();
 const turnBetween = (a: number, b: number) => Math.abs(((a - b + 540) % 360) - 180);
 const degreesOf = (v: { x: number; y: number }) => ((Math.atan2(v.y, v.x) * 180) / Math.PI + 360) % 360;
 
-function publishCompass(settled: boolean) {
-  if (!pointing) return;
-  const degrees = degreesOf(pointing);
-  if (compass !== undefined && turnBetween(degrees, compass) < (settled ? 0.5 : COMPASS_STEP)) return;
-  compass = degrees;
+function notifyCompass() {
   for (const listener of compassListeners) listener();
 }
 
-// Expo only reports a turn of 2 degrees or more, so a phone that stops turning sends nothing more: the easing finishes on a timer.
+function publishCompass(settled: boolean) {
+  if (!pointing) return;
+  const degrees = degreesOf(pointing);
+  if (compass !== undefined && turnBetween(degrees, compass) < (settled ? 0.25 : COMPASS_STEP)) return;
+  compass = degrees;
+  notifyCompass();
+}
+
+// Expo only reports a turn of a degree or two, so a phone that stops turning sends nothing more: the easing finishes on a timer.
 function easeCompass() {
   if (!pointing || !aim) return;
   const share = 1 - Math.exp(-COMPASS_TICK_MS / COMPASS_EASE_MS);
   pointing = { x: pointing.x + (aim.x - pointing.x) * share, y: pointing.y + (aim.y - pointing.y) * share };
-  const settled = turnBetween(degreesOf(pointing), degreesOf(aim)) < 0.5;
+  const settled = turnBetween(degreesOf(pointing), degreesOf(aim)) < 0.25;
   if (settled) {
     pointing = aim;
     clearInterval(easing);
@@ -67,27 +76,103 @@ function easeCompass() {
 function setCompass(reading: number) {
   const radians = (reading * Math.PI) / 180;
   aim = { x: Math.cos(radians), y: Math.sin(radians) };
-  if (!pointing || COMPASS_EASE_MS === 0) {
+  compassAt = Date.now();
+  if (!pointing) {
     pointing = aim;
-    publishCompass(false);
+    publishCompass(true);
     return;
   }
   easing ??= setInterval(easeCompass, COMPASS_TICK_MS);
 }
 
-function subscribeCompass(listener: () => void) {
+// A compass that stopped is no compass: the cone goes back to the direction of travel until it returns.
+function dropCompass() {
+  clearInterval(easing);
+  easing = undefined;
+  pointing = null;
+  aim = null;
+  if (compass === undefined) return;
+  compass = undefined;
+  notifyCompass();
+}
+
+let headingWanted = false;
+let headingWatch: { remove: () => void } | null = null;
+let headingRun = 0;
+let headingRetry: ReturnType<typeof setTimeout> | undefined;
+let headingWatchdog: ReturnType<typeof setInterval> | undefined;
+
+function stopHeading() {
+  headingRun++;
+  headingWatch?.remove();
+  headingWatch = null;
+  clearTimeout(headingRetry);
+  headingRetry = undefined;
+}
+
+function retryHeading() {
+  stopHeading();
+  if (headingWanted) headingRetry = setTimeout(() => void startHeading(), COMPASS_RETRY_MS);
+}
+
+async function startHeading() {
+  if (!headingWanted || headingWatch) return;
+  const run = ++headingRun;
+  const watching = await Location.watchHeadingAsync(
+    (reading) => {
+      if (run !== headingRun) return;
+      const degrees = reading.trueHeading >= 0 ? reading.trueHeading : reading.magHeading;
+      // Expo: 3 is high accuracy, and a negative number means the reading is not usable yet.
+      if (Number.isFinite(degrees) && reading.accuracy >= 0) setCompass(degrees);
+    },
+    () => {
+      if (run !== headingRun) return;
+      dropCompass();
+      retryHeading();
+    },
+  ).catch(() => null);
+  if (run !== headingRun || !headingWanted) {
+    watching?.remove();
+    return;
+  }
+  if (!watching) {
+    retryHeading();
+    return;
+  }
+  headingWatch = watching;
+  compassAt = Date.now();
+}
+
+function wantHeading(wanted: boolean) {
+  headingWanted = wanted;
+  if (!wanted) {
+    stopHeading();
+    clearInterval(headingWatchdog);
+    headingWatchdog = undefined;
+    return;
+  }
+  void startHeading();
+  headingWatchdog ??= setInterval(() => {
+    if (headingWatch && Date.now() - compassAt > COMPASS_SILENT_MS) {
+      stopHeading();
+      void startHeading();
+    }
+  }, COMPASS_SILENT_MS);
+}
+
+export function subscribeCompass(listener: () => void) {
   compassListeners.add(listener);
   return () => void compassListeners.delete(listener);
 }
 
-/** Which way the phone points, in degrees from north, redrawn only when it turns a few degrees. */
+/** Which way the phone points, in degrees from north, or undefined while there is no working compass. */
 export function useCompass() {
   return useSyncExternalStore(subscribeCompass, () => compass, () => compass);
 }
 
 // One shared GPS watch for every screen, running only while something uses it.
 const users = new Map<symbol, boolean>();
-let watch: { navigation: boolean; position: { remove: () => void }; heading?: Location.LocationSubscription } | null = null;
+let watch: { navigation: boolean; position: { remove: () => void } } | null = null;
 let starting = false;
 
 // Directions use a background task that only starts from a tap, so guidance goes on with the screen locked.
@@ -182,8 +267,8 @@ async function reconcile() {
   const navigation = [...users.values()].some(Boolean);
   if (!wanted) {
     watch?.position.remove();
-    watch?.heading?.remove();
     watch = null;
+    wantHeading(false);
     return;
   }
   if (watch && watch.navigation === navigation) return;
@@ -218,14 +303,8 @@ async function reconcile() {
           );
     const position = await startWatch(takeAccuracyPrompt()).catch(() => startWatch(false));
     previous?.position.remove();
-    const heading =
-      previous?.heading ??
-      (await Location.watchHeadingAsync((reading) => {
-        const degrees = reading.trueHeading >= 0 ? reading.trueHeading : reading.magHeading;
-        // Expo: 0 is high accuracy, negative means the reading is not usable yet.
-        if (Number.isFinite(degrees) && reading.accuracy >= 0) setCompass(degrees);
-      }).catch(() => undefined));
-    watch = { navigation, position, heading };
+    wantHeading(true);
+    watch = { navigation, position };
     if (snapshot.status !== 'active') set({ status: snapshot.fix ? 'active' : 'asking' });
   } catch {
     failed = true;

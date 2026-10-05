@@ -46,8 +46,7 @@ import { formatRouteTime } from '@/lib/directions';
 import { formatDistance } from '@/lib/geo';
 import { stepText } from '@/lib/instructions';
 import { endTrip, showTrip } from '@/lib/live-activity';
-import { currentFix, useCompass, useLocation } from '@/lib/location';
-import { setMapBearing } from '@/lib/map-bearing';
+import { currentCompass, currentFix, subscribeCompass, useLocation } from '@/lib/location';
 import { createCameraMemory, createSmoothHeading, shortestTurn } from '@/lib/smooth-heading';
 import { markReady } from '@/lib/splash';
 import { showMeetupOnMap, useShownMeetup } from '@/lib/meetup-focus';
@@ -198,7 +197,6 @@ export default function MapScreen() {
     follow,
     facingUp,
   });
-  const compass = useCompass();
   useEffect(() => {
     facingUpRef.current = facingUp;
   }, [facingUp]);
@@ -208,12 +206,13 @@ export default function MapScreen() {
     if (!navigating || !facingUp || !navigation.isFollowing || navigation.manualStep !== null) {
       return;
     }
-    const fix = location.fix;
-    const raw =
-      fix && (fix.speed ?? 0) >= 0.7 && fix.heading !== undefined ? fix.heading : compass;
-    if (raw === undefined) return;
-
-    smoothHeading.set(raw, (shown) => {
+    // Read on each fix and each compass turn without redrawing this whole screen for every degree.
+    const aim = () => {
+      const fix = currentFix();
+      const raw = fix && (fix.speed ?? 0) >= 0.7 && fix.heading !== undefined ? fix.heading : currentCompass();
+      if (raw !== undefined) smoothHeading.set(raw, turnToFacing);
+    };
+    const turnToFacing = (shown: number) => {
       if (!facingUpRef.current) return;
       if (cameraMemory.busy()) return;
       if (cameraMemory.sinceMove() < HEADING_UP_GAP_MS) return;
@@ -235,8 +234,10 @@ export default function MapScreen() {
       } catch {
         // Map may still be loading.
       }
-    });
-  }, [cameraMemory, compass, facingUp, insets, location.fix, navigating, navigation.isFollowing, navigation.manualStep, smoothHeading, wide]);
+    };
+    aim();
+    return subscribeCompass(aim);
+  }, [cameraMemory, facingUp, insets, location.fix, navigating, navigation.isFollowing, navigation.manualStep, smoothHeading, wide]);
 
   useEffect(() => {
     if (facingUp) return;
@@ -487,7 +488,6 @@ export default function MapScreen() {
   }
 
   function noteBearing(bearing: number) {
-    setMapBearing(bearing);
     cameraMemory.setBearing(bearing);
     const turned = ((bearing % 360) + 360) % 360;
     setIsRotated(turned > 1 && turned < 359);
