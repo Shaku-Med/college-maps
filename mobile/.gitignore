@@ -41,3 +41,7 @@ example
 # generated native folders
 /ios
 /android
+
+# Firebase client configs (keep local / EAS secrets; never commit)
+google-services.json
+GoogleService-Info.plist
