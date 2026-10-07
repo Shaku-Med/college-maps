@@ -30,13 +30,13 @@ function set(next: Partial<Snapshot>) {
 
 // Only the cone redraws on a turn, so a degree is a fine enough step.
 const COMPASS_STEP = 1;
-// Android's raw readings jitter more than the heading iOS fuses, so it eases toward them more calmly.
-const COMPASS_EASE_MS = Platform.OS === 'android' ? 220 : 120;
-const COMPASS_TICK_MS = 33;
+// Keep the ease short so the cone stays lively at walking and driving speed; Android still softens a little more.
+const COMPASS_EASE_MS = Platform.OS === 'android' ? 110 : 80;
+const COMPASS_TICK_MS = 24;
 // iOS ends the heading stream for good on a heading failure, such as strong interference in a car, so it is restarted.
-const COMPASS_RETRY_MS = 2000;
+const COMPASS_RETRY_MS = 1200;
 // A stream that has said nothing this long is restarted in case it died without saying so.
-const COMPASS_SILENT_MS = 15_000;
+const COMPASS_SILENT_MS = 8_000;
 let compass: number | undefined;
 let compassAt = 0;
 let pointing: { x: number; y: number } | null = null;

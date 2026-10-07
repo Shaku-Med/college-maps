@@ -72,23 +72,29 @@ export function createSmoothHeading(opts?: {
   };
 }
 
-/** Where the camera points and until when a move plays, so a compass turn never cuts a follow short. */
+type CameraMove = 'follow' | 'heading';
+
+/** Where the camera points and whether a heading turn is mid-flight. Follows must not freeze the compass. */
 export function createCameraMemory() {
   let bearing = 0;
   let busyUntil = 0;
   let movedAt = 0;
+  let kind: CameraMove = 'follow';
   return {
     bearing: () => bearing,
     setBearing(degrees: number) {
       bearing = degrees;
     },
     /** A move to `degrees` that takes `ms` has just started. */
-    moving(degrees: number, ms: number) {
+    moving(degrees: number, ms: number, next: CameraMove = 'follow') {
       bearing = degrees;
       movedAt = Date.now();
       busyUntil = movedAt + ms;
+      kind = next;
     },
     busy: () => Date.now() < busyUntil,
+    /** Only a heading ease blocks the next heading ease; following the blue dot does not. */
+    blocksHeading: () => kind === 'heading' && Date.now() < busyUntil,
     sinceMove: () => Date.now() - movedAt,
   };
 }

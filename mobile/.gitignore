@@ -42,6 +42,6 @@ example
 /ios
 /android
 
-# Firebase client configs (keep local / EAS secrets; never commit)
+# Firebase client configs (keep local / EAS secrets; never commit) - Previous Security Leak fixed key rotated.
 google-services.json
 GoogleService-Info.plist

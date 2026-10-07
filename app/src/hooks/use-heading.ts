@@ -24,8 +24,6 @@ export function useHeading(onHeading: (heading: number) => void, onFacing: (head
   const listeningRef = useRef(false);
   const compassSeenAtRef = useRef(0);
   const compassRef = useRef<number | undefined>(undefined);
-  // Moving fast, the map follows the direction of travel instead of a phone turned toward a window.
-  const courseWinsUntilRef = useRef(0);
   const callbackRef = useRef(onHeading);
   const facingRef = useRef(onFacing);
 
@@ -55,7 +53,7 @@ export function useHeading(onHeading: (heading: number) => void, onFacing: (head
       emittedRef.current = heading;
       callbackRef.current(heading);
     }
-    if (Date.now() >= courseWinsUntilRef.current) facingRef.current(heading);
+    facingRef.current(heading);
   }, []);
 
   const request = useCallback(async () => {
@@ -69,13 +67,13 @@ export function useHeading(onHeading: (heading: number) => void, onFacing: (head
     await permission?.().catch(() => undefined);
   }, [handleOrientation]);
 
-  // GPS course turns the map when moving fast, and stands in for the compass on devices without one.
+  // GPS course fills in only while the compass is quiet (no magnetometer, or a gap after interference).
   const setCourse = useCallback((course: number, preferCourse = false) => {
+    void preferCourse;
     const heading = normalize(course);
     const compassFresh = Date.now() - compassSeenAtRef.current < COMPASS_FRESH_MS;
-    if (preferCourse) courseWinsUntilRef.current = Date.now() + COMPASS_FRESH_MS;
-    if (preferCourse || !compassFresh) facingRef.current(heading);
     if (compassFresh) return;
+    facingRef.current(heading);
     headingRef.current = heading;
     emittedRef.current = heading;
     callbackRef.current(heading);

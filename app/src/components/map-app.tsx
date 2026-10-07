@@ -100,8 +100,6 @@ const TRAVEL_SLACK: Record<TravelMode, number> = { walk: 1, bike: 2, drive: 4 };
 const FOLLOW_AGAIN_MS = 8_000;
 // Standing still, a phone's reported course is meaningless, so it only counts above a walking pace.
 const COURSE_SPEED_MPS = 0.7;
-// Above this, heading up turns the map with the road; the cone on the dot still follows the compass.
-const COURSE_OVER_COMPASS_MPS = 5;
 // Fast movement puts GPS fixes further behind, so the off route and wrong way limits widen with speed.
 const MAX_SPEED_SLACK = 8;
 
@@ -302,8 +300,8 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
     () => (motionStateRef.current.speed >= COURSE_SPEED_MPS ? courseRef.current : undefined),
     [],
   );
-  // The way someone faces: their travel direction while moving, the compass while they stand still.
-  const facing = useCallback(() => travelHeading() ?? compass(), [travelHeading, compass]);
+  // Phone compass first at every speed so the map stays live; GPS course only fills gaps.
+  const facing = useCallback(() => compass() ?? travelHeading(), [travelHeading, compass]);
   const progressHintRef = useRef(0);
   const offRouteCountRef = useRef(0);
   const otherWalkwayCountRef = useRef(0);
@@ -404,19 +402,19 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
 
       const motionState = motionRef.current.update({ position, accuracy, speed }, Date.now());
       motionStateRef.current = motionState;
-      const courseWins = motionState.speed >= COURSE_OVER_COMPASS_MPS;
 
       // A phone that reports its own course while moving knows better than two fixes compared by hand.
+      // Never lock out a fresh compass: that glued the map at speed. Course only fills quiet gaps.
       if (heading !== undefined && (speed ?? 0) >= COURSE_SPEED_MPS) {
         courseRef.current = heading;
-        setCourse(heading, courseWins);
+        setCourse(heading, false);
         lastCourseFixRef.current = position;
       } else {
         const lastCourseFix = lastCourseFixRef.current;
         if (!lastCourseFix || distanceMeters(lastCourseFix, position) >= COURSE_MIN_METERS) {
           if (lastCourseFix && accuracy <= UNTRUSTED_ACCURACY_METERS) {
             courseRef.current = bearingDegrees(lastCourseFix, position);
-            setCourse(courseRef.current, courseWins);
+            setCourse(courseRef.current, false);
           }
           lastCourseFixRef.current = position;
         }

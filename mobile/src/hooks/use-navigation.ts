@@ -43,7 +43,7 @@ const STREET_REROUTE_GAP_MS = 5_000;
 export const FOLLOW_ZOOM: Record<TravelMode, number> = { walk: 17.5, bike: 16.5, drive: 15.5 };
 const STREET_ARRIVAL_METERS: Record<TravelMode, number> = { walk: 20, bike: 30, drive: 50 };
 const TRAVEL_SLACK: Record<TravelMode, number> = { walk: 1, bike: 2, drive: 4 };
-const FOLLOW_AGAIN_MS = 8_000;
+const FOLLOW_AGAIN_MS = 3_000;
 const COURSE_SPEED_MPS = 0.7;
 const MAX_SPEED_SLACK = 8;
 const WALK_FOLLOW_ZOOM = 18;
@@ -144,8 +144,8 @@ export function useNavigation({ destination, avoidStairs, follow, facingUp }: Op
     () => (motionState.current.speed >= COURSE_SPEED_MPS ? course.current : undefined),
     [],
   );
-  /** The way someone faces: their travel direction while moving, the compass while they stand still. */
-  const facing = useCallback(() => travelHeading() ?? currentCompass(), [travelHeading]);
+  // Phone compass first at every speed so the map and cone stay live; GPS course only fills gaps.
+  const facing = useCallback(() => currentCompass() ?? travelHeading(), [travelHeading]);
   const speed = useCallback(() => motionState.current.speed, []);
 
   const showNotice = useCallback((kind: RouteNotice) => {
@@ -176,14 +176,22 @@ export function useNavigation({ destination, avoidStairs, follow, facingUp }: Op
       previousStartAlong.current = leftAt.distanceAlong;
       previousMatches.current = 0;
       lastRecheck.current = { at: Date.now(), along: next.distanceAlong };
-      nav.current = { ...nav.current, route: chosen, previous: kind ? leaving : null };
+      // Keep following through a reroute. Swapping the route line often looks like a finger pan on iOS, which
+      // used to pause following and freeze the compass until someone tapped Recenter.
+      const keepFollowing = nav.current.active && !nav.current.arrived && (nav.current.following || !!kind);
+      nav.current = { ...nav.current, route: chosen, previous: kind ? leaving : null, following: keepFollowing };
       setRoute(chosen);
       setPreviousPath(kind ? remainingPath(leaving, leftAt) : null);
       setProgress(next);
       setIsWrongWay(false);
       if (kind) showNotice(kind);
+      if (keepFollowing) {
+        setIsFollowing(true);
+        const onRoute = next.distanceFromRoute <= SNAP_TO_ROUTE_METERS;
+        follow(followTarget(onRoute ? next.point : position, chosen.travel));
+      }
     },
-    [showNotice],
+    [follow, followTarget, showNotice],
   );
 
   // Street routes are rerouted by asking the server again, which answers later, so this runs on its own.
@@ -318,7 +326,9 @@ export function useNavigation({ destination, avoidStairs, follow, facingUp }: Op
         previousStartAlong.current = leftAt.distanceAlong;
         previousMatches.current = 0;
         lastRecheck.current = { at: Date.now(), along: next.distanceAlong };
-        nav.current = { ...nav.current, route: candidate, previous: leaving };
+        // Same as commit: a live reroute must not drop following, or the compass sticks until Recenter.
+        nav.current = { ...nav.current, route: candidate, previous: leaving, following: true };
+        setIsFollowing(true);
         setRoute(candidate);
         setPreviousPath(remainingPath(leaving, leftAt));
         setIsWrongWay(false);

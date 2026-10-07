@@ -74,10 +74,15 @@ const FIRST_LABEL = { light: 'waterway_line_label', dark: 'water_name' } as cons
 // MapLibre keeps the last padding it was given, so every camera move says its own.
 const NO_PADDING = { top: 0, bottom: 0, left: 0, right: 0 };
 // Facing-up: ignore tiny wobble, and never cut a camera ease short with another.
-const HEADING_UP_MIN_DEGREES = 3;
-const HEADING_UP_GAP_MS = 520;
-const HEADING_UP_MS = 780;
-const FOLLOW_MS = 1100;
+const HEADING_UP_MIN_DEGREES = 2;
+// Short gaps so a GPS follow every second cannot glue the map's turn in place.
+const HEADING_UP_GAP_MS = 90;
+const HEADING_UP_MS = 260;
+const FOLLOW_MS = 650;
+// MapLibre on iOS often marks our own easeTo as a user pan; ignore those until the move is done.
+const PROGRAMMATIC_GRACE_MS = 180;
+// Drawing a new route line also fires fake pans; hold longer so a reroute cannot freeze the compass.
+const REROUTE_HOLD_MS = 2_000;
 
 const toLngLat = ({ latitude, longitude }: Coordinate): [number, number] => [longitude, latitude];
 
@@ -108,10 +113,16 @@ export default function MapScreen() {
   const camera = useRef<CameraRef>(null);
   const mapRef = useRef<MapRef>(null);
   const [cameraMemory] = useState(createCameraMemory);
-  const [smoothHeading] = useState(createSmoothHeading);
+  const [smoothHeading] = useState(() => createSmoothHeading({ calmMs: 200, fastMs: 75, settled: 0.55 }));
   const facingUpRef = useRef(true);
   // Where and how close the camera last followed, so a turn to match the compass keeps both.
   const lastFollow = useRef<{ point: Coordinate; zoom: number } | null>(null);
+  // Until this time, region-change "userInteraction" is our own camera move, not a finger pan.
+  const programmaticUntil = useRef(0);
+  const noteProgrammatic = (ms: number) => {
+    programmaticUntil.current = Date.now() + ms + PROGRAMMATIC_GRACE_MS;
+  };
+  const isProgrammaticCamera = () => Date.now() < programmaticUntil.current;
   const [buildingView, setBuildingView] = useState(false);
   const focused = useFocusedPlace();
   const trip = useTrip();
@@ -170,7 +181,9 @@ export default function MapScreen() {
               ? (bearing as number)
               : cameraMemory.bearing();
         if (Number.isFinite(bearing)) smoothHeading.set(bearing as number);
-        cameraMemory.moving(nextBearing, FOLLOW_MS);
+        // Mark as a follow so compass turns can still run; a long busy lock was freezing the heading at speed.
+        cameraMemory.moving(nextBearing, FOLLOW_MS, 'follow');
+        noteProgrammatic(FOLLOW_MS);
         lastFollow.current = { point, zoom: level };
         camera.current?.easeTo({
           center: toLngLat(point),
@@ -201,26 +214,41 @@ export default function MapScreen() {
     facingUpRef.current = facingUp;
   }, [facingUp]);
 
+  // After a reroute, the new blue line makes MapLibre report a finger pan. Ignore it and pull follow back.
+  useEffect(() => {
+    if (!navigating) return;
+    const notice = navigation.notice;
+    if (notice !== 'rerouted' && notice !== 'switched' && notice !== 'faster') return;
+    noteProgrammatic(REROUTE_HOLD_MS);
+    if (!navigation.isFollowing && navigation.manualStep === null && !navigation.hasArrived) {
+      navigation.recenter();
+    }
+    // Only the notice flip should run this; recenter is stable enough for the recovery path.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: react to route-change notices
+  }, [navigating, navigation.notice]);
+
   // Ease the camera only once the heading settles and nothing else moves it, like the web's turnMapToFacing.
   useEffect(() => {
     if (!navigating || !facingUp || !navigation.isFollowing || navigation.manualStep !== null) {
       return;
     }
     // Read on each fix and each compass turn without redrawing this whole screen for every degree.
-    const aim = () => {
+    const courseHeading = () => {
       const fix = currentFix();
-      const raw = fix && (fix.speed ?? 0) >= 0.7 && fix.heading !== undefined ? fix.heading : currentCompass();
-      if (raw !== undefined) smoothHeading.set(raw, turnToFacing);
+      if (fix && (fix.speed ?? 0) >= 0.7 && fix.heading !== undefined) return fix.heading;
+      return undefined;
     };
     const turnToFacing = (shown: number) => {
       if (!facingUpRef.current) return;
-      if (cameraMemory.busy()) return;
+      // Following the blue dot must not glue the map; only a heading ease blocks the next one.
+      if (cameraMemory.blocksHeading()) return;
       if (cameraMemory.sinceMove() < HEADING_UP_GAP_MS) return;
       const delta = Math.abs(shortestTurn(cameraMemory.bearing(), shown));
       if (delta < HEADING_UP_MIN_DEGREES) return;
       const at = lastFollow.current;
       if (!at) return;
-      cameraMemory.moving(shown, HEADING_UP_MS);
+      cameraMemory.moving(shown, HEADING_UP_MS, 'heading');
+      noteProgrammatic(HEADING_UP_MS);
       try {
         // The same center, zoom, and padding as following, or each turn would shift the view.
         camera.current?.easeTo({
@@ -234,6 +262,11 @@ export default function MapScreen() {
       } catch {
         // Map may still be loading.
       }
+    };
+    const aim = () => {
+      // Compass first at every speed; GPS course only when the compass is quiet (matches the cone).
+      const raw = currentCompass() ?? courseHeading();
+      if (raw !== undefined) smoothHeading.set(raw, turnToFacing);
     };
     aim();
     return subscribeCompass(aim);
@@ -474,7 +507,8 @@ export default function MapScreen() {
       const center = await mapRef.current?.getCenter().catch(() => undefined);
       if (!center) return;
       smoothHeading.set(0);
-      cameraMemory.moving(0, 500);
+      cameraMemory.moving(0, 500, 'heading');
+      noteProgrammatic(500);
       camera.current?.easeTo({ center, bearing: 0, duration: 500, padding: NO_PADDING });
       setIsRotated(false);
     })();
@@ -659,12 +693,17 @@ export default function MapScreen() {
         touchPitch={navigating || buildingView}
         onDidFinishLoadingMap={() => markReady('map')}
         onRegionWillChange={(event) => {
-          if (navigating && event.nativeEvent.userInteraction) navigation.pauseFollowing();
+          // Our own follow/heading easeTo is often flagged as a finger pan on iOS; that was freezing the trip.
+          if (navigating && event.nativeEvent.userInteraction && !isProgrammaticCamera()) {
+            navigation.pauseFollowing();
+          }
         }}
         onRegionIsChanging={(event) => noteBearing(event.nativeEvent.bearing)}
         onRegionDidChange={(event) => {
           noteBearing(event.nativeEvent.bearing);
-          if (navigating && event.nativeEvent.userInteraction) navigation.scheduleFollowAgain();
+          if (navigating && event.nativeEvent.userInteraction && !isProgrammaticCamera()) {
+            navigation.scheduleFollowAgain();
+          }
         }}>
         {buildingView ? (
           <Layer
