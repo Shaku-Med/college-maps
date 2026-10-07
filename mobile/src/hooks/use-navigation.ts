@@ -37,6 +37,8 @@ const ALONG_PREVIOUS_METERS = 15;
 const DROP_PREVIOUS_METERS = 200;
 const WALKWAY_MATCH_METERS = 10;
 const WALKWAY_GAP_METERS = 10;
+// Campus paths run 10 to 15 m apart, about GPS error between buildings, so a switch needs three fixes in a row.
+const OTHER_WALKWAY_FIXES = 3;
 const STREET_REROUTE_GAP_MS = 5_000;
 export const FOLLOW_ZOOM: Record<TravelMode, number> = { walk: 17.5, bike: 16.5, drive: 15.5 };
 const STREET_ARRIVAL_METERS: Record<TravelMode, number> = { walk: 20, bike: 30, drive: 50 };
@@ -195,11 +197,11 @@ export function useNavigation({ destination, avoidStairs, follow, facingUp }: Op
       state.inflight = true;
       state.at = Date.now();
       const heading = travelHeading();
-      fetchTripRoute(walkGraph(), position, target, travel, { avoidStairs: stairs, heading })
+      fetchTripRoute(walkGraph(), position, target, travel, { avoidStairs: stairs, heading, parkAt: leaving.parkAt })
         .then((candidate) =>
           candidate || heading === undefined
             ? candidate
-            : fetchTripRoute(walkGraph(), position, target, travel, { avoidStairs: stairs }),
+            : fetchTripRoute(walkGraph(), position, target, travel, { avoidStairs: stairs, parkAt: leaving.parkAt }),
         )
         .then((candidate) => {
           const current = nav.current;
@@ -366,7 +368,7 @@ export function useNavigation({ destination, avoidStairs, follow, facingUp }: Op
 
       const lost =
         offRouteCount.current >= 2 ||
-        otherWalkwayCount.current >= 2 ||
+        otherWalkwayCount.current >= OTHER_WALKWAY_FIXES ||
         clearlyLost ||
         (justGotOff && next.distanceFromRoute > limit);
       const turnedBack = wrongWay && backtracked > WRONG_WAY_REROUTE_METERS * slack;

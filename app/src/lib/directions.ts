@@ -115,7 +115,13 @@ export async function fetchStreetRoute(
 // A street route point this close to a campus walkway is where the trip can carry on along the paths.
 const CAMPUS_JOIN_METERS = 20;
 
-type TripOptions = { avoidStairs: boolean; heading?: number; signal?: AbortSignal };
+type TripOptions = {
+  avoidStairs: boolean;
+  heading?: number;
+  signal?: AbortSignal;
+  /** The lot a drive already chose, so a reroute keeps heading for the same one. */
+  parkAt?: string;
+};
 
 /** A trip from off campus: streets until the campus paths, then the paths. Drivers park in the closest open lot and walk. */
 export async function fetchTripRoute(
@@ -142,14 +148,14 @@ export async function fetchTripRoute(
 }
 
 async function driveAndWalk(g: WalkGraph, from: Coordinate, to: Place, options: TripOptions) {
-  const lot = to.category === "parking" ? null : closestLot(g, to, options.avoidStairs);
+  const lot = to.category === "parking" ? null : await bestLot(g, from, to, options);
   if (!lot) return fetchStreetRoute(from, to.coordinate, "drive", options);
   const drive = await fetchStreetRoute(from, lot.coordinate, "drive", options);
   if (!drive) return fetchStreetRoute(from, to.coordinate, "drive", options);
   const parked = drive.path.length - 1;
   const walk = findRoute(g, drive.path[parked], to.coordinate, { avoidStairs: options.avoidStairs });
   if (!walk) return drive;
-  return joinRoutes(drive, parked, walk, {
+  const trip = joinRoutes(drive, parked, walk, {
     campusSpeed: WALK_SPEED_MPS,
     handoff: {
       text: `Park in ${lot.name} and walk the rest of the way`,
@@ -157,17 +163,72 @@ async function driveAndWalk(g: WalkGraph, from: Coordinate, to: Place, options: 
       spoken: `Park in ${lot.name}, then walk the rest of the way.`,
     },
   });
+  return { ...trip, parkAt: lot.id };
 }
 
-/** The lot with the shortest walk to the place, among the ones anyone may park in. */
-function closestLot(g: WalkGraph, to: Place, avoidStairs: boolean) {
-  let best: { lot: Place; meters: number } | null = null;
+/** The open lot that makes the whole trip quickest: driving there, then walking to the place. */
+async function bestLot(g: WalkGraph, from: Coordinate, to: Place, options: TripOptions) {
+  const lots: Array<{ lot: Place; walkMeters: number }> = [];
   for (const lot of PLACES) {
     if (lot.category !== "parking" || lot.staffOnly) continue;
-    const walk = findRoute(g, lot.coordinate, to.coordinate, { avoidStairs });
-    if (walk && (!best || walk.distance < best.meters)) best = { lot, meters: walk.distance };
+    const walk = findRoute(g, lot.coordinate, to.coordinate, { avoidStairs: options.avoidStairs });
+    if (walk) lots.push({ lot, walkMeters: walk.distance });
   }
-  return best?.lot ?? null;
+  if (lots.length === 0) return null;
+  const kept = lots.find(({ lot }) => lot.id === options.parkAt);
+  if (kept) return kept.lot;
+  const nearestWalk = lots.reduce((best, next) => (next.walkMeters < best.walkMeters ? next : best));
+  const seconds = await fetchDriveTimes(from, lots.map(({ lot }) => lot.coordinate), options.signal).catch((err) => {
+    if (options.signal?.aborted) throw err;
+    return null;
+  });
+  if (!seconds) return nearestWalk.lot;
+  let best = nearestWalk.lot;
+  let bestTotal = Infinity;
+  for (let i = 0; i < lots.length; i++) {
+    const drive = seconds[i];
+    if (drive === null) continue;
+    const total = drive + lots[i].walkMeters / WALK_SPEED_MPS;
+    if (total < bestTotal) {
+      best = lots[i].lot;
+      bestTotal = total;
+    }
+  }
+  return best;
+}
+
+// The street server can time a drive to every lot in one request, so choosing a lot costs one call, not seven.
+async function fetchDriveTimes(from: Coordinate, targets: Coordinate[], signal?: AbortSignal) {
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  signal?.addEventListener("abort", abort, { once: true });
+  const timer = setTimeout(abort, TIMEOUT_MS);
+  try {
+    const response = await fetch(`${STREET_ROUTING_ORIGIN}/sources_to_targets`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Client-Id": CLIENT_ID },
+      body: JSON.stringify({
+        sources: [{ lat: from.latitude, lon: from.longitude, search_cutoff: MAX_SNAP_METERS }],
+        targets: targets.map((t) => ({ lat: t.latitude, lon: t.longitude, search_cutoff: MAX_SNAP_METERS })),
+        costing: "auto",
+      }),
+      cache: "no-store",
+      credentials: "omit",
+      referrerPolicy: "no-referrer",
+      signal: controller.signal,
+    });
+    if (!response.ok) return null;
+    const row = ((await response.json()) as { sources_to_targets?: unknown })?.sources_to_targets;
+    const times = Array.isArray(row) && Array.isArray(row[0]) ? (row[0] as unknown[]) : null;
+    if (!times || times.length !== targets.length) return null;
+    return times.map((cell) => {
+      const time = (cell as { time?: unknown } | null)?.time;
+      return typeof time === "number" && Number.isFinite(time) && time >= 0 ? time : null;
+    });
+  } finally {
+    clearTimeout(timer);
+    signal?.removeEventListener("abort", abort);
+  }
 }
 
 const text = (value: unknown) => (typeof value === "string" ? value.slice(0, MAX_TEXT) : undefined);

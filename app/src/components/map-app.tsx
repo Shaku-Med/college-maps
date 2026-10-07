@@ -83,6 +83,8 @@ const DROP_PREVIOUS_METERS = 200;
 const WALKWAY_MATCH_METERS = 10;
 // How much closer another walkway has to be than the route before it counts as the path they took.
 const WALKWAY_GAP_METERS = 10;
+// Campus paths run 10 to 15 m apart, about GPS error between buildings, so a switch needs three fixes in a row.
+const OTHER_WALKWAY_FIXES = 3;
 // Street routes come from a shared free server, so previews and reroutes are spaced out.
 const STREET_REFRESH_METERS = 75;
 const STREET_REROUTE_GAP_MS = 5_000;
@@ -367,12 +369,12 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
       state.at = Date.now();
       const { destination, graph } = nav;
       const heading = travelHeading();
-      fetchTripRoute(graph, position, destination, travel, { avoidStairs: nav.avoidStairs, heading })
+      fetchTripRoute(graph, position, destination, travel, { avoidStairs: nav.avoidStairs, heading, parkAt: leaving.parkAt })
         // If nothing runs the way they are going, a route without the heading beats no route at all.
         .then((candidate) =>
           candidate || heading === undefined
             ? candidate
-            : fetchTripRoute(graph, position, destination, travel, { avoidStairs: nav.avoidStairs }),
+            : fetchTripRoute(graph, position, destination, travel, { avoidStairs: nav.avoidStairs, parkAt: leaving.parkAt }),
         )
         .then((candidate) => {
           const current = navRef.current;
@@ -561,7 +563,7 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
       // Reroutes from the walkway they are on, the way they head, so a shortcut is followed, not undone.
       const lost =
         offRouteCountRef.current >= 2 ||
-        otherWalkwayCountRef.current >= 2 ||
+        otherWalkwayCountRef.current >= OTHER_WALKWAY_FIXES ||
         clearlyLost ||
         (justGotOff && next.distanceFromRoute > limit);
       const turnedBack = wrongWay && backtracked > WRONG_WAY_REROUTE_METERS * slack;

@@ -57,6 +57,8 @@ export type Route = {
   duration?: number;
   /** How far along a trip from off campus picks up the campus paths, which it follows from there. */
   campusFrom?: number;
+  /** The lot a drive parks in before the walk. */
+  parkAt?: string;
 };
 
 /** A point on the walkway someone is on, found by matching their position to the nearest path. */
@@ -87,7 +89,8 @@ const MIN_STEP_METERS = 8;
 
 // Edge kinds from scripts/build-walk-graph.mjs, and how much longer each counts than it is when choosing a route.
 const EDGE_STEPS = 1;
-const KIND_COST = [1, 1, 1.6, 2.5];
+// A link is a short step across between two ways the map never joined, such as a sidewalk and its road.
+const KIND_COST = [1, 1, 1.6, 2.5, 1.8];
 // The walkway route is used while its extra walk stays within 12% of the shortest, at least 40 m and at most 100 m.
 const WALKWAY_DETOUR_SHARE = 0.12;
 const WALKWAY_DETOUR_MIN_METERS = 40;
