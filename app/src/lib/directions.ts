@@ -127,8 +127,10 @@ type TripOptions = {
   avoidStairs: boolean;
   heading?: number;
   signal?: AbortSignal;
-  /** The lot a drive already chose, so a reroute keeps heading for the same one. */
-  parkAt?: string;
+  /** The lot a drive already chose, so a reroute keeps heading for it; null drives right up to the place instead. */
+  parkAt?: string | null;
+  /** Lots to leave out when choosing, such as one the driver just went past. */
+  skipLots?: readonly string[];
 };
 
 /** A trip from off campus: streets until the campus paths, then the paths. Drivers park in the closest open lot and walk. */
@@ -156,6 +158,10 @@ export async function fetchTripRoute(
 }
 
 async function driveAndWalk(g: WalkGraph, from: Coordinate, to: Place, options: TripOptions) {
+  if (options.parkAt === null) {
+    const closer = await fetchStreetRoute(from, to.coordinate, "drive", options);
+    return closer && { ...closer, parkAt: null };
+  }
   const lot = to.category === "parking" ? null : await bestLot(g, from, to, options);
   if (!lot) return fetchStreetRoute(from, to.coordinate, "drive", options);
   const drive = await fetchStreetRoute(from, lot.coordinate, "drive", options);
@@ -178,7 +184,7 @@ async function driveAndWalk(g: WalkGraph, from: Coordinate, to: Place, options: 
 async function bestLot(g: WalkGraph, from: Coordinate, to: Place, options: TripOptions) {
   const lots: Array<{ lot: Place; walkMeters: number }> = [];
   for (const lot of PLACES) {
-    if (lot.category !== "parking" || lot.staffOnly) continue;
+    if (lot.category !== "parking" || lot.staffOnly || options.skipLots?.includes(lot.id)) continue;
     const walk = findRoute(g, lot.coordinate, to.coordinate, { avoidStairs: options.avoidStairs });
     if (walk) lots.push({ lot, walkMeters: walk.distance });
   }

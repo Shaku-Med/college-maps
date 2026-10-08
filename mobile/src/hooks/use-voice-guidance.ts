@@ -106,6 +106,11 @@ export function useVoiceGuidance({ route, progress, destinationName, isWrongWay,
     if (enabledRef.current) void speak(actLine(next, index, nameRef.current ?? 'your destination'), { urgent: true });
   }, []);
 
+  /** Says a one off line, such as a parking question, when spoken directions are on. */
+  const say = useCallback((line: string) => {
+    if (enabledRef.current) void speak(line, { urgent: true });
+  }, []);
+
   const toggle = useCallback(() => {
     const next = !enabledRef.current;
     enabledRef.current = next;
@@ -172,5 +177,5 @@ export function useVoiceGuidance({ route, progress, destinationName, isWrongWay,
     if (hasArrived && enabledRef.current) void speak(`You have arrived at ${nameRef.current ?? 'your destination'}.`, { urgent: true });
   }, [hasArrived]);
 
-  return { enabled, toggle, begin, announceStep, prepare };
+  return { enabled, toggle, begin, announceStep, prepare, say };
 }

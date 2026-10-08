@@ -24,7 +24,7 @@ import { MeetupBar } from '@/components/meetup-bar';
 import { PersonCard, PersonPin } from '@/components/person-pin';
 import { MapControls, type MapControl } from '@/components/map-controls';
 import { MapButton } from '@/components/map-button';
-import { NavigationBanner, NavigationFooter } from '@/components/navigation-hud';
+import { NavigationBanner, NavigationFooter, ParkingCard } from '@/components/navigation-hud';
 import { PlaceDetails } from '@/components/place-details';
 import { PlaceMarker } from '@/components/place-marker';
 import { EdgeScrim, TopScrim } from '@/components/top-scrim';
@@ -47,6 +47,7 @@ import { formatDistance } from '@/lib/geo';
 import { stepText } from '@/lib/instructions';
 import { endTrip, showTrip } from '@/lib/live-activity';
 import { currentCompass, currentFix, subscribeCompass, useLocation } from '@/lib/location';
+import { parkingSpoken } from '@/lib/parking';
 import { createCameraMemory, createSmoothHeading, shortestTurn } from '@/lib/smooth-heading';
 import { markReady } from '@/lib/splash';
 import { showMeetupOnMap, useShownMeetup } from '@/lib/meetup-focus';
@@ -289,6 +290,11 @@ export default function MapScreen() {
     paused: navigation.isRiding,
     speed: navigation.speed,
   });
+  const sayLine = voice.say;
+  // Each parking card is read out once, as it appears.
+  useEffect(() => {
+    if (navigation.parking) sayLine(parkingSpoken(navigation.parking));
+  }, [navigation.parking, sayLine]);
   const live = meetup ? meetup.id : null;
   const people = useMeetupLive(live, meetup ? location.fix : null);
 
@@ -985,6 +991,18 @@ export default function MapScreen() {
               />
             </View>
           </View>
+        ) : null}
+        {navigating && navigation.parking ? (
+          <ParkingCard
+            prompt={navigation.parking}
+            onPrimary={navigation.parking.kind === 'arrived' ? navigation.parkAfterArriving : navigation.keepParking}
+            onSecondary={() => {
+              const prompt = navigation.parking;
+              if (prompt?.kind === 'offer') navigation.driveCloser();
+              else if (prompt?.kind === 'missed') navigation.parkInstead(prompt.missedId);
+              else navigation.keepParking();
+            }}
+          />
         ) : null}
         {navigating && navigation.route ? (
           <NavigationFooter

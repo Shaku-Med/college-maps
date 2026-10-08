@@ -7,8 +7,10 @@ import { Pressable, type PressableProps } from 'react-native-gesture-handler';
 import Animated, {
   Easing,
   FadeIn,
+  FadeInDown,
   FadeInUp,
   FadeOut,
+  FadeOutDown,
   FadeOutUp,
   LinearTransition,
   useReducedMotion,
@@ -24,6 +26,7 @@ import type { RouteNotice } from '@/hooks/use-voice-guidance';
 import { formatRouteTime } from '@/lib/directions';
 import { formatDistance } from '@/lib/geo';
 import { stepText } from '@/lib/instructions';
+import { parkingChoices, parkingDetail, parkingTitle, type ParkingPrompt } from '@/lib/parking';
 import type { Route, RouteProgress } from '@/lib/routing';
 
 const NOTICE_TEXT: Record<RouteNotice, string> = {
@@ -468,5 +471,49 @@ export function NavigationFooter({
         </View>
       </Glass>
     </View>
+  );
+}
+
+/** A parking choice at the bottom of the map, the way Apple Maps offers one, answered with a tap. */
+export function ParkingCard({
+  prompt,
+  onPrimary,
+  onSecondary,
+}: {
+  prompt: ParkingPrompt;
+  onPrimary: () => void;
+  onSecondary: () => void;
+}) {
+  const accentForeground = useThemeColor('accent-foreground');
+  const reduceMotion = useReducedMotion();
+  const { primary, secondary } = parkingChoices(prompt);
+  return (
+    <Animated.View
+      entering={reduceMotion ? undefined : FadeInDown.duration(220)}
+      exiting={reduceMotion ? undefined : FadeOutDown.duration(160)}
+      accessibilityLiveRegion="polite"
+      style={{ marginHorizontal: 12 }}>
+      <Glass radius={24} interactive>
+        <View className="gap-3 p-4">
+          <View className="flex-row items-center gap-3">
+            <View className="size-10 items-center justify-center rounded-full bg-accent">
+              <Icon name="parkingsign" size={18} weight="semibold" tintColor={accentForeground} />
+            </View>
+            <View className="min-w-0 flex-1">
+              <Text className="text-base font-semibold text-foreground" numberOfLines={2}>
+                {parkingTitle(prompt)}
+              </Text>
+              <Text className="text-sm text-muted" numberOfLines={1}>
+                {parkingDetail(prompt)}
+              </Text>
+            </View>
+          </View>
+          <View className="flex-row gap-2">
+            <MapButton style={{ flex: 1 }} label={primary} onPress={onPrimary} />
+            <MapButton style={{ flex: 1 }} variant="secondary" label={secondary} onPress={onSecondary} />
+          </View>
+        </View>
+      </Glass>
+    </Animated.View>
   );
 }

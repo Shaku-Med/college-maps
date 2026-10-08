@@ -259,6 +259,13 @@ export function useVoiceGuidance({
     speak(actLine(route, index, destination), { urgent: true, fallback: standInAct(route.steps[index], destination) });
   }, []);
 
+  /** Says a one off line, such as a parking question, when spoken directions are on. */
+  const say = useCallback((line: string) => {
+    if (!enabledRef.current) return;
+    unlockAudio();
+    speak(line, { urgent: true });
+  }, []);
+
   const toggle = useCallback(() => {
     const next = !enabledRef.current;
     enabledRef.current = next;
@@ -338,5 +345,5 @@ export function useVoiceGuidance({
     if (hasArrived && enabledRef.current) speak(arrivalLine(nameRef.current ?? "your destination"), { urgent: true });
   }, [hasArrived]);
 
-  return { enabled, toggle, begin, prime, announceStep };
+  return { enabled, toggle, begin, prime, announceStep, say };
 }

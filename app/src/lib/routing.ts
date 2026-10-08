@@ -57,8 +57,8 @@ export type Route = {
   duration?: number;
   /** How far along a trip from off campus picks up the campus paths, which it follows from there. */
   campusFrom?: number;
-  /** The lot a drive parks in before the walk. */
-  parkAt?: string;
+  /** The lot a drive parks in before the walk, or null when the driver chose to drive right up instead. */
+  parkAt?: string | null;
 };
 
 /** A point on the walkway someone is on, found by matching their position to the nearest path. */

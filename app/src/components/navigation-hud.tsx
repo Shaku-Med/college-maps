@@ -12,6 +12,7 @@ import {
   LocateFixed,
   Navigation2,
   RefreshCw,
+  SquareParking,
   Undo2,
   Volume2,
   VolumeX,
@@ -25,6 +26,7 @@ import type { Place } from "@/data/campus";
 import { formatRouteTime } from "@/lib/directions";
 import { formatDistance } from "@/lib/geo";
 import { stepText } from "@/lib/instructions";
+import { parkingChoices, parkingDetail, parkingTitle, type ParkingPrompt } from "@/lib/parking";
 import type { Route, RouteProgress } from "@/lib/routing";
 
 export type RouteNotice = "rerouted" | "faster" | "switched";
@@ -63,7 +65,39 @@ type NavigationHudProps = {
   stopLabel?: string;
   onContinue?: () => void;
   onEnd: () => void;
+  /** A parking choice offered while driving, answered with a tap. */
+  parking?: ParkingPrompt | null;
+  onParkingPrimary?: () => void;
+  onParkingSecondary?: () => void;
 };
+
+/** A parking choice above the trip panel, the way Apple Maps offers one. */
+function ParkingCard({ prompt, onPrimary, onSecondary }: { prompt: ParkingPrompt; onPrimary?: () => void; onSecondary?: () => void }) {
+  const { primary, secondary } = parkingChoices(prompt);
+  return (
+    <div role="status" aria-live="polite" className="animate-sheet-in mx-3 mb-3 md:mx-0">
+      <Surface className="glass-chrome rounded-3xl p-4 shadow-xl">
+        <div className="flex items-center gap-3">
+          <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-accent text-accent-foreground">
+            <SquareParking className="size-5" aria-hidden />
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="text-base font-semibold leading-tight">{parkingTitle(prompt)}</p>
+            <p className="truncate text-sm text-muted">{parkingDetail(prompt)}</p>
+          </div>
+        </div>
+        <div className="mt-3 flex gap-2">
+          <Button variant="primary" className="flex-1" onPress={onPrimary}>
+            {primary}
+          </Button>
+          <Button variant="secondary" className="flex-1" onPress={onSecondary}>
+            {secondary}
+          </Button>
+        </div>
+      </Surface>
+    </div>
+  );
+}
 
 /** One of the trip settings, with the same switch the directions panel uses. */
 function TripSetting({ label, isSelected, onChange }: { label: string; isSelected: boolean; onChange: (next: boolean) => void }) {
@@ -107,6 +141,9 @@ export function NavigationHud({
   stopLabel,
   onContinue,
   onEnd,
+  parking,
+  onParkingPrimary,
+  onParkingSecondary,
 }: NavigationHudProps) {
   // The turns ahead at the top and the trip settings at the bottom: one open at a time, so the map stays in view.
   const [panel, setPanel] = useState<"steps" | "trip" | null>(null);
@@ -273,6 +310,7 @@ export function NavigationHud({
             ) : null}
           </div>
         ) : null}
+        {parking ? <ParkingCard prompt={parking} onPrimary={onParkingPrimary} onSecondary={onParkingSecondary} /> : null}
         <Surface className="glass-chrome rounded-t-[28px] px-5 pb-[max(1rem,var(--map-safe-bottom))] pt-4 shadow-2xl md:rounded-3xl md:pb-4">
           {tripOpen ? (
             <div className="animate-fade-in mb-3 border-b border-separator pb-2">

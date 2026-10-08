@@ -8,6 +8,14 @@ import { bearingDegrees, distanceMeters, turnAngle } from '@/lib/geo';
 import { currentCompass, onFix, type Fix } from '@/lib/location';
 import { createMotionTracker, isOnFoot, ON_FOOT_MAX_MPS, RIDING_MAX_MPS, type MotionState } from '@/lib/motion';
 import {
+  arrivedPrompt,
+  createMissedLotWatch,
+  missedPrompt,
+  PARKING_PROMPT_MS,
+  parkingOffer,
+  type ParkingPrompt,
+} from '@/lib/parking';
+import {
   findRoute,
   matchWalkway,
   progressAtDistance,
@@ -91,6 +99,8 @@ export function useNavigation({ destination, avoidStairs, follow, facingUp }: Op
   const [manualStep, setManualStep] = useState<number | null>(null);
   /** Where the traveller is shown: on the route when close to it, else on the walkway underfoot. */
   const [shownAt, setShownAt] = useState<Coordinate | null>(null);
+  /** A parking choice shown on the map while driving. */
+  const [parking, setParking] = useState<ParkingPrompt | null>(null);
 
   const nav = useRef({
     active: false,
@@ -118,7 +128,12 @@ export function useNavigation({ destination, avoidStairs, follow, facingUp }: Op
   const previousHint = useRef(0);
   const previousStartAlong = useRef(0);
   const previousMatches = useRef(0);
-  const streetReroute = useRef({ inflight: false, at: 0 });
+  const streetReroute = useRef({ inflight: false, at: 0, token: 0 });
+  const parkingTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const parkingOffered = useRef(false);
+  const missedLots = useRef(createMissedLotWatch());
+  // After driving right up to the place, the trip to the offered lot, started if the driver says yes.
+  const parkingTrip = useRef<Route | null>(null);
   const arrivalCount = useRef(0);
   const onCampusCount = useRef(0);
   const lastGood = useRef<{ position: Coordinate; at: number } | null>(null);
@@ -135,6 +150,7 @@ export function useNavigation({ destination, avoidStairs, follow, facingUp }: Op
     () => () => {
       clearTimeout(noticeTimer.current);
       clearTimeout(followTimer.current);
+      clearTimeout(parkingTimer.current);
     },
     [],
   );
@@ -147,6 +163,13 @@ export function useNavigation({ destination, avoidStairs, follow, facingUp }: Op
   // Phone compass first at every speed so the map and cone stay live; GPS course only fills gaps.
   const facing = useCallback(() => currentCompass() ?? travelHeading(), [travelHeading]);
   const speed = useCallback(() => motionState.current.speed, []);
+
+  // A card nobody answers keeps things as they are once it fades.
+  const showParking = useCallback((prompt: ParkingPrompt | null) => {
+    clearTimeout(parkingTimer.current);
+    setParking(prompt);
+    if (prompt) parkingTimer.current = setTimeout(() => setParking(null), PARKING_PROMPT_MS);
+  }, []);
 
   const showNotice = useCallback((kind: RouteNotice) => {
     setNotice(kind);
@@ -196,32 +219,56 @@ export function useNavigation({ destination, avoidStairs, follow, facingUp }: Op
 
   // Street routes are rerouted by asking the server again, which answers later, so this runs on its own.
   const rerouteStreet = useCallback(
-    (position: Coordinate, asked = false) => {
+    (
+      position: Coordinate,
+      asked = false,
+      choice?: { parkAt?: string | null; skipLots?: readonly string[]; onRoute?: (chosen: Route) => void },
+    ) => {
       const { route: leaving, destination: target, avoidStairs: stairs } = nav.current;
       const travel = leaving?.travel;
       const state = streetReroute.current;
-      // Someone changing a setting gets an answer now; only automatic reroutes wait between tries.
-      if (!leaving || !travel || !target || state.inflight || (!asked && Date.now() - state.at < STREET_REROUTE_GAP_MS)) return;
+      if (!leaving || !travel || !target) return;
+      // Someone tapping a choice gets an answer now; only automatic reroutes wait between tries.
+      if (!asked && (state.inflight || Date.now() - state.at < STREET_REROUTE_GAP_MS)) return;
+      const token = ++state.token;
       state.inflight = true;
       state.at = Date.now();
       const heading = travelHeading();
-      fetchTripRoute(walkGraph(), position, target, travel, { avoidStairs: stairs, heading, parkAt: leaving.parkAt })
+      const parkAt = choice && 'parkAt' in choice ? choice.parkAt : leaving.parkAt;
+      const options = { avoidStairs: stairs, parkAt, skipLots: choice?.skipLots };
+      fetchTripRoute(walkGraph(), position, target, travel, { ...options, heading })
         .then((candidate) =>
-          candidate || heading === undefined
-            ? candidate
-            : fetchTripRoute(walkGraph(), position, target, travel, { avoidStairs: stairs, parkAt: leaving.parkAt }),
+          candidate || heading === undefined ? candidate : fetchTripRoute(walkGraph(), position, target, travel, options),
         )
         .then((candidate) => {
           const current = nav.current;
-          if (!candidate || !current.active || current.route !== leaving || current.arrived) return;
-          commit(candidate, leaving, latestFix.current?.position ?? position, 'rerouted');
+          // A newer request, the trip ending, or a route change here makes this answer stale.
+          if (!candidate || token !== state.token || !current.active || current.route !== leaving || current.arrived) return;
+          // A parking choice already has its own card with a way back, so it skips the earlier route pill.
+          commit(candidate, leaving, latestFix.current?.position ?? position, choice ? undefined : 'rerouted');
+          choice?.onRoute?.(candidate);
         })
         .catch(() => undefined)
         .finally(() => {
-          state.inflight = false;
+          if (token === state.token) state.inflight = false;
         });
     },
     [commit, travelHeading],
+  );
+
+  // Driving right up to the place, then needing a lot: the trip there is ready before the card asks.
+  const offerParkingHere = useCallback(
+    (position: Coordinate, target: Place) => {
+      fetchTripRoute(walkGraph(), position, target, 'drive', { avoidStairs: nav.current.avoidStairs })
+        .then((trip) => {
+          const prompt = trip && arrivedPrompt(trip, target.name);
+          if (!trip || !prompt || !nav.current.arrived) return;
+          parkingTrip.current = trip;
+          showParking(prompt);
+        })
+        .catch(() => undefined);
+    },
+    [showParking],
   );
 
   const handleFix = useCallback(
@@ -313,6 +360,27 @@ export function useNavigation({ destination, avoidStairs, follow, facingUp }: Op
         onCampusCount.current = 0;
       }
 
+      // About a mile out the lot is offered; driving past it finds the best lot still ahead instead of turning back.
+      let missedLot = false;
+      if (travel === 'drive' && trusted) {
+        if (!parkingOffered.current) {
+          const offer = parkingOffer(active, next, target.name);
+          if (offer) {
+            parkingOffered.current = true;
+            showParking(offer);
+          }
+        }
+        const lot = active.parkAt;
+        if (lot && missedLots.current.update(active, next, position, fastest)) {
+          missedLot = true;
+          rerouteStreet(position, true, {
+            parkAt: undefined,
+            skipLots: [lot],
+            onRoute: (chosen) => showParking(missedPrompt(chosen, lot, target.name)),
+          });
+        }
+      }
+
       const adopt = (candidate: Route, kind: RouteNotice) => {
         const leaving = active;
         const leftAt = next;
@@ -383,7 +451,7 @@ export function useNavigation({ destination, avoidStairs, follow, facingUp }: Op
         (justGotOff && next.distanceFromRoute > limit);
       const turnedBack = wrongWay && backtracked > WRONG_WAY_REROUTE_METERS * slack;
       if (!changed && travel && (lost || turnedBack)) {
-        rerouteStreet(position);
+        if (!missedLot) rerouteStreet(position);
       } else if (!changed && graph && (lost || turnedBack)) {
         const rerouted = findRoute(graph, position, target.coordinate, {
           avoidStairs: current.avoidStairs,
@@ -420,13 +488,14 @@ export function useNavigation({ destination, avoidStairs, follow, facingUp }: Op
         setHasArrived(true);
         setPreviousPath(null);
         setIsWrongWay(false);
+        if (travel === 'drive' && active.parkAt === null) offerParkingHere(position, target);
       }
       const onRoute = next.distanceFromRoute <= SNAP_TO_ROUTE_METERS;
       const shown = onRoute ? next.point : (walkway?.point ?? position);
       setShownAt(shown);
       if (nav.current.following) follow(followTarget(shown, travel));
     },
-    [commit, facing, follow, followTarget, rerouteStreet, showNotice],
+    [commit, facing, follow, followTarget, offerParkingHere, rerouteStreet, showNotice, showParking],
   );
 
   useEffect(() => onFix(handleFix), [handleFix]);
@@ -437,7 +506,12 @@ export function useNavigation({ destination, avoidStairs, follow, facingUp }: Op
     otherWalkwayCount.current = 0;
     maxAlong.current = 0;
     lastRecheck.current = { at: Date.now(), along: 0 };
-    streetReroute.current = { inflight: false, at: Date.now() };
+    streetReroute.current = { inflight: false, at: Date.now(), token: streetReroute.current.token + 1 };
+    clearTimeout(parkingTimer.current);
+    setParking(null);
+    parkingOffered.current = false;
+    missedLots.current.reset();
+    parkingTrip.current = null;
     riding.current = false;
     arrivalCount.current = 0;
     onCampusCount.current = 0;
@@ -573,6 +647,37 @@ export function useNavigation({ destination, avoidStairs, follow, facingUp }: Op
     [],
   );
 
+  /** Keeps the lot on the card. */
+  const keepParking = useCallback(() => showParking(null), [showParking]);
+
+  /** Drives right up to the place instead of parking first. */
+  const driveCloser = useCallback(() => {
+    showParking(null);
+    const at = latestFix.current?.position ?? lastPoint.current;
+    if (at) rerouteStreet(at, true, { parkAt: null });
+  }, [rerouteStreet, showParking]);
+
+  /** Heads for this lot instead, such as the one just driven past. */
+  const parkInstead = useCallback(
+    (lotId: string) => {
+      showParking(null);
+      missedLots.current.reset();
+      const at = latestFix.current?.position ?? lastPoint.current;
+      if (at) rerouteStreet(at, true, { parkAt: lotId });
+    },
+    [rerouteStreet, showParking],
+  );
+
+  /** After driving right up to the place, drives on to the offered lot and walks back. */
+  const parkAfterArriving = useCallback(() => {
+    const trip = parkingTrip.current;
+    showParking(null);
+    if (!trip) return;
+    start(trip, latestFix.current?.position ?? trip.path[0]);
+    // The driver just chose this lot, so the trip does not ask about it again.
+    parkingOffered.current = true;
+  }, [showParking, start]);
+
   return {
     route,
     progress,
@@ -584,6 +689,7 @@ export function useNavigation({ destination, avoidStairs, follow, facingUp }: Op
     isRiding,
     isFollowing,
     manualStep,
+    parking,
     facing,
     speed,
     travelHeading,
@@ -595,5 +701,9 @@ export function useNavigation({ destination, avoidStairs, follow, facingUp }: Op
     switchToPrevious,
     showStep,
     changeAvoidStairs,
+    keepParking,
+    driveCloser,
+    parkInstead,
+    parkAfterArriving,
   };
 }
