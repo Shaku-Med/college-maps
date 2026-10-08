@@ -25,6 +25,15 @@ const HEADING_TOLERANCE_DEGREES = 45;
 const HEADING_SEARCH_METERS: Record<TravelMode, number> = { walk: 15, bike: 25, drive: 35 };
 
 const COSTING: Record<TravelMode, string> = { walk: "pedestrian", drive: "auto", bike: "bicycle" };
+// Valhalla counts every gate as five minutes, which sent drivers round Loop Road to skip the lift gates by the lots.
+const GATE_PENALTY_SECONDS = 30;
+
+function costingOptions(travel: TravelMode, avoidStairs: boolean) {
+  // Wheelchair walking keeps to curb cuts and ramps, which is what avoiding stairs means off campus.
+  if (travel === "walk") return avoidStairs ? { costing_options: { pedestrian: { type: "wheelchair" } } } : {};
+  if (travel === "drive") return { costing_options: { auto: { gate_penalty: GATE_PENALTY_SECONDS } } };
+  return {};
+}
 
 // Valhalla maneuver types that bend left or right. Everything else reads as going straight on.
 const TURNS: Record<number, TurnDirection> = {
@@ -81,8 +90,7 @@ export async function fetchStreetRoute(
           { lat: to.latitude, lon: to.longitude, search_cutoff: MAX_SNAP_METERS },
         ],
         costing: COSTING[travel],
-        // Wheelchair walking keeps to curb cuts and ramps, which is what avoiding stairs means off campus.
-        ...(travel === "walk" && avoidStairs ? { costing_options: { pedestrian: { type: "wheelchair" } } } : {}),
+        ...costingOptions(travel, avoidStairs),
         directions_options: { units: "miles", language: "en-US" },
       }),
       cache: "no-store",
@@ -211,6 +219,7 @@ async function fetchDriveTimes(from: Coordinate, targets: Coordinate[], signal?:
         sources: [{ lat: from.latitude, lon: from.longitude, search_cutoff: MAX_SNAP_METERS }],
         targets: targets.map((t) => ({ lat: t.latitude, lon: t.longitude, search_cutoff: MAX_SNAP_METERS })),
         costing: "auto",
+        ...costingOptions("drive", false),
       }),
       cache: "no-store",
       credentials: "omit",
