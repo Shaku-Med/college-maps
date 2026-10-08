@@ -10,6 +10,8 @@ const MAX_TEXT = 300;
 
 let voiceId: string | undefined;
 let chosen = false;
+// A phone whose speech engine is missing or not ready fails inside expo-speech where nothing can catch it, so it waits.
+let canSpeak = true;
 let audioReady: Promise<void> | null = null;
 
 function prepareAudio() {
@@ -53,6 +55,7 @@ async function pickVoice() {
   try {
     const saved = await savedVoiceId();
     const voices = await Speech.getAvailableVoicesAsync();
+    canSpeak = true;
     if (saved && voices.some((voice) => voice.identifier === saved)) {
       voiceId = saved;
       return voiceId;
@@ -62,6 +65,9 @@ async function pickVoice() {
     voiceId = pool.sort((a, b) => rankVoice(b) - rankVoice(a))[0]?.identifier;
   } catch {
     voiceId = undefined;
+    canSpeak = false;
+    // The engine may still be starting, so the next line asks again.
+    chosen = false;
   }
   return voiceId;
 }
@@ -92,13 +98,15 @@ export async function setDirectionVoice(id: string | null) {
 }
 
 export async function previewDirectionVoice(id: string) {
-  await prepareAudio();
+  await Promise.all([pickVoice(), prepareAudio()]);
+  if (!canSpeak) return;
   await Speech.stop();
   Speech.speak('In 100 feet, turn right.', { voice: id, language: undefined, rate: 1.0 });
 }
 
 export async function warmUpVoice() {
   const [voice] = await Promise.all([pickVoice(), prepareAudio()]);
+  if (!canSpeak) return;
   Speech.speak(' ', { voice, language: voice ? undefined : 'en-US', volume: 0 });
 }
 
@@ -125,6 +133,7 @@ export async function speak(line: string, { urgent = false } = {}) {
   if (!urgent && last.text === text && now - last.at < REPEAT_WINDOW_MS) return;
   last = { text, at: now };
   const [voice] = await Promise.all([pickVoice(), prepareAudio()]);
+  if (!canSpeak) return;
   if (urgent) await Speech.stop();
   Speech.speak(text, { voice, language: voice ? undefined : 'en-US', rate: 1.0 });
 }

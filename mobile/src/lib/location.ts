@@ -185,6 +185,11 @@ TaskManager.defineTask<TaskData>(NAVIGATION_TASK, async ({ data, error }) => {
   for (const location of data.locations) publish(location);
 });
 
+// A trip cut short by closing the app stays saved and restarts on the next launch with nothing to guide.
+const clearLeftoverTrip = Location.hasStartedLocationUpdatesAsync(NAVIGATION_TASK)
+  .then((started) => (started ? Location.stopLocationUpdatesAsync(NAVIGATION_TASK) : undefined))
+  .catch(() => undefined);
+
 // Google's accuracy prompt shows once per launch; after a no, GPS alone is used instead of asking again.
 let mayAskForAccuracy = true;
 
@@ -276,6 +281,7 @@ async function reconcile() {
   starting = true;
   let failed = false;
   try {
+    await clearLeftoverTrip;
     const permission = await Location.getForegroundPermissionsAsync();
     let granted = permission.granted;
     if (!granted && permission.canAskAgain) {
