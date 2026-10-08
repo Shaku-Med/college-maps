@@ -48,6 +48,7 @@ import { stepText } from '@/lib/instructions';
 import { endTrip, showTrip } from '@/lib/live-activity';
 import { currentCompass, currentFix, subscribeCompass, useLocation } from '@/lib/location';
 import { parkingSpoken } from '@/lib/parking';
+import { roomDirections } from '@/lib/search';
 import { createCameraMemory, createSmoothHeading, shortestTurn } from '@/lib/smooth-heading';
 import { markReady } from '@/lib/splash';
 import { showMeetupOnMap, useShownMeetup } from '@/lib/meetup-focus';
@@ -204,6 +205,8 @@ export default function MapScreen() {
   // While guiding, the place being walked to now: the next stop, or the destination after the last one.
   const target = navigating ? (getPlace(trip.legs[trip.leg]) ?? trip.destination) : trip.destination;
   const nextTarget = navigating ? getPlace(trip.legs[trip.leg + 1]) : undefined;
+  const arrivalNote =
+    trip.room && !nextTarget && target?.id === trip.destination?.id ? roomDirections(trip.room, trip.avoidStairs) : undefined;
 
   const navigation = useNavigation({
     destination: target,
@@ -284,6 +287,7 @@ export default function MapScreen() {
     route: navigating ? navigation.route : null,
     progress: navigation.progress,
     destinationName: target?.name,
+    arrivalNote,
     isWrongWay: navigation.isWrongWay,
     hasArrived: navigation.hasArrived,
     notice: navigation.notice,
@@ -884,6 +888,7 @@ export default function MapScreen() {
             progress={navigation.progress}
             destinationName={target?.name ?? trip.destination.name}
             nextStopName={nextTarget?.name}
+            arrivalNote={arrivalNote}
             isWrongWay={navigation.isWrongWay}
             hasArrived={navigation.hasArrived}
             isRiding={navigation.isRiding}

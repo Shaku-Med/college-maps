@@ -61,6 +61,8 @@ type TopProps = {
   weakSignal?: boolean;
   /** The place after this one, when this one is a stop on the way. */
   nextStopName?: string;
+  /** Shown once arrived, such as which floor the room is on. */
+  arrivalNote?: string;
   /** The list of turns ahead is open. Only one of this and the trip panel is open at a time. */
   expanded: boolean;
   onExpandedChange: (expanded: boolean) => void;
@@ -150,6 +152,7 @@ export function NavigationBanner({
   hasAlternate,
   weakSignal = false,
   nextStopName,
+  arrivalNote,
   expanded,
   onExpandedChange,
   onUseAlternate,
@@ -190,7 +193,7 @@ export function NavigationBanner({
             accessibilityState={{ expanded: open, disabled: !canExpand }}
             accessibilityLabel={
               hasArrived
-                ? `You have arrived at ${destinationName}`
+                ? [`You have arrived at ${destinationName}`, arrivalNote].filter(Boolean).join('. ')
                 : wrong
                   ? 'Wrong way. Turn around when it is safe'
                   : `In ${formatDistance(toStep)}, ${stepText(step, destinationName)}`
@@ -208,6 +211,11 @@ export function NavigationBanner({
                   <Text className="text-base opacity-80" style={{ color: ink }} numberOfLines={1}>
                     {nextStopName ? `${destinationName} · Next: ${nextStopName}` : destinationName}
                   </Text>
+                  {arrivalNote ? (
+                    <Text className="mt-1.5 text-base font-semibold" style={{ color: ink }}>
+                      {arrivalNote}
+                    </Text>
+                  ) : null}
                 </View>
               </View>
             ) : wrong ? (

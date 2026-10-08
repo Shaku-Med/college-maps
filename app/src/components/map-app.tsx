@@ -42,6 +42,7 @@ import {
   type ParkingPrompt,
 } from "@/lib/parking";
 import { loadSchedule, saveSchedule, type ClassEntry } from "@/lib/schedule";
+import { roomDirections } from "@/lib/search";
 import { MY_LOCATION, tripPlan, withStop } from "@/lib/stops";
 import {
   findRoute,
@@ -716,6 +717,7 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
   // While guiding, the place being walked to now: the next stop, or the destination after the last one.
   const target = mode === "navigate" ? (getPlace(legs[leg]) ?? selected) : selected;
   const nextTarget = mode === "navigate" ? getPlace(legs[leg + 1]) : undefined;
+  const arrivalNote = room && !nextTarget && target?.id === selectedId ? roomDirections(room, avoidStairs) : undefined;
 
   const geo = useGeolocation({ onPosition: handlePosition, onError: handleGeoError });
   useWakeLock(mode === "navigate");
@@ -723,6 +725,7 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
     route: mode === "navigate" ? navRoute : null,
     progress,
     destinationName: target?.name,
+    arrivalNote,
     isWrongWay,
     hasArrived,
     notice: routeNotice,
@@ -1684,6 +1687,7 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
         <NavigationHud
           destination={target}
           nextStopName={nextTarget?.name}
+          arrivalNote={arrivalNote}
           stopLabel={stopCount > 0 && leg < stopCount ? `Stop ${leg + 1} of ${stopCount}` : undefined}
           onContinue={continueTrip}
           route={navRoute}

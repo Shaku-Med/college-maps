@@ -67,6 +67,8 @@ type Guidance = {
   route: Route | null;
   progress?: RouteProgress;
   destinationName?: string;
+  /** Said after arriving, such as which floor the room is on. */
+  arrivalNote?: string;
   isWrongWay: boolean;
   hasArrived: boolean;
   notice?: RouteNotice;
@@ -75,7 +77,17 @@ type Guidance = {
 };
 
 /** Turn by turn speech for a trip, with the same cues and lines as the web app. */
-export function useVoiceGuidance({ route, progress, destinationName, isWrongWay, hasArrived, notice, paused = false, speed }: Guidance) {
+export function useVoiceGuidance({
+  route,
+  progress,
+  destinationName,
+  arrivalNote,
+  isWrongWay,
+  hasArrived,
+  notice,
+  paused = false,
+  speed,
+}: Guidance) {
   const [enabled, setEnabled] = useState(readVoicePreference);
   const enabledRef = useRef(enabled);
   const spokenRef = useRef<{ route: Route | null; prepared: Set<number>; acted: Set<number> }>({
@@ -84,12 +96,14 @@ export function useVoiceGuidance({ route, progress, destinationName, isWrongWay,
     acted: new Set(),
   });
   const nameRef = useRef(destinationName);
+  const noteRef = useRef(arrivalNote);
   const routeRef = useRef(route);
 
   useEffect(() => {
     nameRef.current = destinationName;
+    noteRef.current = arrivalNote;
     routeRef.current = route;
-  }, [destinationName, route]);
+  }, [destinationName, arrivalNote, route]);
 
   /** Says the first instruction. Call it from the tap that starts navigation. */
   const begin = useCallback((next: Route, facing?: number) => {
@@ -174,7 +188,9 @@ export function useVoiceGuidance({ route, progress, destinationName, isWrongWay,
   }, [isWrongWay]);
 
   useEffect(() => {
-    if (hasArrived && enabledRef.current) void speak(`You have arrived at ${nameRef.current ?? 'your destination'}.`, { urgent: true });
+    if (!hasArrived || !enabledRef.current) return;
+    const note = noteRef.current;
+    void speak(`You have arrived at ${nameRef.current ?? 'your destination'}.${note ? ` ${note}` : ''}`, { urgent: true });
   }, [hasArrived]);
 
   return { enabled, toggle, begin, announceStep, prepare, say };

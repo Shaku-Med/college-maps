@@ -63,6 +63,8 @@ type NavigationHudProps = {
   nextStopName?: string;
   /** Which stop is being walked to, like "Stop 1 of 2", while there are stops ahead. */
   stopLabel?: string;
+  /** Shown once arrived, such as which floor the room is on. */
+  arrivalNote?: string;
   onContinue?: () => void;
   onEnd: () => void;
   /** A parking choice offered while driving, answered with a tap. */
@@ -139,6 +141,7 @@ export function NavigationHud({
   onAvoidStairsChange,
   nextStopName,
   stopLabel,
+  arrivalNote,
   onContinue,
   onEnd,
   parking,
@@ -175,7 +178,7 @@ export function NavigationHud({
           {hasArrived
             ? nextStopName
               ? `Stop reached: ${destination.name}. Next, ${nextStopName}`
-              : `You have arrived at ${destination.name}`
+              : [`You have arrived at ${destination.name}.`, arrivalNote].filter(Boolean).join(" ")
             : isWrongWay
               ? "Wrong way"
               : `${formatDistance(shownDistance)}, ${stepText(shownStep, destination.name)}`}
@@ -195,6 +198,7 @@ export function NavigationHud({
                 <p className="truncate text-sm opacity-85">
                   {nextStopName ? `${destination.name} · Next: ${nextStopName}` : destination.name}
                 </p>
+                {arrivalNote ? <p className="mt-1.5 text-sm font-semibold leading-snug">{arrivalNote}</p> : null}
               </div>
             </>
           ) : isWrongWay ? (

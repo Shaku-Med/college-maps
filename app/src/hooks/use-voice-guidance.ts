@@ -51,7 +51,7 @@ type StepLines = { prepare?: string; act: string; prepareStandIn?: string; actSt
 type Spoken = { route: Route | null; prepared: Set<number>; acted: Set<number>; lines: Map<number, StepLines> };
 
 const lowerFirst = (text: string) => text.charAt(0).toLowerCase() + text.slice(1);
-const arrivalLine = (destination: string) => `You have arrived at ${destination}.`;
+const arrivalLine = (destination: string, note?: string) => `You have arrived at ${destination}.${note ? ` ${note}` : ""}`;
 
 // Every campus walk is made of the same few instructions.
 const CAMPUS_TURNS: TurnDirection[] = ["slight-left", "left", "sharp-left", "slight-right", "right", "sharp-right"];
@@ -127,12 +127,12 @@ const departVariants = (route: Route, destination: string) =>
   FACING_TURNS.map((lead) => `${lead}, then ${lowerFirst(actLine(route, 0, destination))}`);
 
 // What to make, in order.
-function voicePlan(route: Route, destination: string, planned: readonly string[]) {
+function voicePlan(route: Route, destination: string, planned: readonly string[], arrivalNote?: string) {
   return {
     now: [actLine(route, 0, destination), ...planned, NOTICE_LINES.rerouted, WRONG_WAY_LINE],
     later: [
       ...STAND_IN_LINES,
-      arrivalLine(destination),
+      arrivalLine(destination, arrivalNote),
       NOTICE_LINES.faster,
       NOTICE_LINES.switched,
       ...Object.values(RIDING_LINES),
@@ -184,6 +184,8 @@ type Guidance = {
   route: Route | null;
   progress?: RouteProgress;
   destinationName?: string;
+  /** Said after arriving, such as which floor the room is on. */
+  arrivalNote?: string;
   isWrongWay: boolean;
   hasArrived: boolean;
   notice?: RouteNotice;
@@ -197,6 +199,7 @@ export function useVoiceGuidance({
   route,
   progress,
   destinationName,
+  arrivalNote,
   isWrongWay,
   hasArrived,
   notice,
@@ -206,6 +209,7 @@ export function useVoiceGuidance({
   const [enabled, setEnabled] = useState(readVoicePreference);
   const enabledRef = useRef(enabled);
   const nameRef = useRef(destinationName);
+  const noteRef = useRef(arrivalNote);
   const spokenRef = useRef<Spoken>({ route: null, prepared: new Set(), acted: new Set(), lines: new Map() });
   const primedRef = useRef<{ route: Route | null; lines: Map<number, StepLines> }>({ route: null, lines: new Map() });
   const routeRef = useRef(route);
@@ -213,9 +217,10 @@ export function useVoiceGuidance({
 
   useEffect(() => {
     nameRef.current = destinationName;
+    noteRef.current = arrivalNote;
     routeRef.current = route;
     speedRef.current = currentSpeed;
-  }, [destinationName, route, currentSpeed]);
+  }, [destinationName, arrivalNote, route, currentSpeed]);
 
   /** Starts making the opening lines while the route is only being previewed, so they are ready on Start. */
   const prime = useCallback((preview: Route) => {
@@ -225,7 +230,7 @@ export function useVoiceGuidance({
     const lines = planAhead(spoken, preview, 0, 0, destination, 0);
     primedRef.current = { route: preview, lines: spoken.lines };
     warmUpVoice();
-    const plan = voicePlan(preview, destination, lines);
+    const plan = voicePlan(preview, destination, lines, noteRef.current);
     prepareSpeech(plan.now);
     prepareSpeech(plan.later, { later: true });
   }, []);
@@ -246,7 +251,7 @@ export function useVoiceGuidance({
     speak(departLine(next, destination, facing), { urgent: true, fallback: actLine(next, 0, destination) });
     planAhead(spokenRef.current, next, 0, 0, destination, 0);
     const planned = [...spokenRef.current.lines.values()].flatMap((lines) => (lines.prepare ? [lines.prepare, lines.act] : [lines.act]));
-    const plan = voicePlan(next, destination, planned);
+    const plan = voicePlan(next, destination, planned, noteRef.current);
     prepareSpeech(plan.now);
     prepareSpeech(plan.later, { later: true });
   }, []);
@@ -342,7 +347,7 @@ export function useVoiceGuidance({
   }, [isWrongWay]);
 
   useEffect(() => {
-    if (hasArrived && enabledRef.current) speak(arrivalLine(nameRef.current ?? "your destination"), { urgent: true });
+    if (hasArrived && enabledRef.current) speak(arrivalLine(nameRef.current ?? "your destination", noteRef.current), { urgent: true });
   }, [hasArrived]);
 
   return { enabled, toggle, begin, prime, announceStep, say };

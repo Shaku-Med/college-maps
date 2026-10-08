@@ -90,3 +90,14 @@ export function floorLabel(floor: number | undefined): string | undefined {
   const suffix = floor === 1 ? "st" : floor === 2 ? "nd" : floor === 3 ? "rd" : "th";
   return `${floor}${suffix} floor`;
 }
+
+/** What to do once inside the building, said on arriving for a room: which floor, and up or down from the ground floor. */
+export function roomDirections(room: string, avoidStairs: boolean): string {
+  const floor = floorForRoom(room);
+  const label = floorLabel(floor)?.toLowerCase();
+  if (floor === undefined || !label) return `Follow the signs to room ${room}.`;
+  const way = avoidStairs || floor >= 4 ? "elevator" : "stairs";
+  if (floor <= 0) return `Room ${room} is on the ${label}. Take the ${way} down.`;
+  if (floor === 1) return `Room ${room} is on the ${label}.`;
+  return `Room ${room} is on the ${label}. Take the ${way} up.`;
+}
