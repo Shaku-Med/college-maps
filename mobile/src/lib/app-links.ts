@@ -9,6 +9,17 @@ import { planTrip } from '@/lib/trip';
 const MAX_LINK_LENGTH = 200;
 const PLACE_ID = /^[A-Za-z0-9][A-Za-z0-9-]{0,15}$/;
 
+/** Real links are short and properly encoded; broken % escapes send the router's query parser into a very slow path. */
+export function isWellFormedLink(path: string) {
+  if (path.length > MAX_LINK_LENGTH) return false;
+  try {
+    decodeURIComponent(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function roomFrom(query: string) {
   for (const pair of query.split('&')) {
     const [key, value = ''] = pair.split('=', 2);
