@@ -19,12 +19,12 @@ import { useState } from "react";
 
 import { CollapseButton, SheetGrabber } from "@/components/sheet-chrome";
 import { StepIcon } from "@/components/step-icon";
-import { CATEGORY_LABELS, type Place } from "@/data/campus";
+import { CATEGORY_LABELS, getPlace, type Place } from "@/data/campus";
 import { formatRouteTime } from "@/lib/directions";
 import { formatDistance, formatSeconds } from "@/lib/geo";
 import { stepText } from "@/lib/instructions";
 import { PLACE_SECTIONS } from "@/lib/search";
-import { MAX_STOPS, MY_LOCATION, tripTotals, type TripPlan } from "@/lib/stops";
+import { MAX_STOPS, MY_LOCATION, stopQuestionText, tripTotals, type StopQuestion, type TripPlan } from "@/lib/stops";
 import type { Meetup } from "@/lib/social-api";
 import type { Route, TravelMode } from "@/lib/routing";
 
@@ -70,6 +70,12 @@ type DirectionsPanelProps = {
   laterLegs: Route[];
   onAddStop: (id: string) => void;
   onRemoveStop: (id: string) => void;
+  /** Where the newest stop went, until the traveller answers. */
+  stopQuestion: StopQuestion | null;
+  /** A stop still being fitted in. */
+  pendingStopId: string | null;
+  onKeepStop: () => void;
+  onMoveStop: () => void;
   onStart: () => void;
   onBack: () => void;
   onCollapse: () => void;
@@ -92,12 +98,14 @@ function StopItem({
   stop,
   number,
   isStart,
+  note,
   onRemove,
 }: {
   stop: Place;
   number: number;
   /** A starting building the walker is not at yet comes first, as a stop of its own, and changes with From. */
   isStart: boolean;
+  note?: string;
   onRemove: (id: string) => void;
 }) {
   return (
@@ -107,7 +115,7 @@ function StopItem({
       </span>
       <span className="min-w-0 flex-1">
         <span className="block truncate text-sm">{stop.name}</span>
-        {isStart ? <span className="block text-xs text-muted">On the way, since you are not there yet</span> : null}
+        {note ? <span className="block text-xs text-muted">{note}</span> : null}
       </span>
       {isStart ? null : <CloseButton aria-label={`Remove the stop at ${stop.name}`} onPress={() => onRemove(stop.id)} />}
     </li>
@@ -132,6 +140,10 @@ export function DirectionsPanel({
   laterLegs,
   onAddStop,
   onRemoveStop,
+  stopQuestion,
+  pendingStopId,
+  onKeepStop,
+  onMoveStop,
   onStart,
   onBack,
   onCollapse,
@@ -143,8 +155,26 @@ export function DirectionsPanel({
   const live = (plan?.live ?? false) && located;
   const canStart = route !== null && (live || origin !== MY_LOCATION);
   const mode = TRAVEL_MODES.find((option) => option.id === (travel ?? "walk")) ?? TRAVEL_MODES[1];
-  const stops = plan ? plan.targets.slice(0, -1) : [];
+  // Every place but the destination, in visiting order; some may come after the destination.
+  const stops = plan
+    ? plan.targets.flatMap((place, i) => (i === plan.destinationIndex ? [] : [{ place, after: i > plan.destinationIndex }]))
+    : [];
   const totals = route && laterLegs.length > 0 ? tripTotals([route, ...laterLegs]) : null;
+  const question = stopQuestion && stopIds.includes(stopQuestion.id) ? stopQuestionText(stopQuestion, destination.name) : null;
+  const pendingStop = pendingStopId ? getPlace(pendingStopId) : undefined;
+  const stopItem = ({ place, after }: (typeof stops)[number], index: number) => {
+    const isStart = place.id === origin && !stopIds.includes(place.id);
+    const note = isStart ? "On the way, since you are not there yet" : after ? `After ${destination.name}` : undefined;
+    return <StopItem key={place.id} stop={place} number={index + 1} isStart={isStart} note={note} onRemove={onRemoveStop} />;
+  };
+  const thenDestination = (
+    <li key="destination" className="flex items-center gap-3 px-3 py-2 text-sm text-muted">
+      <Flag className="size-4 shrink-0 text-accent" aria-hidden />
+      <span className="min-w-0 flex-1 truncate">
+        Then on to <span className="font-semibold text-foreground">{destination.name}</span>
+      </span>
+    </li>
+  );
 
   // Every stop gets its own page in the sheet once there are more than the panel lists.
   if (allStops && stops.length > 0) {
@@ -164,21 +194,9 @@ export function DirectionsPanel({
         <ol
           aria-label="Stops on the way"
           className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto overscroll-contain px-5 pb-[max(1rem,var(--map-safe-bottom))] pt-2 md:pb-4">
-          {stops.map((stop, index) => (
-            <StopItem
-              key={stop.id}
-              stop={stop}
-              number={index + 1}
-              isStart={stop.id === origin && !stopIds.includes(stop.id)}
-              onRemove={onRemoveStop}
-            />
-          ))}
-          <li className="flex items-center gap-3 px-3 py-2 text-sm text-muted">
-            <Flag className="size-4 shrink-0 text-accent" aria-hidden />
-            <span className="min-w-0 flex-1 truncate">
-              Then on to <span className="font-semibold text-foreground">{destination.name}</span>
-            </span>
-          </li>
+          {stops.filter((stop) => !stop.after).map(stopItem)}
+          {thenDestination}
+          {stops.map((stop, index) => (stop.after ? stopItem(stop, index) : null))}
         </ol>
       </Surface>
     );
@@ -241,15 +259,7 @@ export function DirectionsPanel({
 
         {stops.length > 0 ? (
           <ol aria-label="Stops on the way" className="flex flex-col gap-1.5">
-            {stops.slice(0, STOPS_SHOWN).map((stop, index) => (
-              <StopItem
-                key={stop.id}
-                stop={stop}
-                number={index + 1}
-                isStart={stop.id === origin && !stopIds.includes(stop.id)}
-                onRemove={onRemoveStop}
-              />
-            ))}
+            {stops.slice(0, STOPS_SHOWN).map(stopItem)}
             {stops.length > STOPS_SHOWN ? (
               <li>
                 <button
@@ -267,7 +277,29 @@ export function DirectionsPanel({
           </ol>
         ) : null}
 
-        {stopIds.length < MAX_STOPS ? (
+        {question ? (
+          <div role="status" className="animate-fade-in rounded-2xl bg-accent-soft px-3.5 py-3 text-accent-soft-foreground">
+            <p className="text-sm font-semibold leading-snug">{question.title}</p>
+            <p className="mt-0.5 text-xs leading-relaxed opacity-85">{question.detail}</p>
+            <div className="mt-2.5 flex gap-2">
+              <Button size="sm" variant="primary" className="flex-1" onPress={onKeepStop}>
+                {question.keep}
+              </Button>
+              <Button size="sm" variant="secondary" className="flex-1" onPress={onMoveStop}>
+                {question.move}
+              </Button>
+            </div>
+          </div>
+        ) : null}
+
+        {pendingStop ? (
+          <div role="status" className="flex items-center gap-2.5 rounded-2xl bg-accent-soft px-3.5 py-3 text-sm text-accent-soft-foreground">
+            <Spinner size="sm" />
+            <span className="min-w-0 flex-1 truncate">Fitting in {pendingStop.name}</span>
+          </div>
+        ) : null}
+
+        {stopIds.length < MAX_STOPS && !pendingStop ? (
           <Select
             value={null}
             onChange={(key) => key !== null && onAddStop(String(key))}

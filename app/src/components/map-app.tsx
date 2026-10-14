@@ -43,7 +43,17 @@ import {
 } from "@/lib/parking";
 import { loadSchedule, saveSchedule, type ClassEntry } from "@/lib/schedule";
 import { roomDirections } from "@/lib/search";
-import { MY_LOCATION, tripPlan, withStop } from "@/lib/stops";
+import {
+  MY_LOCATION,
+  NO_STOPS,
+  legSeconds,
+  placeStop,
+  stopsStart,
+  tripPlan,
+  withoutStop,
+  type StopOrder,
+  type StopQuestion,
+} from "@/lib/stops";
 import {
   findRoute,
   matchWalkway,
@@ -241,7 +251,12 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
   const [graphFailed, setGraphFailed] = useState(false);
   const [origin, setOrigin] = useState(MY_LOCATION);
   // Places to visit on the way, in order, before the destination.
-  const [stops, setStops] = useState<string[]>([]);
+  const [stopOrder, setStopOrder] = useState<StopOrder>(NO_STOPS);
+  // Asked once a stop is added: whether going there first or after the destination suits.
+  const [stopQuestion, setStopQuestion] = useState<StopQuestion | null>(null);
+  // A stop being fitted in while the router says how long heading there first would take.
+  const [stopPending, setStopPending] = useState<string | null>(null);
+  const stopToken = useRef(0);
   // While guiding: every place visited in order, fixed at the start, and which one is being walked to now.
   const [legs, setLegs] = useState<string[]>([]);
   const [leg, setLeg] = useState(0);
@@ -717,7 +732,7 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
   // While guiding, the place being walked to now: the next stop, or the destination after the last one.
   const target = mode === "navigate" ? (getPlace(legs[leg]) ?? selected) : selected;
   const nextTarget = mode === "navigate" ? getPlace(legs[leg + 1]) : undefined;
-  const arrivalNote = room && !nextTarget && target?.id === selectedId ? roomDirections(room, avoidStairs) : undefined;
+  const arrivalNote = room && target?.id === selectedId ? roomDirections(room, avoidStairs) : undefined;
 
   const geo = useGeolocation({ onPosition: handlePosition, onError: handleGeoError });
   useWakeLock(mode === "navigate");
@@ -778,9 +793,9 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
   const plan = useMemo(
     () =>
       mode === "directions" && selected
-        ? tripPlan({ origin, stops, destination: selected, here: geo.position })
+        ? tripPlan({ origin, stops: stopOrder.stops, after: stopOrder.after, destination: selected, here: geo.position })
         : null,
-    [mode, selected, origin, stops, geo.position],
+    [mode, selected, origin, stopOrder, geo.position],
   );
   const firstStop = plan?.targets[0];
   const originCoordinate = plan?.start ?? undefined;
@@ -884,7 +899,7 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
     if (mode === "directions" && hasPreviewRoute && previewPathRef.current) {
       mapRef.current?.fitPath(previewPathRef.current, previewPadding());
     }
-  }, [mode, hasPreviewRoute, origin, stops, avoidStairs, selectedId, travelMode]);
+  }, [mode, hasPreviewRoute, origin, stopOrder, avoidStairs, selectedId, travelMode]);
 
   const selectPlace = useCallback(
     (place: Place | undefined, nextRoom?: string) => {
@@ -1025,7 +1040,7 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
     setIsScheduleOpen(false);
     setSelectedId(place.id);
     setRoom(entry.room);
-    setStops([]);
+    clearStops();
     setIsDirectionsExpanded(true);
     setMode("directions");
     geo.start();
@@ -1041,8 +1056,48 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
     geo.start();
   }
 
+  function clearStops() {
+    stopToken.current += 1;
+    setStopOrder(NO_STOPS);
+    setStopQuestion(null);
+    setStopPending(null);
+  }
+
+  /** Puts a stop where it adds the least time, then asks whether that suits; `first` answers for them. */
+  function addStop(id: string, first?: boolean) {
+    const destination = selected;
+    const stop = getPlace(id);
+    if (!destination || !stop || !graph) return;
+    const token = ++stopToken.current;
+    const order = stopOrder;
+    const from = stopsStart(plan, previewRoute);
+    const place = (streets?: { toFirst: number; toStop: number }) => {
+      if (token !== stopToken.current) return;
+      setStopPending(null);
+      const placed = placeStop(order, id, { graph, destination, from, avoidStairs, streets }, first);
+      if (!placed) return;
+      setStopOrder(placed.order);
+      setStopQuestion(first === undefined ? placed.question : null);
+    };
+    const here = geo.position;
+    const firstLeg = previewRoute;
+    if (first !== undefined || !isOffCampus || !firstLeg || plan?.startPlace || !here) return place();
+    setStopPending(id);
+    setStopQuestion(null);
+    fetchTripRoute(graph, here, stop, travelMode, { avoidStairs })
+      .then((toStop) => place(toStop ? { toFirst: legSeconds(firstLeg), toStop: legSeconds(toStop) } : undefined))
+      .catch(() => place());
+  }
+
+  function removeStop(id: string) {
+    stopToken.current += 1;
+    setStopPending(null);
+    setStopOrder((current) => withoutStop(current, id));
+    setStopQuestion((current) => (current?.id === id ? null : current));
+  }
+
   function openDirections() {
-    setStops([]);
+    clearStops();
     setIsDirectionsExpanded(true);
     setMode("directions");
     geo.start();
@@ -1122,6 +1177,7 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
     if (!from && origin === MY_LOCATION) return;
     setLegs(plan.targets.map((place) => place.id));
     setLeg(0);
+    setStopQuestion(null);
     beginRoute(previewRoute, from);
   }
 
@@ -1254,11 +1310,14 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
   const stopNumbers = useMemo(() => {
     const visits = mode === "navigate" ? legs : mode === "directions" ? (plan?.targets.map((place) => place.id) ?? []) : [];
     const numbers: Record<string, number> = {};
-    visits.slice(0, -1).forEach((id, index) => {
-      if (mode !== "navigate" || index >= leg) numbers[id] = index + 1;
+    let number = 0;
+    visits.forEach((id, index) => {
+      if (id === selectedId) return;
+      number += 1;
+      if (mode !== "navigate" || index >= leg) numbers[id] = number;
     });
     return numbers;
-  }, [mode, legs, leg, plan]);
+  }, [mode, legs, leg, plan, selectedId]);
   const stopCount = mode === "navigate" ? legs.length - 1 : 0;
   const mapRoute = mode === "navigate" ? navPath : mode === "directions" ? previewPath : undefined;
   const snappedToRoute = mode === "navigate" && progress && progress.distanceFromRoute <= SNAP_TO_ROUTE_METERS;
@@ -1635,10 +1694,14 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
             onTravelChange={setTravelMode}
             onOriginChange={handleOriginChange}
             plan={plan}
-            stopIds={stops}
+            stopIds={[...stopOrder.stops, ...stopOrder.after]}
             laterLegs={laterLegs ?? []}
-            onAddStop={(id) => setStops((current) => withStop(current, id, selected.id))}
-            onRemoveStop={(id) => setStops((current) => current.filter((stop) => stop !== id))}
+            onAddStop={(id) => addStop(id)}
+            onRemoveStop={removeStop}
+            stopQuestion={stopQuestion}
+            pendingStopId={stopPending}
+            onKeepStop={() => setStopQuestion(null)}
+            onMoveStop={() => stopQuestion && addStop(stopQuestion.id, !stopQuestion.onTheWay)}
             onAvoidStairsChange={setAvoidStairs}
             onStart={startNavigation}
             onBack={() => {
@@ -1688,7 +1751,7 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
           destination={target}
           nextStopName={nextTarget?.name}
           arrivalNote={arrivalNote}
-          stopLabel={stopCount > 0 && leg < stopCount ? `Stop ${leg + 1} of ${stopCount}` : undefined}
+          stopLabel={stopNumbers[legs[leg]] ? `Stop ${stopNumbers[legs[leg]]} of ${stopCount}` : undefined}
           onContinue={continueTrip}
           route={navRoute}
           progress={progress}

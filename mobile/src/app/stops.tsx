@@ -6,7 +6,7 @@ import { Icon } from '@/components/icon';
 import { StopRow } from '@/components/stop-row';
 import { HEADER_ICONS } from '@/lib/header-icons';
 import { useLocation } from '@/lib/location';
-import { MAX_STOPS, tripPlan } from '@/lib/stops';
+import { MAX_STOPS, stopCount, tripPlan } from '@/lib/stops';
 import { removeStop, useTrip } from '@/lib/trip';
 
 /** Every stop on the way, when there are more than the directions panel lists. */
@@ -16,28 +16,34 @@ export default function StopsSheet() {
   const accent = useThemeColor('accent');
   const destination = trip.destination;
   const plan = destination
-    ? tripPlan({ origin: trip.origin, stops: trip.stops, destination, here: location.fix?.position })
+    ? tripPlan({ origin: trip.origin, stops: trip.stops, after: trip.after, destination, here: location.fix?.position })
     : null;
-  const stops = plan ? plan.targets.slice(0, -1) : [];
+  const stops = plan ? plan.targets.filter((_, i) => i !== plan.destinationIndex) : [];
+  const later = plan ? plan.targets.length - 1 - plan.destinationIndex : 0;
+  const row = (stop: (typeof stops)[number], index: number) => {
+    const isStart = stop.id === trip.origin && !trip.stops.includes(stop.id) && !trip.after.includes(stop.id);
+    return (
+      <StopRow
+        key={stop.id}
+        stop={stop}
+        number={index + 1}
+        isStart={isStart}
+        note={index >= stops.length - later ? `After ${destination?.name}` : undefined}
+        onRemove={removeStop}
+      />
+    );
+  };
 
   return (
     <>
       <Stack.Toolbar placement="right">
-        {trip.stops.length < MAX_STOPS ? (
+        {stopCount(trip) < MAX_STOPS ? (
           <Stack.Toolbar.Button icon={HEADER_ICONS.add} accessibilityLabel="Add a stop" onPress={() => router.push('/stop')} />
         ) : null}
         <Stack.Toolbar.Button icon={HEADER_ICONS.close} accessibilityLabel="Close" onPress={() => router.back()} />
       </Stack.Toolbar>
       <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerClassName="gap-2 px-4 pb-10 pt-2">
-        {stops.map((stop, index) => (
-          <StopRow
-            key={stop.id}
-            stop={stop}
-            number={index + 1}
-            isStart={stop.id === trip.origin && !trip.stops.includes(stop.id)}
-            onRemove={removeStop}
-          />
-        ))}
+        {stops.slice(0, stops.length - later).map(row)}
         {destination ? (
           <View className="flex-row items-center gap-3 px-3.5 py-2.5">
             <Icon name="flag.checkered" size={16} tintColor={accent} />
@@ -46,6 +52,7 @@ export default function StopsSheet() {
             </Text>
           </View>
         ) : null}
+        {stops.map((stop, index) => (index >= stops.length - later ? row(stop, index) : null))}
         {stops.length === 0 ? <Text className="py-10 text-center text-sm text-muted">No stops on the way</Text> : null}
       </ScrollView>
     </>

@@ -49,6 +49,7 @@ import { endTrip, showTrip } from '@/lib/live-activity';
 import { currentCompass, currentFix, subscribeCompass, useLocation } from '@/lib/location';
 import { parkingSpoken } from '@/lib/parking';
 import { roomDirections } from '@/lib/search';
+import { legSeconds, stopsStart } from '@/lib/stops';
 import { createCameraMemory, createSmoothHeading, shortestTurn } from '@/lib/smooth-heading';
 import { markReady } from '@/lib/splash';
 import { showMeetupOnMap, useShownMeetup } from '@/lib/meetup-focus';
@@ -61,6 +62,7 @@ import {
   planTrip,
   removeStop,
   setAvoidStairs,
+  setStopsContext,
   startNavigating,
   useTrip,
 } from '@/lib/trip';
@@ -205,8 +207,7 @@ export default function MapScreen() {
   // While guiding, the place being walked to now: the next stop, or the destination after the last one.
   const target = navigating ? (getPlace(trip.legs[trip.leg]) ?? trip.destination) : trip.destination;
   const nextTarget = navigating ? getPlace(trip.legs[trip.leg + 1]) : undefined;
-  const arrivalNote =
-    trip.room && !nextTarget && target?.id === trip.destination?.id ? roomDirections(trip.room, trip.avoidStairs) : undefined;
+  const arrivalNote = trip.room && target?.id === trip.destination?.id ? roomDirections(trip.room, trip.avoidStairs) : undefined;
 
   const navigation = useNavigation({
     destination: target,
@@ -283,6 +284,15 @@ export default function MapScreen() {
 
   useEffect(() => () => smoothHeading.stop(), [smoothHeading]);
   const preview = useRoutePreview(trip, location.fix?.position, location.status, navigation.travelHeading);
+  const livePosition = location.fix?.position;
+  useEffect(() => {
+    const route = preview.route;
+    const fromStreets = preview.isOffCampus && route && livePosition && !preview.plan?.startPlace;
+    setStopsContext({
+      from: stopsStart(preview.plan, route),
+      streets: fromStreets ? { here: livePosition, travel: trip.travelMode, toFirst: legSeconds(route) } : null,
+    });
+  }, [preview.plan, preview.route, preview.isOffCampus, livePosition, trip.travelMode]);
   const voice = useVoiceGuidance({
     route: navigating ? navigation.route : null,
     progress: navigation.progress,
@@ -567,11 +577,14 @@ export default function MapScreen() {
   const stopNumbers = useMemo(() => {
     const numbers: Record<string, number> = {};
     const visits = navigating ? trip.legs : (preview.plan?.targets.map((place) => place.id) ?? []);
-    visits.slice(0, -1).forEach((id, index) => {
-      if (!navigating || index >= trip.leg) numbers[id] = index + 1;
+    let number = 0;
+    visits.forEach((id, index) => {
+      if (id === trip.destination?.id) return;
+      number += 1;
+      if (!navigating || index >= trip.leg) numbers[id] = number;
     });
     return numbers;
-  }, [navigating, trip.legs, trip.leg, preview.plan]);
+  }, [navigating, trip.legs, trip.leg, trip.destination, preview.plan]);
   const stopCount = navigating ? trip.legs.length - 1 : 0;
 
   const currentPath = navigating
@@ -1026,7 +1039,7 @@ export default function MapScreen() {
               if (next !== facingUp) toggleFacing();
             }}
             onToggleVoice={voice.toggle}
-            stopLabel={stopCount > 0 && trip.leg < stopCount ? `Stop ${trip.leg + 1} of ${stopCount}` : undefined}
+            stopLabel={stopNumbers[trip.legs[trip.leg]] ? `Stop ${stopNumbers[trip.legs[trip.leg]]} of ${stopCount}` : undefined}
             nextStopName={nextTarget?.name}
             onContinue={continueTrip}
             onStep={step}

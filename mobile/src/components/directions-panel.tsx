@@ -18,8 +18,8 @@ import { formatDistance, formatSeconds } from '@/lib/geo';
 import { stepText } from '@/lib/instructions';
 import type { Route, TravelMode } from '@/lib/routing';
 import type { Meetup } from '@/lib/social-api';
-import { MAX_STOPS, tripTotals, type TripPlan } from '@/lib/stops';
-import { MY_LOCATION, setAvoidStairs, setTravelMode, type Trip } from '@/lib/trip';
+import { MAX_STOPS, stopCount, stopQuestionText, tripTotals, type TripPlan } from '@/lib/stops';
+import { keepStop, moveStop, MY_LOCATION, setAvoidStairs, setTravelMode, type Trip } from '@/lib/trip';
 
 const MODES: { id: TravelMode; label: string; symbol: SFSymbol }[] = [
   { id: 'drive', label: 'Drive', symbol: 'car.fill' },
@@ -78,8 +78,14 @@ export function DirectionsPanel({
   if (!destination) return null;
   const originName = trip.origin === MY_LOCATION ? 'My location' : (getPlace(trip.origin)?.name ?? 'My location');
   const waiting = issue === 'locating' || issue === 'finding';
-  const stops = plan ? plan.targets.slice(0, -1) : [];
+  // Every place but the destination, in visiting order; some may come after the destination.
+  const stops = plan ? plan.targets.filter((_, i) => i !== plan.destinationIndex) : [];
+  const firstAfter = plan ? plan.destinationIndex : stops.length;
   const totals = route ? tripTotals([route, ...later]) : null;
+  const question = trip.stopQuestion && stops.some((stop) => stop.id === trip.stopQuestion?.id)
+    ? stopQuestionText(trip.stopQuestion, destination.name)
+    : null;
+  const pendingStop = trip.stopPending ? getPlace(trip.stopPending) : undefined;
   // Landscape / short windows: scroll instead of crushing Drive/Walk/Bike and the Start row.
   const maxHeight = Math.min(height * 0.72, Math.max(220, height - 96));
 
@@ -120,7 +126,8 @@ export function DirectionsPanel({
                 key={stop.id}
                 stop={stop}
                 number={index + 1}
-                isStart={stop.id === trip.origin && !trip.stops.includes(stop.id)}
+                isStart={stop.id === trip.origin && !trip.stops.includes(stop.id) && !trip.after.includes(stop.id)}
+                note={index >= firstAfter ? `After ${destination.name}` : undefined}
                 onRemove={onRemoveStop}
               />
             ))}
@@ -139,7 +146,29 @@ export function DirectionsPanel({
           </View>
         ) : null}
 
-        {trip.stops.length < MAX_STOPS ? (
+        {question ? (
+          <View accessibilityLiveRegion="polite" className="gap-2.5 rounded-2xl bg-accent-soft px-3.5 py-3">
+            <View className="gap-0.5">
+              <Text className="text-sm font-semibold text-accent-soft-foreground">{question.title}</Text>
+              <Text className="text-xs text-accent-soft-foreground opacity-85">{question.detail}</Text>
+            </View>
+            <View className="flex-row gap-2">
+              <MapButton style={{ flex: 1 }} label={question.keep} onPress={keepStop} />
+              <MapButton style={{ flex: 1 }} variant="secondary" label={question.move} onPress={moveStop} />
+            </View>
+          </View>
+        ) : null}
+
+        {pendingStop ? (
+          <View accessibilityLiveRegion="polite" className="flex-row items-center gap-2.5 rounded-2xl bg-accent-soft px-3.5 py-3">
+            <Spinner size="sm" />
+            <Text className="min-w-0 flex-1 text-sm text-accent-soft-foreground" numberOfLines={1}>
+              Fitting in {pendingStop.name}
+            </Text>
+          </View>
+        ) : null}
+
+        {stopCount(trip) < MAX_STOPS && !pendingStop ? (
           <Pressable
             accessibilityRole="button"
             onPress={onAddStop}

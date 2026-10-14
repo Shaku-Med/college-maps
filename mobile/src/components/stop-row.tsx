@@ -13,10 +13,12 @@ type StopRowProps = {
   number: number;
   /** A starting building the traveller is not at yet. It comes first on its own and is changed with From. */
   isStart: boolean;
+  note?: string;
   onRemove: (id: string) => void;
 };
 
-export function StopRow({ stop, number, isStart, onRemove }: StopRowProps) {
+export function StopRow({ stop, number, isStart, note, onRemove }: StopRowProps) {
+  const subtitle = isStart ? 'On the way, since you are not there yet' : note;
   const muted = useThemeColor('muted');
   return (
     <View className="flex-row items-center gap-3 rounded-2xl bg-default px-3.5 py-2.5">
@@ -27,7 +29,7 @@ export function StopRow({ stop, number, isStart, onRemove }: StopRowProps) {
         <Text className="text-sm text-foreground" numberOfLines={1}>
           {stop.name}
         </Text>
-        {isStart ? <Text className="text-xs text-muted">On the way, since you are not there yet</Text> : null}
+        {subtitle ? <Text className="text-xs text-muted">{subtitle}</Text> : null}
       </View>
       {isStart ? null : (
         <Pressable

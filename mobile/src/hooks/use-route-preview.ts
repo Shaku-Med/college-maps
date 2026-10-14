@@ -58,9 +58,9 @@ export function useRoutePreview(
   const plan = useMemo(
     () =>
       planning && trip.destination
-        ? tripPlan({ origin: trip.origin, stops: trip.stops, destination: trip.destination, here: position })
+        ? tripPlan({ origin: trip.origin, stops: trip.stops, after: trip.after, destination: trip.destination, here: position })
         : null,
-    [planning, trip.origin, trip.stops, trip.destination, position],
+    [planning, trip.origin, trip.stops, trip.after, trip.destination, position],
   );
   const first = plan?.targets[0];
   const start = plan?.start ?? undefined;
