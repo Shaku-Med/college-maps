@@ -31,7 +31,7 @@ func settingsServer(t *testing.T) (*httptest.Server, *authtest.CapturedMail) {
 		t.Fatal(err)
 	}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	srv := httptest.NewServer(New(cfg, logger, site, svc, nil, nil, settings.NewService(nil)).Handler())
+	srv := httptest.NewServer(New(cfg, logger, site, svc, nil, nil, settings.NewService(nil), nil).Handler())
 	t.Cleanup(srv.Close)
 	return srv, mail
 }

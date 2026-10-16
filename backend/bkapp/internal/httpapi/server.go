@@ -9,6 +9,7 @@ import (
 	"csimap/bkapp/internal/auth"
 	"csimap/bkapp/internal/campus"
 	"csimap/bkapp/internal/config"
+	"csimap/bkapp/internal/issues"
 	"csimap/bkapp/internal/push"
 	"csimap/bkapp/internal/settings"
 	"csimap/bkapp/internal/social"
@@ -27,6 +28,7 @@ func New(
 	socialService *social.Service,
 	pushService *push.Service,
 	settingsService *settings.Service,
+	issueService *issues.Service,
 ) *Server {
 	ip := clientIPFunc(cfg.ClientIPHeader)
 	general := newRateLimiter(20_000, time.Minute)
@@ -47,6 +49,7 @@ func New(
 	sessionUser := newRateLimiter(10, 15*time.Minute)
 	undoUser := newRateLimiter(60, 15*time.Minute)
 	meetupActionUser := newRateLimiter(120, 15*time.Minute)
+	issueUser := newRateLimiter(10, 15*time.Minute)
 
 	a := &authHandlers{
 		service:  authService,
@@ -102,6 +105,10 @@ func New(
 		mux.HandleFunc("POST /v1/meetups/{id}/end", a.requireUser(limitUser(meetupActionUser, sh.end)))
 		mux.HandleFunc("POST /v1/meetups/{id}/ticket", a.requireUser(limitUser(meetupActionUser, sh.liveTicket)))
 	}
+	if issueService != nil {
+		ih := &issueHandlers{service: issueService, logger: logger}
+		mux.Handle("POST /v1/issues", limitRoute(accountDataIP, ip, a.requireUser(limitUser(issueUser, ih.file))))
+	}
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "not found")
 	})
@@ -115,7 +122,7 @@ func New(
 		sameOriginWrites(cfg.AllowedOrigins),
 		limitBody,
 	)
-	return &Server{handler: handler, limiters: []*rateLimiter{general, codeRequests, codeChecks, accountDataIP, wipeUser, exportUser, pushUser, settingsUser, inviteUser, reportUser, friendUser, blockUser, meetupUser, profileUser, sessionUser, undoUser, meetupActionUser}}
+	return &Server{handler: handler, limiters: []*rateLimiter{general, codeRequests, codeChecks, accountDataIP, wipeUser, exportUser, pushUser, settingsUser, inviteUser, reportUser, friendUser, blockUser, meetupUser, profileUser, sessionUser, undoUser, meetupActionUser, issueUser}}
 }
 
 func (s *Server) Handler() http.Handler {

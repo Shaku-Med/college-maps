@@ -55,12 +55,16 @@ func toResponse(u auth.User) map[string]userResponse {
 }
 
 func decodeJSON(w http.ResponseWriter, r *http.Request, dst any) bool {
+	return decodeJSONUpTo(w, r, dst, maxAuthBodyBytes)
+}
+
+func decodeJSONUpTo(w http.ResponseWriter, r *http.Request, dst any, maxBytes int64) bool {
 	mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 	if err != nil || mediaType != "application/json" {
 		writeError(w, http.StatusUnsupportedMediaType, "send JSON with Content-Type: application/json")
 		return false
 	}
-	r.Body = http.MaxBytesReader(w, r.Body, maxAuthBodyBytes)
+	r.Body = http.MaxBytesReader(w, r.Body, maxBytes)
 	decoder := json.NewDecoder(r.Body)
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(dst); err != nil || decoder.More() {

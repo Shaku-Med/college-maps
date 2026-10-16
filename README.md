@@ -197,6 +197,16 @@ go run ./cmd/users
 
 Add `-find someone@school.edu` to look up one account, or `-csv > users.csv` for a spreadsheet. Set `APP_ENV=production` to read the production database. The Neon dashboard shows emails as unreadable bytes on purpose; only this tool (or the API) with `AUTH_SECRET` can open them.
 
+#### Reading problem reports
+
+Signed-in students send problems from Report a problem on the web (`/report-problem`) and in the app (Account, or any place's details). Read the last 30 days, newest first:
+
+```bash
+go run ./cmd/issues
+```
+
+Add `-days 90` to look further back. A reporter's email shows only when they turned on "You can email me about this".
+
 #### Security
 
 - **Emails stay private.** The database never holds a readable email. Each address is stored as an HMAC-SHA256 blind index (to find the account) plus AES-256-GCM ciphertext bound to that index, so a copied or tampered row does not decrypt. Only `/v1/me` for the owner returns it. Display names and usernames that are built from the email are refused.

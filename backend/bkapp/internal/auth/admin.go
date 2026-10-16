@@ -12,6 +12,7 @@ import (
 type Account struct {
 	// Unreadable marks a row sealed under a different AUTH_SECRET, such as after the secret was replaced.
 	Unreadable  bool
+	ID          string
 	Email       string
 	Username    string
 	DisplayName string
@@ -46,6 +47,7 @@ func (a *Admin) scan(rows pgx.Rows) ([]Account, error) {
 		} else {
 			account.Unreadable = true
 		}
+		account.ID = stored.ID
 		account.Username = stored.Username
 		account.DisplayName = stored.DisplayName
 		accounts = append(accounts, account)
