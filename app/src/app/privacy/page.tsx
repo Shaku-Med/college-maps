@@ -50,6 +50,10 @@ export default function PrivacyPage() {
               review them.
             </li>
             <li>
+              Problems you report with the map or app: what kind, your message, a place if you pick one, which app
+              and version, and whether we may email you about it. Deleting your account deletes them.
+            </li>
+            <li>
               Meetups you host or join, including the place or pin, until they end. Hosting a campus
               meetup posts the title to the public board for signed-in students.
             </li>

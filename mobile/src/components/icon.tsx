@@ -41,6 +41,7 @@ const MATERIAL: Partial<Record<SFSymbol, AndroidSymbol>> = {
   ellipsis: 'more_horiz',
   'ellipsis.circle': 'more_horiz',
   envelope: 'mail',
+  'exclamationmark.bubble': 'feedback',
   'figure.run': 'directions_run',
   'figure.stairs': 'stairs',
   'figure.walk': 'directions_walk',

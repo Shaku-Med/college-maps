@@ -137,6 +137,8 @@ type Mode = "browse" | "directions" | "navigate";
 type MapAppProps = {
   initialPlaceId?: string;
   initialRoom?: string;
+  /** Opens with the account panel showing, such as when another page sends someone here to sign in. */
+  initialAccountOpen?: boolean;
 };
 
 const isDesktop = () => window.matchMedia("(min-width: 768px)").matches;
@@ -219,7 +221,7 @@ function MapViewControls({
   );
 }
 
-export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
+export function MapApp({ initialPlaceId, initialRoom, initialAccountOpen = false }: MapAppProps) {
   const mapRef = useRef<CampusMapHandle>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
@@ -231,7 +233,7 @@ export function MapApp({ initialPlaceId, initialRoom }: MapAppProps) {
   const [query, setQuery] = useState("");
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isScheduleOpen, setIsScheduleOpen] = useState(false);
-  const [isAccountOpen, setIsAccountOpen] = useState(false);
+  const [isAccountOpen, setIsAccountOpen] = useState(initialAccountOpen);
   const [isPeopleOpen, setIsPeopleOpen] = useState(false);
   const [meetupId, setMeetupId] = useState<string | null>(null);
   const [isMeetupSheetOpen, setIsMeetupSheetOpen] = useState(true);

@@ -103,6 +103,7 @@ function Navigation() {
         <Stack.Screen name="report" options={sheetTall} />
         <Stack.Screen name="meetup/[id]" options={{ ...formSheet, sheetAllowedDetents: [0.55, 0.92] }} />
         <Stack.Screen name="meetup/new" options={nestedFormSheet} />
+        <Stack.Screen name="report-problem" options={nestedFormSheet} />
       </Stack>
     </ThemeProvider>
   );

@@ -119,6 +119,18 @@ export function PlaceDetails({ place, room, onDone }: { place: Place; room?: str
           </ListGroup.ItemContent>
           <ListGroup.ItemSuffix />
         </ListGroup.Item>
+        <Separator className="mx-4" />
+        <ListGroup.Item
+          onPress={() => router.push({ pathname: '/report-problem', params: { place: place.id, kind: 'map' } })}>
+          <ListGroup.ItemPrefix>
+            <Icon name="exclamationmark.bubble" size={20} tintColor={muted} />
+          </ListGroup.ItemPrefix>
+          <ListGroup.ItemContent>
+            <ListGroup.ItemTitle>Report a problem</ListGroup.ItemTitle>
+            <ListGroup.ItemDescription>Wrong spot, name, or entrance</ListGroup.ItemDescription>
+          </ListGroup.ItemContent>
+          <ListGroup.ItemSuffix />
+        </ListGroup.Item>
         {room ? null : (
           <>
             <Separator className="mx-4" />

@@ -1,7 +1,7 @@
 "use client";
 
 import { AlertDialog, Button, CloseButton, Input, InputOTP, Label, Spinner, Surface, Switch, TextField, toast } from "@heroui/react";
-import { ArrowLeft, AtSign, Bell, ChevronRight, Download, FileText, Layers, Lock, LogOut, Mail, MonitorSmartphone, Pencil, Shield, Trash2, UserRound } from "lucide-react";
+import { ArrowLeft, AtSign, Bell, ChevronRight, Download, FileText, Layers, Lock, LogOut, Mail, MessageSquareWarning, MonitorSmartphone, Pencil, Shield, Trash2, UserRound } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 
@@ -683,6 +683,18 @@ function SignOutConfirm({
 function PrivacyRow() {
   return (
     <div className="flex flex-col gap-2">
+      <Link
+        href="/report-problem"
+        className="flex items-center gap-3 rounded-2xl border border-separator px-4 py-3.5 text-left outline-none transition-colors hover:bg-surface-secondary focus-visible:ring-2 focus-visible:ring-accent">
+        <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-accent-soft text-accent-soft-foreground">
+          <MessageSquareWarning className="size-4" aria-hidden />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-medium">Report a problem</p>
+          <p className="text-sm text-muted">Something broken, a wrong place, or an idea</p>
+        </div>
+        <ChevronRight className="size-4 shrink-0 text-muted" aria-hidden />
+      </Link>
       <Link
         href="/privacy"
         className="flex items-center gap-3 rounded-2xl border border-separator px-4 py-3.5 text-left outline-none transition-colors hover:bg-surface-secondary focus-visible:ring-2 focus-visible:ring-accent">

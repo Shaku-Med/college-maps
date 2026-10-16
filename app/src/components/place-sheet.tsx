@@ -1,7 +1,8 @@
 "use client";
 
 import { Button, CloseButton, Surface, toast } from "@heroui/react";
-import { CalendarClock, Navigation, Share2 } from "lucide-react";
+import { CalendarClock, MessageSquareWarning, Navigation, Share2 } from "lucide-react";
+import Link from "next/link";
 
 import { CollapseButton, SheetGrabber } from "@/components/sheet-chrome";
 import { CATEGORY_LABELS, type Place } from "@/data/campus";
@@ -128,6 +129,13 @@ export function PlaceSheet({
           <span className="max-sm:hidden">Share</span>
         </Button>
       </div>
+
+      <Link
+        href={`/report-problem?place=${encodeURIComponent(place.id)}&kind=map`}
+        className="mx-auto mt-3 flex w-fit items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium text-muted outline-none transition-colors hover:bg-surface-secondary focus-visible:ring-2 focus-visible:ring-accent">
+        <MessageSquareWarning className="size-3.5" aria-hidden />
+        Report a problem with this place
+      </Link>
     </Surface>
   );
 }

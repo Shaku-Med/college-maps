@@ -9,7 +9,7 @@ export const metadata: Metadata = {
 export default function UnknownRoute({
   searchParams,
 }: {
-  searchParams: Promise<{ place?: string | string[]; room?: string | string[] }>;
+  searchParams: Promise<{ place?: string | string[]; room?: string | string[]; account?: string | string[] }>;
 }) {
   return <MapHome searchParams={searchParams} />;
 }

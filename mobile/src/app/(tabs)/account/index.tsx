@@ -268,6 +268,18 @@ export default function AccountScreen() {
         </View>
 
         <View>
+          <SectionTitle>Help</SectionTitle>
+          <ListGroup>
+            <Row
+              symbol="exclamationmark.bubble"
+              title="Report a problem"
+              description="Something broken, a wrong place, or an idea"
+              onPress={() => router.push('/report-problem')}
+            />
+          </ListGroup>
+        </View>
+
+        <View>
           <SectionTitle>Legal</SectionTitle>
           <ListGroup>
             <Row
