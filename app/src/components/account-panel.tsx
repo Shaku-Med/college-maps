@@ -211,49 +211,51 @@ function SignIn({ onUser, settingRows }: { onUser: (user: AccountUser) => void; 
 
   if (!sentTo) {
     return (
-      <form
-        className="flex flex-col gap-4"
-        onSubmit={(event) => {
-          event.preventDefault();
-          void sendCode(normalizeEmail(email));
-        }}>
-        <p className="text-sm text-muted">
-          We&apos;ll email you a {CODE_LENGTH} digit code. No password to remember. Accounts are only for{" "}
-          {CAMPUS.college.name} students and staff.
-        </p>
-        <TextField
-          value={email}
-          onChange={(value) => {
-            setEmail(value.slice(0, MAX_EMAIL_LENGTH));
-            setError(undefined);
-          }}
-          isRequired
-          isInvalid={Boolean(error)}
-          fullWidth>
-          <Label>School email</Label>
-          <Input
-            variant="secondary"
-            type="email"
-            inputMode="email"
-            autoComplete="email"
-            autoCapitalize="none"
-            spellCheck={false}
-            maxLength={MAX_EMAIL_LENGTH}
-            placeholder={`you@${CAMPUS.college.emailDomains[0]}`}
-          />
-        </TextField>
-        <ErrorText message={error} />
-        <Button type="submit" isPending={isBusy} isDisabled={!email.trim()} fullWidth>
-          <Mail aria-hidden />
-          Email me a code
-        </Button>
-        <p className="flex items-start gap-2 text-xs text-muted">
-          <Lock className="mt-0.5 size-3.5 shrink-0" aria-hidden />
-          Your email is encrypted and never shown to other students.
-        </p>
+      <div className="flex flex-col gap-4">
+        <form
+          className="flex flex-col gap-4"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void sendCode(normalizeEmail(email));
+          }}>
+          <p className="text-sm text-muted">
+            We&apos;ll email you a {CODE_LENGTH} digit code. No password to remember. Accounts are only for{" "}
+            {CAMPUS.college.name} students and staff.
+          </p>
+          <TextField
+            value={email}
+            onChange={(value) => {
+              setEmail(value.slice(0, MAX_EMAIL_LENGTH));
+              setError(undefined);
+            }}
+            isRequired
+            isInvalid={Boolean(error)}
+            fullWidth>
+            <Label>School email</Label>
+            <Input
+              variant="secondary"
+              type="email"
+              inputMode="email"
+              autoComplete="email"
+              autoCapitalize="none"
+              spellCheck={false}
+              maxLength={MAX_EMAIL_LENGTH}
+              placeholder={`you@${CAMPUS.college.emailDomains[0]}`}
+            />
+          </TextField>
+          <ErrorText message={error} />
+          <Button type="submit" isPending={isBusy} isDisabled={!email.trim()} fullWidth>
+            <Mail aria-hidden />
+            Email me a code
+          </Button>
+          <p className="flex items-start gap-2 text-xs text-muted">
+            <Lock className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+            Your email is encrypted and never shown to other students.
+          </p>
+        </form>
         {settingRows}
         <PrivacyRow />
-      </form>
+      </div>
     );
   }
 
@@ -515,6 +517,8 @@ function Profile({
 
       <NotificationsRow />
       {settingRows}
+      <PrivacyRow />
+      <DownloadData />
 
       <div className="flex flex-col gap-2">
         <SignOutConfirm
@@ -538,9 +542,6 @@ function Profile({
           Sign out on every device
         </SignOutConfirm>
       </div>
-
-      <PrivacyRow />
-      <DownloadData />
       <DangerZone user={user} onDeleted={onDeleted} onUser={onUser} />
     </div>
   );

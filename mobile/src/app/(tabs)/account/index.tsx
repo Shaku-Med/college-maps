@@ -191,36 +191,6 @@ export default function AccountScreen() {
                 />
               </ListGroup>
             </View>
-            <View>
-              <SectionTitle>Your data</SectionTitle>
-              <ListGroup>
-                <Row
-                  symbol="square.and.arrow.down"
-                  title="Download my information"
-                  description="JSON, HTML, text, or PDF"
-                  linked={linked === '/download-data'}
-                  gestureSync={false}
-                  onPress={() => router.push('/download-data')}
-                />
-              </ListGroup>
-            </View>
-            <View>
-              <SectionTitle>Sign in</SectionTitle>
-              <ListGroup>
-                <Row symbol="rectangle.portrait.and.arrow.right" title="Sign out" onPress={confirmSignOut} />
-                <Separator className="mx-4" />
-                <Row symbol="iphone.slash" title="Sign out everywhere" onPress={confirmSignOutEverywhere} />
-                <Separator className="mx-4" />
-                <Row
-                  symbol="trash"
-                  title="Delete account"
-                  linked={linked === '/delete-account'}
-                  gestureSync={false}
-                  onPress={() => router.push('/delete-account')}
-                  danger
-                />
-              </ListGroup>
-            </View>
           </>
         ) : (
           <Card className="rounded-3xl p-5">
@@ -304,6 +274,42 @@ export default function AccountScreen() {
           <SectionTitle>App updates</SectionTitle>
           <UpdatesSection />
         </View>
+
+        {/* Like the system Settings app: your data, then signing out and deleting the account, come last. */}
+        {account.status === 'signed-in' && !account.user.needsProfile ? (
+        <>
+            <View>
+              <SectionTitle>Your data</SectionTitle>
+              <ListGroup>
+                <Row
+                  symbol="square.and.arrow.down"
+                  title="Download my information"
+                  description="JSON, HTML, text, or PDF"
+                  linked={linked === '/download-data'}
+                  gestureSync={false}
+                  onPress={() => router.push('/download-data')}
+                />
+              </ListGroup>
+            </View>
+            <View>
+              <SectionTitle>Sign in</SectionTitle>
+              <ListGroup>
+                <Row symbol="rectangle.portrait.and.arrow.right" title="Sign out" onPress={confirmSignOut} />
+                <Separator className="mx-4" />
+                <Row symbol="iphone.slash" title="Sign out everywhere" onPress={confirmSignOutEverywhere} />
+                <Separator className="mx-4" />
+                <Row
+                  symbol="trash"
+                  title="Delete account"
+                  linked={linked === '/delete-account'}
+                  gestureSync={false}
+                  onPress={() => router.push('/delete-account')}
+                  danger
+                />
+              </ListGroup>
+            </View>
+          </>
+        ) : null}
 
         <View className="items-center gap-1 px-6 pt-2">
           <Text className="text-sm font-medium text-foreground">
