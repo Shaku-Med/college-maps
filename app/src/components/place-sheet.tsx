@@ -166,7 +166,7 @@ export function PlaceSheet({
           </TextField>
         ) : null}
         <div className="flex gap-2">
-          <Button type="submit" variant="primary" size="lg" className="flex-1">
+          <Button variant="primary" size="lg" className="flex-1" onPress={() => handleDirections()}>
             <Navigation aria-hidden />
             Directions
           </Button>
