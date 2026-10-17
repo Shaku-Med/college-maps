@@ -1670,7 +1670,10 @@ export function MapApp({ initialPlaceId, initialRoom, initialAccountOpen = false
                 room={room}
                 events={placeEvents}
                 onOpenEvent={(meetup) => openMeetup(meetup.id)}
-                onDirections={openDirections}
+                onDirections={(typedRoom) => {
+                  if (typedRoom) setRoom(typedRoom);
+                  openDirections();
+                }}
                 onCollapse={() => setIsPlaceExpanded(false)}
                 onClose={() => selectPlace(undefined)}
               />
@@ -1685,6 +1688,7 @@ export function MapApp({ initialPlaceId, initialRoom, initialAccountOpen = false
           onCollapse={() => setIsDirectionsExpanded(false)}>
           <DirectionsPanel
             destination={selected}
+            room={room}
             origin={origin}
             avoidStairs={avoidStairs}
             route={previewRoute}

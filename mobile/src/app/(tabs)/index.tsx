@@ -979,6 +979,7 @@ export default function MapScreen() {
             <Glass className="w-full overflow-hidden rounded-[28px]" style={{ width: '100%', maxWidth: PANEL_WIDTH }}>
               <ScrollView
                 bounces={false}
+                keyboardShouldPersistTaps="handled"
                 showsVerticalScrollIndicator={false}
                 style={{ maxHeight: height - insets.top - chromeBottom - 96 }}
                 contentContainerClassName="p-5">

@@ -1,9 +1,10 @@
 import * as Haptics from 'expo-haptics';
 import { router } from 'expo-router';
-import { Button, CloseButton, ListGroup, Separator, useThemeColor } from 'heroui-native';
-import { Fragment, useEffect } from 'react';
+import { Button, CloseButton, Description, FieldError, Label, ListGroup, Separator, TextField, useThemeColor } from 'heroui-native';
+import { Fragment, useEffect, useState } from 'react';
 import { Text, View } from 'react-native';
 
+import { GlassInput } from '@/components/glass-field';
 import { Icon } from '@/components/icon';
 import type { Place } from '@/data/campus';
 import { useProfile } from '@/lib/account';
@@ -12,7 +13,7 @@ import { CATEGORY_SYMBOLS, categoryLabel } from '@/lib/categories';
 import { focusPlace } from '@/lib/focus';
 import { openWeb, sharePlace } from '@/lib/links';
 import { rememberPlace } from '@/lib/recent-places';
-import { floorForRoom, floorLabel } from '@/lib/search';
+import { EXAMPLE_ROOM, MAX_ROOM_INPUT, floorForRoom, floorLabel, roomInBuilding } from '@/lib/search';
 import { useSocial } from '@/lib/social';
 import { planTrip } from '@/lib/trip';
 
@@ -30,6 +31,21 @@ export function PlaceDetails({ place, room, onDone }: { place: Place; room?: str
   const social = useSocial(profile?.username ?? null);
   const events = eventsAtPlace(social.campus, place.id);
   const floor = room ? floorLabel(floorForRoom(room)) : undefined;
+  const askRoom = place.isBuilding && !room;
+  const [roomText, setRoomText] = useState('');
+  const [roomError, setRoomError] = useState<string | null>(null);
+  const typedRoom = askRoom ? roomInBuilding(roomText, place) : undefined;
+  const typedFloor = typedRoom ? floorLabel(floorForRoom(typedRoom)) : undefined;
+
+  function startDirections() {
+    if (askRoom && roomText.trim() && !typedRoom) {
+      setRoomError(`That isn't a room in ${place.id}. Try a number like ${EXAMPLE_ROOM}, or leave it empty.`);
+      return;
+    }
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    planTrip(place.id, room ?? typedRoom);
+    onDone();
+  }
 
   useEffect(() => {
     focusPlace(place.id);
@@ -57,14 +73,38 @@ export function PlaceDetails({ place, room, onDone }: { place: Place; room?: str
         <CloseButton onPress={onDone} />
       </View>
 
+      {askRoom ? (
+        <TextField isInvalid={roomError !== null}>
+          <Label>Which room?</Label>
+          <GlassInput
+            value={roomText}
+            onChangeText={(text) => {
+              setRoomText(text.slice(0, MAX_ROOM_INPUT));
+              setRoomError(null);
+            }}
+            placeholder={`Like ${EXAMPLE_ROOM}`}
+            maxLength={MAX_ROOM_INPUT}
+            autoCapitalize="characters"
+            autoCorrect={false}
+            autoComplete="off"
+            returnKeyType="go"
+            onSubmitEditing={startDirections}
+          />
+          {roomError ? null : (
+            <Description>
+              {typedRoom
+                ? typedFloor
+                  ? `Room ${typedRoom} is on the ${typedFloor.toLowerCase()}.`
+                  : `Room ${typedRoom} in ${place.name}.`
+                : 'Optional. Leave it empty to go to the building.'}
+            </Description>
+          )}
+          <FieldError>{roomError ?? ''}</FieldError>
+        </TextField>
+      ) : null}
+
       <View className="flex-row gap-3">
-        <Button
-          className="flex-1"
-          onPress={() => {
-            void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            planTrip(place.id, room);
-            onDone();
-          }}>
+        <Button className="flex-1" onPress={startDirections}>
           <Icon name="figure.walk" size={16} weight="semibold" tintColor={accentForeground} />
           <Button.Label>Directions</Button.Label>
         </Button>

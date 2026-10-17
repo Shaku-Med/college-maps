@@ -49,6 +49,7 @@ const TRAVEL_MODES: Array<{ id: TravelMode; label: string; verb: string; noun: s
 
 type DirectionsPanelProps = {
   destination: Place;
+  room?: string;
   origin: string;
   avoidStairs: boolean;
   route: Route | null;
@@ -124,6 +125,7 @@ function StopItem({
 
 export function DirectionsPanel({
   destination,
+  room,
   origin,
   avoidStairs,
   route,
@@ -214,7 +216,7 @@ export function DirectionsPanel({
           <ArrowLeft aria-hidden />
         </Button>
         <h2 className="min-w-0 flex-1 truncate text-base font-semibold">
-          {mode.verb} to {destination.name}
+          {mode.verb} to {room ? `room ${room} in ${destination.id}` : destination.name}
         </h2>
         <CollapseButton onCollapse={onCollapse} />
         <CloseButton aria-label="Close directions" onPress={onClose} />

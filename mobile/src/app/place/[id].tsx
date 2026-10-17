@@ -23,7 +23,10 @@ export default function PlaceSheet() {
   }
 
   return (
-    <ScrollView contentContainerClassName="px-5 pb-10 pt-6" contentContainerStyle={{ width: '100%' }}>
+    <ScrollView
+      keyboardShouldPersistTaps="handled"
+      contentContainerClassName="px-5 pb-10 pt-6"
+      contentContainerStyle={{ width: '100%' }}>
       <PlaceDetails place={place} room={room} onDone={() => router.back()} />
     </ScrollView>
   );

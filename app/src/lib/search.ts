@@ -50,6 +50,18 @@ export function parseRoomCode(raw: string): RoomMatch | undefined {
   return roomFromMatch(CAMPUS.rooms.pattern.exec(sanitizeQuery(raw))?.groups);
 }
 
+export const MAX_ROOM_INPUT = 16;
+/** The room part of the campus example, like 215 from 1N-215. */
+export const EXAMPLE_ROOM = parseRoomCode(CAMPUS.rooms.example)?.room ?? CAMPUS.rooms.example;
+
+/** The room typed on a building's card, as just the room ("215") or the full code for that same building ("1N-215"). */
+export function roomInBuilding(raw: string, place: Place): string | undefined {
+  const typed = sanitizeQuery(raw.slice(0, MAX_ROOM_INPUT)).toUpperCase();
+  if (!typed || !place.isBuilding) return undefined;
+  const match = parseRoomCode(typed.startsWith(place.id) ? typed : `${place.id}-${typed}`);
+  return match?.place.id === place.id ? match.room : undefined;
+}
+
 function normalize(value: string): string {
   return value
     .toLowerCase()

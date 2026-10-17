@@ -1,22 +1,24 @@
 "use client";
 
-import { Button, CloseButton, Surface, toast } from "@heroui/react";
+import { Button, CloseButton, Description, Input, Label, Surface, TextField, toast } from "@heroui/react";
 import { CalendarClock, MessageSquareWarning, Navigation, Share2 } from "lucide-react";
 import Link from "next/link";
+import { useState, type FormEvent } from "react";
 
 import { CollapseButton, SheetGrabber } from "@/components/sheet-chrome";
 import { CATEGORY_LABELS, type Place } from "@/data/campus";
 import { CATEGORY_ICONS } from "@/lib/categories";
 import type { Meetup } from "@/lib/social-api";
 import { placeUrl } from "@/lib/share-url";
-import { floorForRoom, floorLabel } from "@/lib/search";
+import { EXAMPLE_ROOM, MAX_ROOM_INPUT, floorForRoom, floorLabel, roomInBuilding } from "@/lib/search";
 
 type PlaceSheetProps = {
   place: Place;
   room?: string;
   events?: Meetup[];
   onOpenEvent?: (meetup: Meetup) => void;
-  onDirections: () => void;
+  /** Gets the room typed on a building's card, or nothing to go to the building itself. */
+  onDirections: (room?: string) => void;
   onCollapse: () => void;
   onClose: () => void;
 };
@@ -39,6 +41,20 @@ export function PlaceSheet({
 }: PlaceSheetProps) {
   const Icon = CATEGORY_ICONS[place.category];
   const floor = room ? floorLabel(floorForRoom(room)) : undefined;
+  const askRoom = place.isBuilding && !room;
+  const [roomText, setRoomText] = useState("");
+  const [roomError, setRoomError] = useState<string | null>(null);
+  const typedRoom = askRoom ? roomInBuilding(roomText, place) : undefined;
+  const typedFloor = typedRoom ? floorLabel(floorForRoom(typedRoom)) : undefined;
+
+  function handleDirections(event?: FormEvent) {
+    event?.preventDefault();
+    if (askRoom && roomText.trim() && !typedRoom) {
+      setRoomError(`That isn't a room in ${place.id}. Try a number like ${EXAMPLE_ROOM}, or leave it empty.`);
+      return;
+    }
+    onDirections(typedRoom);
+  }
 
   async function handleShare() {
     const url = placeUrl(place.id, room);
@@ -119,16 +135,47 @@ export function PlaceSheet({
         </div>
       ) : null}
 
-      <div className="mt-5 flex gap-2">
-        <Button variant="primary" size="lg" className="flex-1" onPress={onDirections}>
-          <Navigation aria-hidden />
-          Directions
-        </Button>
-        <Button variant="secondary" size="lg" onPress={handleShare} aria-label="Share this place">
-          <Share2 aria-hidden />
-          <span className="max-sm:hidden">Share</span>
-        </Button>
-      </div>
+      <form className="mt-5 flex flex-col gap-4" onSubmit={handleDirections}>
+        {askRoom ? (
+          <TextField
+            value={roomText}
+            onChange={(value) => {
+              setRoomText(value.slice(0, MAX_ROOM_INPUT));
+              setRoomError(null);
+            }}
+            isInvalid={roomError !== null}
+            fullWidth>
+            <Label className="text-sm font-medium">Which room?</Label>
+            <Input
+              variant="secondary"
+              placeholder={`Like ${EXAMPLE_ROOM}`}
+              maxLength={MAX_ROOM_INPUT}
+              autoComplete="off"
+              autoCapitalize="characters"
+              spellCheck={false}
+              enterKeyHint="go"
+            />
+            <Description className={roomError ? "text-danger" : undefined}>
+              {roomError ??
+                (typedRoom
+                  ? typedFloor
+                    ? `Room ${typedRoom} is on the ${typedFloor.toLowerCase()}.`
+                    : `Room ${typedRoom} in ${place.name}.`
+                  : "Optional. Leave it empty to go to the building.")}
+            </Description>
+          </TextField>
+        ) : null}
+        <div className="flex gap-2">
+          <Button type="submit" variant="primary" size="lg" className="flex-1">
+            <Navigation aria-hidden />
+            Directions
+          </Button>
+          <Button variant="secondary" size="lg" onPress={handleShare} aria-label="Share this place">
+            <Share2 aria-hidden />
+            <span className="max-sm:hidden">Share</span>
+          </Button>
+        </div>
+      </form>
 
       <Link
         href={`/report-problem?place=${encodeURIComponent(place.id)}&kind=map`}
