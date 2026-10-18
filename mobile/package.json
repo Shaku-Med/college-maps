@@ -6,6 +6,7 @@
     "@expo/ui": "~57.0.21",
     "@gorhom/bottom-sheet": "^5.2.14",
     "@maplibre/maplibre-react-native": "^11.4.1",
+    "decode-uri-component": "file:./local-packages/decode-uri-component",
     "expo": "~57.0.26",
     "expo-asset": "~57.0.18",
     "expo-audio": "~57.0.5",
@@ -72,6 +73,7 @@
     "unrs-resolver": false
   },
   "overrides": {
+    "decode-uri-component": "$decode-uri-component",
     "xcode": {
       "uuid": "^11.1.1"
     }

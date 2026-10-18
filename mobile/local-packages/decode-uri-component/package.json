@@ -1,0 +1,8 @@
+{
+  "name": "decode-uri-component",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Linear time stand in for decode-uri-component 0.2.x, installed through an npm override in mobile/package.json",
+  "license": "MIT",
+  "main": "index.js"
+}
