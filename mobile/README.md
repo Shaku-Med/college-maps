@@ -51,6 +51,22 @@ carry on with the app in the background or the phone locked. iOS shows its blue 
 ongoing notification, and the Lock Screen and Dynamic Island show a Live Activity (`src/widgets`). It uses the
 while in use permission only: background updates start from the tap on Start, never on their own.
 
+## Natural voices
+
+Spoken directions use the phone's own voice until someone picks a natural voice in Account, Directions voice.
+The natural voices are the website's Kokoro voices. The app opens `https://csimap.vercel.app/voice-engine` in a
+hidden web view (`@expo/dom-webview`, already part of `expo`, so no new native code), which downloads the model
+once (about 90 MB) and turns each line into a WAV clip. The app saves the clips under
+`voice-clips/kokoro-82m-q8/<voice>` in its documents folder and plays them with expo-audio
+(`src/lib/voice-engine.ts`, `src/lib/voice.ts`). Lines for a route are made while it is being previewed, and a
+line that is not ready in time falls back to a plainer stand in, then to the phone's voice, the same as the web.
+Remove downloaded voices deletes the model and every clip.
+
+The engine page is on the website, so deploy the website before shipping an app update that relies on a change
+to it. To try a local engine page in a development build, put `EXPO_PUBLIC_VOICE_ENGINE_ORIGIN=http://localhost:3000`
+in `mobile/.env.local` and run `adb reverse tcp:3000 tcp:3000` on Android. Release builds always use the live
+site.
+
 ## App Store review
 
 Before submitting:

@@ -19,6 +19,7 @@ import { useSiriHandoff } from '@/lib/siri';
 import '@/lib/location';
 import { LaunchOverlay } from '@/components/launch-overlay';
 import { OfflineBanner } from '@/components/offline-banner';
+import { VoiceEngineHost } from '@/components/voice-engine-host';
 import { updateUpNextWidget } from '@/lib/up-next-widget';
 
 // iOS 26 draws sheets in Liquid Glass when they are see through. Older versions get a solid sheet.
@@ -113,6 +114,7 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <HeroUINativeProvider>
+        <VoiceEngineHost />
         <Navigation />
         <OfflineBanner />
         <LaunchOverlay />

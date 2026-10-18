@@ -1,12 +1,28 @@
+import { createAudioPlayer, setAudioModeAsync, type AudioPlayer } from 'expo-audio';
 import * as SecureStore from 'expo-secure-store';
-import { setAudioModeAsync } from 'expo-audio';
 import * as Speech from 'expo-speech';
 
-// Spoken directions use the phone's own speech engine, which starts instantly and works offline.
+import {
+  NATURAL_VOICES_AVAILABLE,
+  clearQueuedClips,
+  engineStatus,
+  makeClip,
+  resetQueuedClips,
+  startEngine,
+  storedClip,
+} from '@/lib/voice-engine';
+import { PREVIEW_LINE, isNaturalVoice, isVoiceId, type NaturalVoiceId, type VoiceId } from '@/lib/voice-options';
+
+// Spoken directions use a natural voice made on the phone when one is picked, and the phone's own speech engine otherwise.
 const ON_OFF_KEY = 'csimap.voice';
+const CHOICE_KEY = 'csimap.voiceName';
 const VOICE_ID_KEY = 'csimap.voice.id';
 const REPEAT_WINDOW_MS = 8_000;
 const MAX_TEXT = 300;
+// How long a heads up may wait for its own clip before a stand in or the phone's voice says it.
+const WAIT_FOR_CLIP_MS = 4_000;
+// Until a clip reports its length, the longest it may hold up the next one.
+const CLIP_TIMEOUT_MS = 30_000;
 
 let voiceId: string | undefined;
 let chosen = false;
@@ -22,7 +38,48 @@ function prepareAudio() {
   }).catch(() => undefined);
   return audioReady;
 }
-let last = { text: '', at: 0 };
+
+const clean = (text: string) => text.trim().slice(0, MAX_TEXT);
+
+// ---- Which voice ----------------------------------------------------------------------------------
+
+function readChoice(): VoiceId {
+  try {
+    const saved = globalThis.localStorage?.getItem(CHOICE_KEY);
+    return isVoiceId(saved) ? saved : 'device';
+  } catch {
+    return 'device';
+  }
+}
+
+let choice: VoiceId = readChoice();
+const choiceListeners = new Set<() => void>();
+
+export const voiceChoice = () => choice;
+export function subscribeVoiceChoice(listener: () => void) {
+  choiceListeners.add(listener);
+  return () => void choiceListeners.delete(listener);
+}
+
+/** Switches the voice everything is said in. A natural voice starts downloading the model right away. */
+export function chooseVoice(id: VoiceId) {
+  if (!isVoiceId(id) || id === choice) return;
+  choice = id;
+  try {
+    globalThis.localStorage?.setItem(CHOICE_KEY, id);
+  } catch {
+    // Kept for this visit only.
+  }
+  resetQueuedClips();
+  if (isNaturalVoice(id)) startEngine();
+  for (const listener of choiceListeners) listener();
+}
+
+// Clips already made play even when the engine cannot run, such as offline; only making new ones needs it.
+const naturalVoice = (): NaturalVoiceId | null => (NATURAL_VOICES_AVAILABLE && isNaturalVoice(choice) ? choice : null);
+const canMakeClips = () => engineStatus().state !== 'failed';
+
+// ---- The phone's own voice -------------------------------------------------------------------------
 
 const NATURAL_VOICE = 'com.apple.voice.';
 const FAMILIAR = /\.(ava|zoe|samantha|evan|nathan|allison|susan|joelle|noelle|tom)$/i;
@@ -97,18 +154,99 @@ export async function setDirectionVoice(id: string | null) {
   return pickVoice();
 }
 
-export async function previewDirectionVoice(id: string) {
-  await Promise.all([pickVoice(), prepareAudio()]);
-  if (!canSpeak) return;
-  await Speech.stop();
-  Speech.speak('In 100 feet, turn right.', { voice: id, language: undefined, rate: 1.0 });
-}
+let deviceSpeaking = false;
 
-export async function warmUpVoice() {
+async function speakWithDevice(text: string) {
   const [voice] = await Promise.all([pickVoice(), prepareAudio()]);
   if (!canSpeak) return;
-  Speech.speak(' ', { voice, language: voice ? undefined : 'en-US', volume: 0 });
+  deviceSpeaking = true;
+  const done = () => {
+    deviceSpeaking = false;
+  };
+  Speech.speak(text, { voice, language: voice ? undefined : 'en-US', rate: 1.0, onDone: done, onStopped: done, onError: done });
 }
+
+export async function previewDirectionVoice(id: string) {
+  silenceAll();
+  await Promise.all([pickVoice(), prepareAudio()]);
+  if (!canSpeak) return;
+  Speech.speak(PREVIEW_LINE, { voice: id, language: undefined, rate: 1.0 });
+}
+
+// ---- Playing natural clips -------------------------------------------------------------------------
+
+let player: AudioPlayer | null = null;
+const queue: string[] = [];
+// Bumped by anything that should silence lines still on their way, like an urgent turn or muting.
+let epoch = 0;
+
+function finishClip(done: AudioPlayer) {
+  if (player !== done) return;
+  player = null;
+  try {
+    done.remove();
+  } catch {
+    // Already released.
+  }
+  playNext();
+}
+
+function playNext() {
+  if (player || queue.length === 0) return;
+  // Waits for a phone voice line that is still talking rather than speaking over it.
+  if (deviceSpeaking) {
+    setTimeout(playNext, 200);
+    return;
+  }
+  const uri = queue.shift() as string;
+  let next: AudioPlayer;
+  try {
+    next = createAudioPlayer({ uri });
+  } catch {
+    playNext();
+    return;
+  }
+  player = next;
+  let timed = false;
+  // A call or the system can stop audio mid clip, and then the finish event never comes.
+  const fallback = setTimeout(() => finishClip(next), CLIP_TIMEOUT_MS);
+  next.addListener('playbackStatusUpdate', (state) => {
+    if (state.didJustFinish) {
+      clearTimeout(fallback);
+      finishClip(next);
+    } else if (!timed && state.isLoaded && state.duration > 0) {
+      timed = true;
+      clearTimeout(fallback);
+      setTimeout(() => finishClip(next), state.duration * 1000 + 1_500);
+    }
+  });
+  next.play();
+}
+
+async function play(uri: string) {
+  await prepareAudio();
+  queue.push(uri);
+  playNext();
+}
+
+function silenceAll() {
+  epoch++;
+  queue.length = 0;
+  const current = player;
+  player = null;
+  if (current) {
+    try {
+      current.pause();
+      current.remove();
+    } catch {
+      // Already finished.
+    }
+  }
+  deviceSpeaking = false;
+  void Speech.stop();
+}
+
+// ---- Speaking ----------------------------------------------------------------------------------------
 
 export function readVoicePreference() {
   try {
@@ -126,20 +264,95 @@ export function saveVoicePreference(on: boolean) {
   }
 }
 
-export async function speak(line: string, { urgent = false } = {}) {
-  const text = line.trim().slice(0, MAX_TEXT);
+let last = { text: '', at: 0 };
+
+/** Says a line. A fallback is a plainer line already made in the natural voice, said when this one is late. */
+export async function speak(line: string, { urgent = false, fallback }: { urgent?: boolean; fallback?: string } = {}) {
+  const text = clean(line);
   if (!text) return;
   const now = Date.now();
   if (!urgent && last.text === text && now - last.at < REPEAT_WINDOW_MS) return;
   last = { text, at: now };
+  if (urgent) silenceAll();
+
+  const voice = naturalVoice();
+  if (!voice) {
+    await speakWithDevice(text);
+    return;
+  }
+  const asked = epoch;
+  const ready = await storedClip(voice, text);
+  if (asked !== epoch) return;
+  if (ready) {
+    await play(ready);
+    return;
+  }
+
+  const standInOrDevice = async () => {
+    const clip = fallback ? await storedClip(voice, clean(fallback)) : null;
+    if (asked !== epoch) return;
+    if (clip) await play(clip);
+    else await speakWithDevice(text);
+  };
+
+  const state = engineStatus().state;
+  if (urgent || (state !== 'loading' && state !== 'ready')) {
+    await standInOrDevice();
+    // Made now, so the same line is ready in the natural voice the next time it comes up.
+    if (canMakeClips()) void makeClip(voice, text, 1);
+    return;
+  }
+
+  let spoken = false;
+  const late = setTimeout(() => {
+    if (spoken || asked !== epoch) return;
+    spoken = true;
+    void standInOrDevice();
+  }, WAIT_FOR_CLIP_MS);
+  const clip = await makeClip(voice, text, 0);
+  if (spoken || asked !== epoch) return;
+  spoken = true;
+  clearTimeout(late);
+  if (clip) await play(clip);
+  else await standInOrDevice();
+}
+
+/** Gets lines ready ahead of time, so they play in the natural voice the moment they are needed. */
+export function prepareSpeech(lines: readonly string[], { later = false } = {}) {
+  const voice = naturalVoice();
+  if (!voice || !canMakeClips()) return;
+  for (const line of lines) {
+    const text = clean(line);
+    if (text) void makeClip(voice, text, later ? 2 : 1);
+  }
+}
+
+/** Drops route lines still waiting to be made, such as the rest of a route that was just replaced. */
+export function clearPreparedSpeech() {
+  if (naturalVoice()) clearQueuedClips();
+}
+
+/** Plays a short sample of a natural voice, downloading the model first if needed. */
+export async function previewNaturalVoice(id: NaturalVoiceId): Promise<'played' | 'failed'> {
+  silenceAll();
+  const asked = epoch;
+  const making = makeClip(id, PREVIEW_LINE, 0);
+  await prepareAudio();
+  const clip = await making;
+  if (!clip) return 'failed';
+  if (asked === epoch) await play(clip);
+  return 'played';
+}
+
+export async function warmUpVoice() {
+  if (naturalVoice()) startEngine();
   const [voice] = await Promise.all([pickVoice(), prepareAudio()]);
   if (!canSpeak) return;
-  if (urgent) await Speech.stop();
-  Speech.speak(text, { voice, language: voice ? undefined : 'en-US', rate: 1.0 });
+  Speech.speak(' ', { voice, language: voice ? undefined : 'en-US', volume: 0 });
 }
 
 export function stopSpeaking() {
-  void Speech.stop();
+  silenceAll();
 }
 
 export function spokenDistance(meters: number) {

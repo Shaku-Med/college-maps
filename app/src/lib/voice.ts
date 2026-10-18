@@ -1,26 +1,11 @@
 // Spoken directions.
 
+import { DEFAULT_VOICE, PREVIEW_LINE, isVoiceId, type VoiceId } from "./voice-options";
+
+export { DEFAULT_VOICE, VOICE_OPTIONS, isVoiceId, type VoiceId } from "./voice-options";
+
 const STORAGE_KEY = "csimap.voice";
 const CHOICE_KEY = "csimap.voiceName";
-
-// The voices on offer, best first.
-export const VOICE_OPTIONS = [
-  { id: "af_heart", name: "Heart", description: "Warm, American" },
-  { id: "af_bella", name: "Bella", description: "Bright, American" },
-  { id: "af_nicole", name: "Nicole", description: "Soft, American" },
-  { id: "bf_emma", name: "Emma", description: "British" },
-  { id: "am_michael", name: "Michael", description: "Calm, American" },
-  { id: "am_fenrir", name: "Fenrir", description: "Deep, American" },
-  { id: "bm_george", name: "George", description: "British" },
-  { id: "device", name: "Your phone's voice", description: "Nothing to download, but more robotic" },
-] as const;
-
-export type VoiceId = (typeof VOICE_OPTIONS)[number]["id"];
-export const DEFAULT_VOICE: VoiceId = "af_heart";
-const PREVIEW_LINE = "In 100 feet, turn right.";
-
-export const isVoiceId = (value: unknown): value is VoiceId =>
-  typeof value === "string" && VOICE_OPTIONS.some((option) => option.id === value);
 
 let voice: VoiceId = DEFAULT_VOICE;
 const MAX_TEXT = 300;

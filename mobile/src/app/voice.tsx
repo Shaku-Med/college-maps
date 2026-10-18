@@ -14,8 +14,8 @@ export default function VoiceScreen() {
         <CloseButton onPress={() => router.back()} />
       </View>
       <Text className="text-base leading-6 text-muted">
-        Spoken turns use a voice already on this phone. Tap one to hear a sample. For richer voices on iPhone, download
-        Enhanced voices in Settings, Accessibility, Spoken Content.
+        Pick who reads out each turn. Tap play to hear a voice first. The natural voices are the same ones as on the
+        website.
       </Text>
       <VoicePicker />
     </ScrollView>

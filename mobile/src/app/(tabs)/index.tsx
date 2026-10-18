@@ -337,11 +337,15 @@ export default function MapScreen() {
 
   useEffect(() => () => endTrip(), []);
 
-  // The voice warms up as soon as directions open, well before Start.
+  // The voice warms up as soon as directions open, and starts on the route's lines well before Start.
   const prepareVoice = voice.prepare;
+  const primeVoice = voice.prime;
+  const routeToPrime = preview.route;
   useEffect(() => {
-    if (planning) prepareVoice();
-  }, [planning, prepareVoice]);
+    if (!planning) return;
+    prepareVoice();
+    if (routeToPrime) primeVoice(routeToPrime);
+  }, [planning, routeToPrime, prepareVoice, primeVoice]);
 
   // The screen stays on while guiding when the user leaves Keep awake on (Account → Directions).
   const keepAwake = useDevicePrefs().keepAwake;

@@ -99,9 +99,10 @@ export default function PrivacyPage() {
           </p>
           <p className="text-sm leading-relaxed text-muted">
             Voice directions are made on your device by an open source voice model. The first time you use
-            them, your browser downloads the model, about 90 MB, from Hugging Face and keeps it. The words
-            being spoken never leave your device. Spoken lines are saved in this browser so they play
-            instantly next time.
+            them, your browser, or the phone app once you pick a natural voice, downloads the model, about
+            90 MB, from Hugging Face and keeps it. The words being spoken never leave your device. Spoken
+            lines are saved on your device so they play instantly next time. In the app, Remove downloaded
+            voices deletes the model and every saved line.
           </p>
         </section>
 
