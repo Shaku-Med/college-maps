@@ -20,6 +20,8 @@ const DOWNLOADED_KEY = 'csimap.voice.downloaded';
 const MAX_WAV_BASE64 = 3_000_000;
 // A busy engine silent this long is stuck, and is reloaded instead of holding up every line.
 const STALL_MS = 60_000;
+// A page that has not said hello by now is the wrong page or never loaded, such as with no connection.
+const HELLO_MS = 20_000;
 const MAX_RELOADS = 3;
 
 type Priority = 0 | 1 | 2;
@@ -38,9 +40,10 @@ let nextId = 1;
 let lastHeard = 0;
 let reloads = 0;
 let watchdog: ReturnType<typeof setInterval> | undefined;
+let helloTimer: ReturnType<typeof setTimeout> | undefined;
 let writes = 0;
 
-const waiting = new Map<number, { voice: NaturalVoiceId; text: string; resolve: (uri: string | null) => void }>();
+const waiting = new Map<number, { voice: NaturalVoiceId; text: string; priority: Priority; resolve: (uri: string | null) => void }>();
 const inflight = new Map<string, { job: Promise<string | null>; id?: number; priority: Priority }>();
 const known = new Map<string, string>();
 
@@ -119,8 +122,16 @@ export function startEngine() {
   if (status.state === 'off') {
     setStatus('loading');
     watch();
+    expectHello();
     send({ type: 'load' });
   }
+}
+
+function expectHello() {
+  clearTimeout(helloTimer);
+  helloTimer = setTimeout(() => {
+    if (!pageReady && host.wanted) engineGone();
+  }, HELLO_MS);
 }
 
 /** After a failed download, starts over from a fresh web view. */
@@ -139,15 +150,25 @@ export function registerEngine(ref: DomWebViewRef | null) {
   if (!ref) pageReady = false;
 }
 
-// The phone stopped the web view to free memory, or it hung: start it again, a few times at most.
+// The page never loaded, the phone stopped the web view to free memory, or it hung: start it again, a few times at most.
 export function engineGone() {
   pageReady = false;
   outbox = [];
-  for (const entry of waiting.values()) entry.resolve(null);
-  waiting.clear();
+  clearTimeout(helloTimer);
   reloads++;
-  setStatus(reloads >= MAX_RELOADS ? 'failed' : 'off');
-  if (host.wanted && reloads < MAX_RELOADS) setHost({ generation: host.generation + 1 });
+  if (reloads >= MAX_RELOADS || !host.wanted) {
+    for (const entry of waiting.values()) entry.resolve(null);
+    waiting.clear();
+    setStatus(host.wanted ? 'failed' : 'off');
+    return;
+  }
+  // A fresh web view is asked again for every line still waiting, so nobody is told it failed while it retries.
+  setStatus('loading');
+  lastHeard = Date.now();
+  send({ type: 'load' });
+  for (const [id, entry] of waiting) send({ type: 'speak', id, text: entry.text, voice: entry.voice, priority: entry.priority });
+  expectHello();
+  setHost({ generation: host.generation + 1 });
 }
 
 export function handleEngineMessage(data: string) {
@@ -162,6 +183,7 @@ export function handleEngineMessage(data: string) {
     case 'engine': {
       if (pageReady) return;
       pageReady = true;
+      clearTimeout(helloTimer);
       const queued = outbox;
       outbox = [];
       for (const item of queued) send(item);
@@ -256,7 +278,11 @@ export function makeClip(voice: NaturalVoiceId, text: string, priority: Priority
   if (pending) {
     if (priority < pending.priority) {
       pending.priority = priority;
-      if (pending.id !== undefined) send({ type: 'promote', id: pending.id, priority });
+      if (pending.id !== undefined) {
+        const queued = waiting.get(pending.id);
+        if (queued) queued.priority = priority;
+        send({ type: 'promote', id: pending.id, priority });
+      }
     }
     return pending.job;
   }
@@ -270,7 +296,7 @@ export function makeClip(voice: NaturalVoiceId, text: string, priority: Priority
     entry.id = id;
     return new Promise<string | null>((resolve) => {
       watch();
-      waiting.set(id, { voice, text, resolve });
+      waiting.set(id, { voice, text, priority: entry.priority, resolve });
       send({ type: 'speak', id, text, voice, priority: entry.priority });
     });
   })().finally(() => inflight.delete(key));

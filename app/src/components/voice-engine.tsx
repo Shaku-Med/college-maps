@@ -74,56 +74,79 @@ function wavBase64(samples: Float32Array, rate: number) {
   return btoa(binary);
 }
 
+// Some web views attach the app's bridge a moment after the page's own scripts start.
+const BRIDGE_WAIT_MS = 10_000;
+const BRIDGE_POLL_MS = 250;
+
+type Bridge = NonNullable<Window["ReactNativeWebView"]>;
+
+function runEngine(bridge: Bridge) {
+  const send = (message: object) => bridge.postMessage(JSON.stringify(message));
+
+  let worker: Worker;
+  try {
+    worker = new Worker(new URL("../lib/voice.worker.ts", import.meta.url), { type: "module" });
+  } catch {
+    send({ type: "failed" });
+    return () => undefined;
+  }
+  worker.onerror = () => send({ type: "failed" });
+  worker.onmessage = (event: MessageEvent) => {
+    const message = event.data as { type?: unknown; id?: unknown; samples?: unknown; rate?: unknown; percent?: unknown };
+    if (message.type === "audio" && isId(message.id) && message.samples instanceof Float32Array) {
+      const rate = Number.isInteger(message.rate) && (message.rate as number) >= 8_000 && (message.rate as number) <= 48_000 ? (message.rate as number) : 24_000;
+      send({ type: "audio", id: message.id, wav: wavBase64(message.samples, rate) });
+    } else if (message.type === "error" && isId(message.id)) {
+      send({ type: "error", id: message.id });
+    } else if (message.type === "progress" && typeof message.percent === "number") {
+      send({ type: "progress", percent: Math.max(0, Math.min(100, Math.round(message.percent))) });
+    } else if (message.type === "ready" || message.type === "failed") {
+      send({ type: message.type });
+    }
+  };
+
+  window.csimapVoice = (raw) => {
+    const command = parseCommand(raw);
+    if (!command) return;
+    if (command.type !== "forget") {
+      worker.postMessage(command);
+      return;
+    }
+    void (async () => {
+      try {
+        await Promise.all(MODEL_CACHES.map((name) => caches.delete(name)));
+      } catch {
+        // No Cache Storage here, so there was nothing kept.
+      }
+      send({ type: "forgotten" });
+    })();
+  };
+  send({ type: "engine" });
+
+  return () => {
+    worker.terminate();
+    delete window.csimapVoice;
+  };
+}
+
 /** Runs the voice model for the phone app, which shows this page in a hidden web view and keeps the clips it makes. */
 export function VoiceEngine() {
   useEffect(() => {
-    const bridge = window.ReactNativeWebView;
-    if (!bridge) return;
-    const send = (message: object) => bridge.postMessage(JSON.stringify(message));
-
-    let worker: Worker;
-    try {
-      worker = new Worker(new URL("../lib/voice.worker.ts", import.meta.url), { type: "module" });
-    } catch {
-      send({ type: "failed" });
-      return;
-    }
-    worker.onerror = () => send({ type: "failed" });
-    worker.onmessage = (event: MessageEvent) => {
-      const message = event.data as { type?: unknown; id?: unknown; samples?: unknown; rate?: unknown; percent?: unknown };
-      if (message.type === "audio" && isId(message.id) && message.samples instanceof Float32Array) {
-        const rate = Number.isInteger(message.rate) && (message.rate as number) >= 8_000 && (message.rate as number) <= 48_000 ? (message.rate as number) : 24_000;
-        send({ type: "audio", id: message.id, wav: wavBase64(message.samples, rate) });
-      } else if (message.type === "error" && isId(message.id)) {
-        send({ type: "error", id: message.id });
-      } else if (message.type === "progress" && typeof message.percent === "number") {
-        send({ type: "progress", percent: Math.max(0, Math.min(100, Math.round(message.percent))) });
-      } else if (message.type === "ready" || message.type === "failed") {
-        send({ type: message.type });
-      }
+    let stop: (() => void) | undefined;
+    const attach = () => {
+      const bridge = window.ReactNativeWebView;
+      if (bridge) stop = runEngine(bridge);
+      return Boolean(bridge);
     };
-
-    window.csimapVoice = (raw) => {
-      const command = parseCommand(raw);
-      if (!command) return;
-      if (command.type !== "forget") {
-        worker.postMessage(command);
-        return;
-      }
-      void (async () => {
-        try {
-          await Promise.all(MODEL_CACHES.map((name) => caches.delete(name)));
-        } catch {
-          // No Cache Storage here, so there was nothing kept.
-        }
-        send({ type: "forgotten" });
-      })();
-    };
-    send({ type: "engine" });
-
+    if (attach()) return () => stop?.();
+    let waited = 0;
+    const timer = setInterval(() => {
+      waited += BRIDGE_POLL_MS;
+      if (attach() || waited >= BRIDGE_WAIT_MS) clearInterval(timer);
+    }, BRIDGE_POLL_MS);
     return () => {
-      worker.terminate();
-      delete window.csimapVoice;
+      clearInterval(timer);
+      stop?.();
     };
   }, []);
 
