@@ -6,6 +6,7 @@ import {
   NATURAL_VOICES_AVAILABLE,
   clearQueuedClips,
   engineStatus,
+  holdEngine,
   makeClip,
   resetQueuedClips,
   startEngine,
@@ -342,6 +343,11 @@ export async function previewNaturalVoice(id: NaturalVoiceId): Promise<'played' 
   if (!clip) return 'failed';
   if (asked === epoch) await play(clip);
   return 'played';
+}
+
+/** Keeps the natural voice loaded while directions are open, and returns the function that lets it unload. */
+export function holdVoice() {
+  return naturalVoice() ? holdEngine() : () => undefined;
 }
 
 export async function warmUpVoice() {

@@ -6,7 +6,7 @@ import { Alert, Pressable, Text, View } from 'react-native';
 
 import { Icon } from '@/components/icon';
 import { SectionTitle } from '@/components/section';
-import { prepareEverydayLines } from '@/hooks/use-voice-guidance';
+import { prepareEverydayVoice } from '@/lib/voice-warmup';
 import {
   chooseVoice,
   currentVoiceId,
@@ -158,7 +158,7 @@ export function VoicePicker() {
     if (!isNaturalVoice(id)) return;
     // The sample is asked for first, so it is the first line made once the model is ready.
     void preview(id);
-    prepareEverydayLines();
+    void prepareEverydayVoice({ quietly: false });
   }
 
   function retry() {

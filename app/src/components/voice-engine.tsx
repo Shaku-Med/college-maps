@@ -121,7 +121,9 @@ function runEngine(bridge: Bridge) {
       send({ type: "forgotten" });
     })();
   };
-  send({ type: "engine" });
+  // The app only starts the first download quietly when the phone is not on mobile data or saving data.
+  const connection = (navigator as Navigator & { connection?: { type?: string; saveData?: boolean } }).connection;
+  send({ type: "engine", cellular: connection?.type === "cellular", saveData: connection?.saveData === true });
 
   return () => {
     worker.terminate();

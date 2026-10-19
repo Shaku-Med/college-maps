@@ -36,6 +36,7 @@ import { mapCameraPadding, PANEL_WIDTH, useMapChromeBottom, useShortViewport, us
 import { useNavigation, type FollowTarget } from '@/hooks/use-navigation';
 import { useRoutePreview } from '@/hooks/use-route-preview';
 import { useVoiceGuidance } from '@/hooks/use-voice-guidance';
+import { holdVoice } from '@/lib/voice';
 import { useProfile } from '@/lib/account';
 import { campusActivityByPlace, eventsAtPlace } from '@/lib/campus-activity';
 import { useDevicePrefs } from '@/lib/device-prefs';
@@ -346,6 +347,9 @@ export default function MapScreen() {
     prepareVoice();
     if (routeToPrime) primeVoice(routeToPrime);
   }, [planning, routeToPrime, prepareVoice, primeVoice]);
+  // The natural voice stays loaded only while directions are open, then unloads to free memory.
+  const directionsOpen = planning || navigating;
+  useEffect(() => (directionsOpen ? holdVoice() : undefined), [directionsOpen]);
 
   // The screen stays on while guiding when the user leaves Keep awake on (Account → Directions).
   const keepAwake = useDevicePrefs().keepAwake;

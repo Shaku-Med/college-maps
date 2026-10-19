@@ -9,6 +9,7 @@ import { Glass } from '@/components/glass';
 import { MapButton } from '@/components/map-button';
 import { StepIcon } from '@/components/step-icon';
 import { STOPS_SHOWN, StopRow } from '@/components/stop-row';
+import { VoiceSuggestion } from '@/components/voice-suggestion';
 import { getPlace } from '@/data/campus';
 import { PANEL_WIDTH } from '@/hooks/use-layout';
 import { useNow } from '@/hooks/use-now';
@@ -274,6 +275,8 @@ export function DirectionsPanel({
             ))}
           </View>
         ) : null}
+
+        <VoiceSuggestion />
 
         <MapButton
           size="lg"

@@ -62,6 +62,13 @@ once (about 90 MB) and turns each line into a WAV clip. The app saves the clips 
 line that is not ready in time falls back to a plainer stand in, then to the phone's voice, the same as the web.
 Remove downloaded voices deletes the model and every clip.
 
+The engine only stays loaded while directions are open, then unloads to free memory. A few seconds after the
+app opens, the chosen voice makes the everyday lines it is still missing (the stand ins, "Route updated", wrong
+way), once per voice (`src/lib/voice-warmup.ts`); after that, opening the app loads nothing. That quiet step never
+starts the first 90 MB download on mobile data or with Data Saver on (Android tells the page; iPhone does not
+say, so it goes ahead). Nothing downloads for students still on the phone's voice; they see a one time "Try a
+natural voice" card in the directions panel instead.
+
 The engine page is on the website, so deploy the website before shipping an app update that relies on a change
 to it. To try a local engine page in a development build, put `EXPO_PUBLIC_VOICE_ENGINE_ORIGIN=http://localhost:3000`
 in `mobile/.env.local` and run `adb reverse tcp:3000 tcp:3000` on Android. Release builds always use the live

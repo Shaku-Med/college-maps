@@ -4,7 +4,7 @@ import * as Crypto from 'expo-crypto';
 import { Directory, File, Paths } from 'expo-file-system';
 
 import { WEB_ORIGIN } from '@/lib/links';
-import type { NaturalVoiceId } from '@/lib/voice-options';
+import { VOICE_OPTIONS, isNaturalVoice, type NaturalVoiceId } from '@/lib/voice-options';
 
 // The natural voices run on the website's voice engine page inside a hidden web view; the clips it makes are kept as files.
 const devOrigin = __DEV__ ? (process.env.EXPO_PUBLIC_VOICE_ENGINE_ORIGIN ?? '') : '';
@@ -42,6 +42,13 @@ let reloads = 0;
 let watchdog: ReturnType<typeof setInterval> | undefined;
 let helloTimer: ReturnType<typeof setTimeout> | undefined;
 let writes = 0;
+// Things using the engine right now, such as directions being planned or followed. With none, it unloads.
+let holders = 0;
+
+export type Network = { cellular: boolean; saveData: boolean };
+let network: Network | null = null;
+let helloWaiters: ((info: Network | null) => void)[] = [];
+const protectedNames = new Set<string>();
 
 const waiting = new Map<number, { voice: NaturalVoiceId; text: string; priority: Priority; resolve: (uri: string | null) => void }>();
 const inflight = new Map<string, { job: Promise<string | null>; id?: number; priority: Priority }>();
@@ -150,16 +157,62 @@ export function registerEngine(ref: DomWebViewRef | null) {
   if (!ref) pageReady = false;
 }
 
+/** Keeps the engine loaded while something needs it, and returns the function that lets go. */
+export function holdEngine() {
+  holders++;
+  let held = true;
+  return () => {
+    if (!held) return;
+    held = false;
+    holders--;
+    // Lines queued for a trip nobody is on any more are dropped; a line someone is waiting to hear is kept.
+    if (holders === 0 && waiting.size > 0) send({ type: 'reset' });
+    releaseIfIdle();
+  };
+}
+
+// Nothing needs the engine, so it unloads and the model stops taking memory until the next trip.
+function releaseIfIdle() {
+  if (holders > 0 || waiting.size > 0 || !host.wanted) return;
+  clearTimeout(helloTimer);
+  pageReady = false;
+  outbox = [];
+  for (const resolve of helloWaiters) resolve(null);
+  helloWaiters = [];
+  if (status.state !== 'failed') setStatus('off');
+  setHost({ wanted: false });
+}
+
+/** Opens the engine page without loading the model, to learn about the connection before any download. */
+export function openEngineQuietly(): Promise<Network | null> {
+  if (!NATURAL_VOICES_AVAILABLE) return Promise.resolve(null);
+  if (pageReady) return Promise.resolve(network);
+  if (!host.wanted) setHost({ wanted: true });
+  return new Promise((resolve) => {
+    const answer = (info: Network | null) => {
+      clearTimeout(timer);
+      resolve(info);
+    };
+    const timer = setTimeout(() => {
+      helloWaiters = helloWaiters.filter((waiter) => waiter !== answer);
+      resolve(null);
+    }, HELLO_MS);
+    helloWaiters.push(answer);
+  });
+}
+
 // The page never loaded, the phone stopped the web view to free memory, or it hung: start it again, a few times at most.
 export function engineGone() {
   pageReady = false;
   outbox = [];
   clearTimeout(helloTimer);
   reloads++;
-  if (reloads >= MAX_RELOADS || !host.wanted) {
+  const needed = host.wanted && (holders > 0 || waiting.size > 0);
+  if (reloads >= MAX_RELOADS || !needed) {
     for (const entry of waiting.values()) entry.resolve(null);
     waiting.clear();
-    setStatus(host.wanted ? 'failed' : 'off');
+    setStatus(needed ? 'failed' : 'off');
+    setHost({ wanted: false });
     return;
   }
   // A fresh web view is asked again for every line still waiting, so nobody is told it failed while it retries.
@@ -172,7 +225,7 @@ export function engineGone() {
 }
 
 export function handleEngineMessage(data: string) {
-  let message: { type?: unknown; id?: unknown; wav?: unknown; percent?: unknown };
+  let message: { type?: unknown; id?: unknown; wav?: unknown; percent?: unknown; cellular?: unknown; saveData?: unknown };
   try {
     message = JSON.parse(data);
   } catch {
@@ -184,6 +237,9 @@ export function handleEngineMessage(data: string) {
       if (pageReady) return;
       pageReady = true;
       clearTimeout(helloTimer);
+      network = { cellular: message.cellular === true, saveData: message.saveData === true };
+      for (const resolve of helloWaiters) resolve(network);
+      helloWaiters = [];
       const queued = outbox;
       outbox = [];
       for (const item of queued) send(item);
@@ -212,11 +268,9 @@ export function handleEngineMessage(data: string) {
       if (!entry) return;
       waiting.delete(message.id);
       const wav = message.type === 'audio' && typeof message.wav === 'string' && message.wav.length <= MAX_WAV_BASE64 ? message.wav : null;
-      if (!wav) {
-        entry.resolve(null);
-        return;
-      }
-      void saveClip(entry.voice, entry.text, wav).then(entry.resolve, () => entry.resolve(null));
+      if (wav) void saveClip(entry.voice, entry.text, wav).then(entry.resolve, () => entry.resolve(null));
+      else entry.resolve(null);
+      releaseIfIdle();
     }
   }
 }
@@ -240,10 +294,40 @@ async function saveClip(voice: NaturalVoiceId, text: string, wav: string) {
   return file.uri;
 }
 
-// Oldest clips go first once a voice has made more than it needs.
+/** Keeps these lines through pruning, such as the stand ins every trip falls back on. */
+export async function protectClips(voice: NaturalVoiceId, texts: readonly string[]) {
+  for (const text of texts) {
+    try {
+      protectedNames.add((await clipFile(voice, text)).name);
+    } catch {
+      // Unprotected lines can still be made again if pruned.
+    }
+  }
+}
+
+const warmKey = (voice: NaturalVoiceId) => `csimap.voice.warm.${voice}`;
+
+/** Whether this voice already made its everyday lines, so opening the app has nothing left to do. */
+export function isWarm(voice: NaturalVoiceId, version: string) {
+  try {
+    return globalThis.localStorage?.getItem(warmKey(voice)) === version;
+  } catch {
+    return false;
+  }
+}
+
+export function markWarm(voice: NaturalVoiceId, version: string) {
+  try {
+    globalThis.localStorage?.setItem(warmKey(voice), version);
+  } catch {
+    // Checked again next launch, which only finds the clips already made.
+  }
+}
+
+// Oldest clips go first once a voice has made more than it needs; protected lines always stay.
 function prune(folder: Directory) {
   try {
-    const files = folder.list().filter((entry): entry is File => entry instanceof File);
+    const files = folder.list().filter((entry): entry is File => entry instanceof File && !protectedNames.has(entry.name));
     const extra = files.length - MAX_CLIPS_PER_VOICE;
     if (extra <= 0) return;
     files.sort((a, b) => (a.modificationTime ?? 0) - (b.modificationTime ?? 0));
@@ -344,6 +428,13 @@ export async function forgetNaturalVoices() {
   outbox = [];
   reloads = 0;
   rememberDownload(false);
+  for (const option of VOICE_OPTIONS) {
+    try {
+      if (isNaturalVoice(option.id)) globalThis.localStorage?.removeItem(warmKey(option.id));
+    } catch {
+      // A stale mark only skips the quiet warm up; the lines are still made on the next trip.
+    }
+  }
   setStatus('off');
   setHost({ wanted: false, generation: host.generation + 1 });
 }

@@ -21,9 +21,11 @@ import { LaunchOverlay } from '@/components/launch-overlay';
 import { OfflineBanner } from '@/components/offline-banner';
 import { VoiceEngineHost } from '@/components/voice-engine-host';
 import { updateUpNextWidget } from '@/lib/up-next-widget';
+import { prepareEverydayVoice } from '@/lib/voice-warmup';
 
 // iOS 26 draws sheets in Liquid Glass when they are see through. Older versions get a solid sheet.
 const GLASS_SHEETS = isLiquidGlassAvailable();
+const QUIET_VOICE_MS = 8_000;
 
 function Navigation() {
   const scheme = useColorScheme();
@@ -71,11 +73,16 @@ function Navigation() {
     // Paint an empty Up Next right away so a freshly added widget is not a blank square.
     updateUpNextWidget([], []);
     void refreshAccount().finally(() => markReady('account'));
+    // Once the app has settled, the chosen natural voice makes any everyday lines it is still missing, once.
+    const quiet = setTimeout(() => void prepareEverydayVoice({ quietly: true }), QUIET_VOICE_MS);
     // A session ended on another device is noticed when the app comes back to the front.
     const sub = AppState.addEventListener('change', (next) => {
       if (next === 'active') void refreshAccount();
     });
-    return () => sub.remove();
+    return () => {
+      clearTimeout(quiet);
+      sub.remove();
+    };
   }, []);
 
   return (
