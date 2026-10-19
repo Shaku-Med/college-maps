@@ -511,6 +511,8 @@ export default function MapScreen() {
 
   function end() {
     const destination = trip.destination;
+    // A compass turn landing after End would otherwise swing the camera back to the last followed spot.
+    lastFollow.current = null;
     setHudPanel(null);
     setFacingUp(true);
     setIsRotated(false);
