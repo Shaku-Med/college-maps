@@ -17,6 +17,7 @@ import { signOut, useAccount } from '@/lib/account';
 import { setDevicePref, useDevicePrefs } from '@/lib/device-prefs';
 import { openWeb } from '@/lib/links';
 import { HEADER_ICONS } from '@/lib/header-icons';
+import { openStorePage, useCanRate } from '@/lib/rating';
 
 const VERSION = Constants.expoConfig?.version ?? '1.0.0';
 
@@ -96,6 +97,7 @@ export default function AccountScreen() {
   const account = useAccount();
   const { toast } = useToast();
   const device = useDevicePrefs();
+  const canRate = useCanRate();
   const linked = useLinkedSuffix(
     '/notifications',
     '/profile',
@@ -246,6 +248,17 @@ export default function AccountScreen() {
               description="Something broken, a wrong place, or an idea"
               onPress={() => router.push('/report-problem')}
             />
+            {canRate ? (
+              <>
+                <Separator className="mx-4" />
+                <Row
+                  symbol="star"
+                  title="Rate CSI Map"
+                  description={Platform.OS === 'ios' ? 'Opens the App Store' : 'Opens Google Play'}
+                  onPress={() => void openStorePage()}
+                />
+              </>
+            ) : null}
           </ListGroup>
         </View>
 

@@ -86,6 +86,7 @@ const MATERIAL: Partial<Record<SFSymbol, AndroidSymbol>> = {
   'speaker.wave.2.fill': 'volume_up',
   'square.and.arrow.down': 'download',
   'square.and.arrow.up': 'share',
+  star: 'star',
   'sun.max': 'light_mode',
   trash: 'delete',
   'view.2d': 'map',

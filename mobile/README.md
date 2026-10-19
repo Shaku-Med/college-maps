@@ -74,6 +74,16 @@ to it. To try a local engine page in a development build, put `EXPO_PUBLIC_VOICE
 in `mobile/.env.local` and run `adb reverse tcp:3000 tcp:3000` on Android. Release builds always use the live
 site.
 
+## Rating prompt
+
+After someone's third walk that reaches its destination, at least three days after their first, the app hands the
+moment to the system rating sheet (`expo-store-review`, `src/lib/rating.ts`), once per app version. Apple shows it
+at most three times a year and never in TestFlight, and Google has its own limit, so the app is never told whether
+it appeared. It never asks during directions, and nothing is ever offered for a rating, which both stores forbid.
+Account, Help also has Rate CSI Map, which opens the store page. It shows once the store page is live and set in
+`app.json` (`ios.appStoreUrl`, `android.playStoreUrl`). Builds from before this was added get it as an update
+without the native side, and there it simply stays off.
+
 ## App Store review
 
 Before submitting:

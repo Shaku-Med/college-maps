@@ -49,6 +49,7 @@ import { stepText } from '@/lib/instructions';
 import { endTrip, showTrip } from '@/lib/live-activity';
 import { currentCompass, currentFix, subscribeCompass, useLocation } from '@/lib/location';
 import { parkingSpoken } from '@/lib/parking';
+import { askForRating, finishedWalk } from '@/lib/rating';
 import { roomDirections } from '@/lib/search';
 import { legSeconds, stopsStart } from '@/lib/stops';
 import { createCameraMemory, createSmoothHeading, shortestTurn } from '@/lib/smooth-heading';
@@ -88,6 +89,8 @@ const FOLLOW_MS = 650;
 const PROGRAMMATIC_GRACE_MS = 180;
 // Drawing a new route line also fires fake pans; hold longer so a reroute cannot freeze the compass.
 const REROUTE_HOLD_MS = 2_000;
+// Lets the map settle on the building before the rating sheet can appear.
+const RATING_DELAY_MS = 2_000;
 
 const toLngLat = ({ latitude, longitude }: Coordinate): [number, number] => [longitude, latitude];
 
@@ -140,6 +143,7 @@ export default function MapScreen() {
   const [hudPanel, setHudPanel] = useState<'steps' | 'trip' | null>(null);
   const [isRotated, setIsRotated] = useState(false);
   const [activePerson, setActivePerson] = useState<string | null>(null);
+  const [ratingDue, setRatingDue] = useState(false);
   const [permission, requestPermission] = Location.useForegroundPermissions();
   const [accent, danger, background] = useThemeColor(['accent', 'danger', 'background']);
   const casing = scheme === 'dark' ? '#0b1a33' : '#ffffff';
@@ -511,6 +515,7 @@ export default function MapScreen() {
 
   function end() {
     const destination = trip.destination;
+    const reachedDestination = navigation.hasArrived && !nextTarget;
     // A compass turn landing after End would otherwise swing the camera back to the last followed spot.
     lastFollow.current = null;
     setHudPanel(null);
@@ -530,7 +535,18 @@ export default function MapScreen() {
         padding: NO_PADDING,
       });
     }
+    if (reachedDestination && finishedWalk()) setRatingDue(true);
   }
+
+  // Only once the walk is over and no new one has started; the system decides whether the sheet shows.
+  useEffect(() => {
+    if (!ratingDue || trip.phase !== 'idle') return;
+    const timer = setTimeout(() => {
+      setRatingDue(false);
+      void askForRating();
+    }, RATING_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [ratingDue, trip.phase]);
 
   const pointNorth = useCallback(() => {
     void (async () => {

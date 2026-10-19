@@ -20,6 +20,7 @@
     "ios": {
       "bundleIdentifier": "com.shakumed.csimap",
       "appleTeamId": "5VH593K857",
+      "appStoreUrl": "https://apps.apple.com/app/id6817160398",
       "supportsTablet": true,
       "config": {
         "usesNonExemptEncryption": false
