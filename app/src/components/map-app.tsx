@@ -30,6 +30,7 @@ import { useWakeLock } from "@/hooks/use-wake-lock";
 import { campusActivityByPlace, eventsAtPlace } from "@/lib/campus-activity";
 import { MAP_FILTERS, type MapFilter } from "@/lib/categories";
 import { fetchTripRoute } from "@/lib/directions";
+import { metersFromBuilding } from "@/lib/buildings";
 import { bearingDegrees, distanceMeters, turnAngle } from "@/lib/geo";
 import { ON_FOOT_MAX_MPS, RIDING_MAX_MPS, createMotionTracker, isOnFoot, type MotionState } from "@/lib/motion";
 import {
@@ -86,6 +87,10 @@ function onCampusPaths({ latitude, longitude }: Coordinate) {
 }
 const ARRIVAL_METERS = 15;
 const NEAR_DESTINATION_METERS = 25;
+// Indoors the fix is rough and jumps around, so standing within the destination's walls counts as arriving on its own.
+const INSIDE_BUILDING_METERS = 8;
+const INDOOR_ACCURACY_METERS = 150;
+const INSIDE_FIXES = 2;
 const WEAK_ACCURACY_METERS = 60;
 const UNTRUSTED_ACCURACY_METERS = 65;
 const SNAP_TO_ROUTE_METERS = 14;
@@ -333,6 +338,7 @@ export function MapApp({ initialPlaceId, initialRoom, initialAccountOpen = false
   const facing = useCallback(() => compass() ?? travelHeading(), [travelHeading, compass]);
   const progressHintRef = useRef(0);
   const offRouteCountRef = useRef(0);
+  const insideFixesRef = useRef(0);
   const otherWalkwayCountRef = useRef(0);
   const lastRecheckRef = useRef({ at: 0, along: 0 });
   const noticeTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -693,10 +699,20 @@ export function MapApp({ initialPlaceId, initialRoom, initialAccountOpen = false
         next.distanceAlong >= route.arrivalDistance - (travel ? STREET_ARRIVAL_METERS[travel] : ARRIVAL_METERS);
       // Riding past the place is not arriving at it.
       const onTheRoute = next.distanceFromRoute <= limit;
+      // Nobody rides a bus inside a building, so this skips the riding check that indoor jumps can trip.
+      const fromWalls = metersFromBuilding(position, destination.id);
+      const insideDestination =
+        (!travel || travel === "walk") &&
+        accuracy <= INDOOR_ACCURACY_METERS &&
+        (fromWalls !== undefined
+          ? fromWalls <= INSIDE_BUILDING_METERS
+          : distanceMeters(position, destination.coordinate) <= NEAR_DESTINATION_METERS);
+      insideFixesRef.current = insideDestination ? insideFixesRef.current + 1 : 0;
       const arrived =
-        !holding &&
-        trusted &&
-        ((reachedEntrance && onTheRoute) || distanceMeters(position, destination.coordinate) <= NEAR_DESTINATION_METERS);
+        (!holding &&
+          trusted &&
+          ((reachedEntrance && onTheRoute) || distanceMeters(position, destination.coordinate) <= NEAR_DESTINATION_METERS)) ||
+        insideFixesRef.current >= (trusted ? 1 : INSIDE_FIXES);
       if (arrived) {
         navRef.current = { ...navRef.current, hasArrived: true, previousRoute: null };
         setHasArrived(true);
@@ -1144,6 +1160,7 @@ export function MapApp({ initialPlaceId, initialRoom, initialAccountOpen = false
     manualRef.current = false;
     progressHintRef.current = 0;
     offRouteCountRef.current = 0;
+    insideFixesRef.current = 0;
     otherWalkwayCountRef.current = 0;
     maxAlongRef.current = 0;
     lastRecheckRef.current = { at: Date.now(), along: 0 };

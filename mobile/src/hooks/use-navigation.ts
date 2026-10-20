@@ -4,6 +4,7 @@ import { CAMPUS, contains, type Coordinate, type Place } from '@/data/campus';
 import { walkGraph } from '@/data/walk-graph';
 import type { RouteNotice } from '@/hooks/use-voice-guidance';
 import { fetchTripRoute } from '@/lib/directions';
+import { metersFromBuilding } from '@/lib/buildings';
 import { bearingDegrees, distanceMeters, turnAngle } from '@/lib/geo';
 import { currentCompass, onFix, type Fix } from '@/lib/location';
 import { createMotionTracker, isOnFoot, ON_FOOT_MAX_MPS, RIDING_MAX_MPS, type MotionState } from '@/lib/motion';
@@ -58,6 +59,10 @@ const WALK_FOLLOW_ZOOM = 18;
 // Arriving takes two fixes in a row, and "near the building" only counts on a fix this accurate.
 const ARRIVAL_FIXES = 2;
 const ARRIVAL_ACCURACY_METERS = 30;
+// Indoors the fix is rough and jumps around, so standing within the destination's walls counts as arriving on its own.
+const INSIDE_BUILDING_METERS = 8;
+const INDOOR_ACCURACY_METERS = 150;
+const INSIDE_FIXES = 2;
 // A fix that would mean moving faster than this since the last good one is a GPS jump, not the traveller.
 const MAX_BELIEVABLE_MPS: Record<TravelMode, number> = { walk: 12, bike: 20, drive: 60 };
 // A walk or bike ride that started on streets switches to the campus paths once the traveller is on them.
@@ -135,6 +140,7 @@ export function useNavigation({ destination, avoidStairs, follow, facingUp }: Op
   // After driving right up to the place, the trip to the offered lot, started if the driver says yes.
   const parkingTrip = useRef<Route | null>(null);
   const arrivalCount = useRef(0);
+  const insideCount = useRef(0);
   const onCampusCount = useRef(0);
   const lastGood = useRef<{ position: Coordinate; at: number } | null>(null);
   // Where guidance last placed the traveller: their fix, or the step they are on when following by hand.
@@ -482,7 +488,16 @@ export function useNavigation({ destination, avoidStairs, follow, facingUp }: Op
       const nearDestination =
         accuracy <= ARRIVAL_ACCURACY_METERS && distanceMeters(position, target.coordinate) <= NEAR_DESTINATION_METERS;
       arrivalCount.current = trusted && !holding && ((reachedEntrance && onTheRoute) || nearDestination) ? arrivalCount.current + 1 : 0;
-      const arrived = arrivalCount.current >= ARRIVAL_FIXES;
+      // Nobody rides a bus inside a building, so this skips the riding check that indoor jumps can trip.
+      const fromWalls = metersFromBuilding(position, target.id);
+      const insideTarget =
+        (!travel || travel === 'walk') &&
+        accuracy <= INDOOR_ACCURACY_METERS &&
+        (fromWalls !== undefined
+          ? fromWalls <= INSIDE_BUILDING_METERS
+          : distanceMeters(position, target.coordinate) <= NEAR_DESTINATION_METERS);
+      insideCount.current = insideTarget ? insideCount.current + 1 : 0;
+      const arrived = arrivalCount.current >= ARRIVAL_FIXES || insideCount.current >= INSIDE_FIXES;
       if (arrived) {
         nav.current = { ...nav.current, arrived: true, previous: null };
         setHasArrived(true);
@@ -514,6 +529,7 @@ export function useNavigation({ destination, avoidStairs, follow, facingUp }: Op
     parkingTrip.current = null;
     riding.current = false;
     arrivalCount.current = 0;
+    insideCount.current = 0;
     onCampusCount.current = 0;
     lastGood.current = null;
     lastPoint.current = null;

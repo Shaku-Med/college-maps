@@ -58,7 +58,11 @@ You need Node 22, and an editor like VS Code helps because `campus.json` has a s
 
    ```bash
    npm run campus:paths
+   npm run campus:outlines
+   npm run campus:art
    ```
+
+   `campus:outlines` saves each building's footprint, so arriving counts once someone is inside the building, and `campus:art` draws the walkways for the About page.
 
 5. **Optional: add your college colors** in `theme`.
    - `accent` is your main color, used for buttons, the route line, and selected chips. `accentForeground` is the text on top of it.
@@ -93,6 +97,7 @@ A few things to keep:
 - **Heading and wrong way**: the location dot shows a cone for the direction the phone faces. It uses the compass, iOS asks for permission on the first tap, and it falls back to GPS walking direction. Walking backward along the route shows "Wrong way". Keep going about 30 m and it re-routes. The old route stays on the map as a faded dashed line. Walking onto it or tapping it switches back, routing you to it first if needed.
 - **The map turns with you**: while navigating it faces the way you are going, from the compass when the phone has one and from the direction of travel when it does not. Small wobbles are ignored so it glides rather than twitches. The button next to Recenter switches between that and north up. Touching the map pauses following; about 8 seconds after it comes to rest it glides back to you and follows again, keeping the rotation you chose. Back in browsing, the map always faces north.
 - **Knowing how you move**: every fix feeds a speed tracker (`src/lib/motion.ts`) that tells still, walking, running, riding and driving apart, needing several seconds of steady evidence so one GPS jump or a bus waiting at a light cannot fool it. Walking directions hold still while you ride a bus: no reroutes, no turn calls, no wrong way, just one spoken note, and they pick up from wherever you get off. Spoken warnings come about ten seconds before each turn at whatever speed you are going. While moving fast, the direction of travel is trusted over the compass, since a phone on a bus points anywhere. Reroutes off campus send that heading to the router with a search radius, so on a divided road or a bridge they start on the road you are actually on, not the carriageway beside it or the street underneath. The first instruction also says which way to turn, like "Turn around, then head west".
+- **Arriving indoors**: GPS inside a building is rough and jumpy, and its jumps can look like riding. `src/data/building-outlines.json` holds each building's footprint, and a walk ends once a fix lands within its walls (two in a row when the signal is rough, `src/lib/buildings.ts`), even when the riding check would otherwise hold it back.
 - **Campus or street directions** depend on whether you are inside the area the campus paths cover (`map.walkingArea`), not on a distance from campus, so someone on a nearby highway gets street directions instead of a campus walk that cannot reach them.
 - **Getting going without every permission**: the compass is only ever asked for once a location is in hand, because phones show one permission dialog at a time and drop the rest, which used to leave the web app unable to start unless it was installed. A rough position is enough to set off, and a timeout or lost signal is retried instead of ending navigation. With no location at all, pick a starting building and follow the steps by tapping through them; the moment a location arrives, live guidance takes over.
 - **Off campus** there is no campus path to follow, so directions come from OpenStreetMap's free public Valhalla server by drive, walk, or bike (`src/lib/directions.ts`). The browser calls it directly with `X-Client-Id: csimap`, and the map lets go of the campus edges while a street route shows.
@@ -107,6 +112,8 @@ A few things to keep:
 | --- | --- |
 | `npm run campus:places` | Drafts places for your campus from OpenStreetMap |
 | `npm run campus:paths` | Rebuilds the walking path graph |
+| `npm run campus:outlines` | Saves each building's footprint from OpenStreetMap, for arriving indoors |
+| `npm run campus:art` | Draws the walkways and a few real walks for the About page |
 | `npm run campus:icons` | Generates favicon and app icons from `campus/icon.svg` |
 | `npm run campus:sync` | Copies `campus.json` into the backend (also runs on every build) |
 | `npm run typecheck` | TypeScript check |

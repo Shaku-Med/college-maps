@@ -14,7 +14,8 @@
     "campus:paths": "node scripts/build-walk-graph.mjs",
     "campus:sync": "node scripts/sync-backend-campus.mjs",
     "campus:icons": "node scripts/build-icons.mjs",
-    "campus:art": "node scripts/build-campus-art.mjs"
+    "campus:art": "node scripts/build-campus-art.mjs",
+    "campus:outlines": "node scripts/build-building-outlines.mjs"
   },
   "dependencies": {
     "@heroui/react": "^3.2.6",
