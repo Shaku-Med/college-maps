@@ -27,7 +27,7 @@ npx eas-cli@latest build --platform ios --profile production --auto-submit
 **Live updates** to TestFlight builds, without a new build:
 
 ```bash
-npx eas-cli@latest update --channel production --message "What changed"
+npx eas-cli@latest update --channel production --environment production --message "What changed"
 ```
 
 The app downloads it on the next launch and uses it the launch after, or right away from More, Check for updates.
