@@ -266,6 +266,13 @@ export default function AccountScreen() {
           <SectionTitle>Legal</SectionTitle>
           <ListGroup>
             <Row
+              symbol="info"
+              title={`About ${CAMPUS.app.name}`}
+              description="What it does and where it runs"
+              onPress={() => void openWeb('/about')}
+            />
+            <Separator className="mx-4" />
+            <Row
               symbol="hand.raised"
               title="Privacy policy"
               description="What we store and how location is used"

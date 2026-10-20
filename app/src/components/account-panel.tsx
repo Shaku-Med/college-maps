@@ -1,7 +1,7 @@
 "use client";
 
 import { AlertDialog, Button, CloseButton, Input, InputOTP, Label, Spinner, Surface, Switch, TextField, toast } from "@heroui/react";
-import { ArrowLeft, AtSign, Bell, ChevronRight, Download, FileText, Layers, Lock, LogOut, Mail, MessageSquareWarning, MonitorSmartphone, Pencil, Shield, Trash2, UserRound } from "lucide-react";
+import { ArrowLeft, AtSign, Bell, ChevronRight, Download, FileText, Info, Layers, Lock, LogOut, Mail, MessageSquareWarning, MonitorSmartphone, Pencil, Shield, Trash2, UserRound } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 
@@ -693,6 +693,18 @@ function PrivacyRow() {
         <div className="min-w-0 flex-1">
           <p className="text-sm font-medium">Report a problem</p>
           <p className="text-sm text-muted">Something broken, a wrong place, or an idea</p>
+        </div>
+        <ChevronRight className="size-4 shrink-0 text-muted" aria-hidden />
+      </Link>
+      <Link
+        href="/about"
+        className="flex items-center gap-3 rounded-2xl border border-separator px-4 py-3.5 text-left outline-none transition-colors hover:bg-surface-secondary focus-visible:ring-2 focus-visible:ring-accent">
+        <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-accent-soft text-accent-soft-foreground">
+          <Info className="size-4" aria-hidden />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-medium">About {CAMPUS.app.name}</p>
+          <p className="text-sm text-muted">What it does and where it runs</p>
         </div>
         <ChevronRight className="size-4 shrink-0 text-muted" aria-hidden />
       </Link>

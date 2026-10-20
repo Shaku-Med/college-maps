@@ -13,7 +13,8 @@
     "campus:places": "node scripts/import-osm-places.mjs",
     "campus:paths": "node scripts/build-walk-graph.mjs",
     "campus:sync": "node scripts/sync-backend-campus.mjs",
-    "campus:icons": "node scripts/build-icons.mjs"
+    "campus:icons": "node scripts/build-icons.mjs",
+    "campus:art": "node scripts/build-campus-art.mjs"
   },
   "dependencies": {
     "@heroui/react": "^3.2.6",
