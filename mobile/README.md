@@ -74,6 +74,19 @@ to it. To try a local engine page in a development build, put `EXPO_PUBLIC_VOICE
 in `mobile/.env.local` and run `adb reverse tcp:3000 tcp:3000` on Android. Release builds always use the live
 site.
 
+## Driving and walking switch
+
+On a trip from off campus, the app switches between driving and walking directions when someone gets out of a
+car or bus, or gets picked up mid walk (`src/lib/travel-switch.ts`, shared with the website). It goes by steps
+from the phone's pedometer (`expo-sensors`, `src/lib/steps.ts`) and by speed: steps at walking or jogging pace
+mean on foot, so a slow crawl in traffic does not count, and a fast pace with no steps means a vehicle. The
+evidence has to hold for 15 to 20 seconds, and after a switch the next one waits a minute. Steps are only
+counted during a street trip with the switch on, which is when iOS asks for Motion & Fitness and Android for
+physical activity. The pedometer goes quiet in the background, so with the phone locked it goes by speed
+alone until the app is open again. A toast offers Undo, which also stops switching for the rest of that trip. It is on by
+default and can be turned off in Account, Directions. Builds from before this was added get it as an update
+without the pedometer and go by speed alone, like the website, with longer waits.
+
 ## Rating prompt
 
 After someone's third walk that reaches its destination, at least three days after their first, the app hands the
@@ -118,6 +131,8 @@ Before submitting:
 4. App Privacy answers: email address and user id (linked to the user, for app functionality), precise
    location (not stored, used for app functionality and shared live only inside meetups), other user content
    (event titles and notes). No tracking. Siri requests stay on the phone and send nothing to the server.
+   Step counts (Motion & Fitness) are read on the phone during a street trip to switch between driving and
+   walking, and never leave it, so they are not "collected" data.
 
 5. On the App Store page, the "Supports" details come from the build on their own. Say what Siri can do in the
    description, so people know to ask:

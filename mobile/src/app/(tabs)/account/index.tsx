@@ -216,6 +216,14 @@ export default function AccountScreen() {
               onChange={(next) => setDevicePref('keepAwake', next)}
             />
             <Separator className="mx-4" />
+            <ToggleRow
+              symbol="car.fill"
+              title="Switch between driving and walking"
+              description="Uses your steps and speed, so a bus stop or traffic doesn't fool it"
+              value={device.autoTravel}
+              onChange={(next) => setDevicePref('autoTravel', next)}
+            />
+            <Separator className="mx-4" />
             {Platform.OS === 'ios' ? (
               <>
                 <ToggleRow

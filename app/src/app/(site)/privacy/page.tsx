@@ -99,6 +99,13 @@ export default function PrivacyPage() {
           lines are saved on your device so they play instantly next time. In the app, Remove downloaded
           voices deletes the model and every saved line.
         </p>
+        <p className="text-sm leading-relaxed text-muted">
+          On a trip from off campus, the app can switch between driving and walking directions when you get
+          out of a car or bus, or get picked up. To tell the two apart, the phone app counts your steps
+          during that trip, with your permission, and the website goes by your speed. Steps are only used
+          on your device while the trip runs. They are never saved or sent anywhere. You can turn the
+          switch off in Account.
+        </p>
       </section>
 
       <section className="flex flex-col gap-3">

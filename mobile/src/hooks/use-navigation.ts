@@ -5,6 +5,7 @@ import { walkGraph } from '@/data/walk-graph';
 import type { RouteNotice } from '@/hooks/use-voice-guidance';
 import { fetchTripRoute } from '@/lib/directions';
 import { metersFromBuilding } from '@/lib/buildings';
+import { getDevicePrefs } from '@/lib/device-prefs';
 import { bearingDegrees, distanceMeters, turnAngle } from '@/lib/geo';
 import { currentCompass, onFix, type Fix } from '@/lib/location';
 import { createMotionTracker, isOnFoot, ON_FOOT_MAX_MPS, RIDING_MAX_MPS, type MotionState } from '@/lib/motion';
@@ -28,6 +29,8 @@ import {
   type TravelMode,
   type WalkGraph,
 } from '@/lib/routing';
+import { currentSteps } from '@/lib/steps';
+import { canSwitchTravel, createTravelSwitch, type SwitchableTravel } from '@/lib/travel-switch';
 
 // These match the web app's map-app.tsx, so a walk is guided the same way on the phone and in a browser.
 const ARRIVAL_METERS = 15;
@@ -106,6 +109,8 @@ export function useNavigation({ destination, avoidStairs, follow, facingUp }: Op
   const [shownAt, setShownAt] = useState<Coordinate | null>(null);
   /** A parking choice shown on the map while driving. */
   const [parking, setParking] = useState<ParkingPrompt | null>(null);
+  /** The trip just switched between driving and walking on its own. */
+  const [travelSwitched, setTravelSwitched] = useState<{ to: SwitchableTravel; at: number } | null>(null);
 
   const nav = useRef({
     active: false,
@@ -141,6 +146,9 @@ export function useNavigation({ destination, avoidStairs, follow, facingUp }: Op
   const parkingTrip = useRef<Route | null>(null);
   const arrivalCount = useRef(0);
   const insideCount = useRef(0);
+  const travelSwitch = useRef(createTravelSwitch());
+  // Someone who undoes a switch has said how they travel, so this trip stops switching on its own.
+  const travelSwitchOff = useRef(false);
   const onCampusCount = useRef(0);
   const lastGood = useRef<{ position: Coordinate; at: number } | null>(null);
   // Where guidance last placed the traveller: their fix, or the step they are on when following by hand.
@@ -228,10 +236,15 @@ export function useNavigation({ destination, avoidStairs, follow, facingUp }: Op
     (
       position: Coordinate,
       asked = false,
-      choice?: { parkAt?: string | null; skipLots?: readonly string[]; onRoute?: (chosen: Route) => void },
+      choice?: {
+        parkAt?: string | null;
+        skipLots?: readonly string[];
+        travel?: TravelMode;
+        onRoute?: (chosen: Route) => void;
+      },
     ) => {
       const { route: leaving, destination: target, avoidStairs: stairs } = nav.current;
-      const travel = leaving?.travel;
+      const travel = choice?.travel ?? leaving?.travel;
       const state = streetReroute.current;
       if (!leaving || !travel || !target) return;
       // Someone tapping a choice gets an answer now; only automatic reroutes wait between tries.
@@ -260,6 +273,23 @@ export function useNavigation({ destination, avoidStairs, follow, facingUp }: Op
         });
     },
     [commit, travelHeading],
+  );
+
+  // A fresh street route for the new way of travel, from where the traveller is now.
+  const switchTravel = useCallback(
+    (position: Coordinate, to: SwitchableTravel, onRoute?: () => void) => {
+      rerouteStreet(position, true, {
+        travel: to,
+        parkAt: undefined,
+        onRoute: () => {
+          showParking(null);
+          missedLots.current.reset();
+          parkingOffered.current = to === 'walk';
+          onRoute?.();
+        },
+      });
+    },
+    [rerouteStreet, showParking],
   );
 
   // Driving right up to the place, then needing a lot: the trip there is ready before the card asks.
@@ -329,6 +359,11 @@ export function useNavigation({ destination, avoidStairs, follow, facingUp }: Op
       if (nowRiding !== riding.current) {
         riding.current = nowRiding;
         setIsRiding(nowRiding);
+      }
+      // Getting off a bus mid trip, or picked up mid walk, swaps the street route to match.
+      if (canSwitchTravel(travel) && !travelSwitchOff.current && getDevicePrefs().autoTravel) {
+        const to = travelSwitch.current.update({ at: Date.now(), speed: state.speed, steps: currentSteps() }, travel);
+        if (to) switchTravel(position, to, () => setTravelSwitched({ to, at: Date.now() }));
       }
       const fastest = Math.max(state.speed, reported ?? 0);
       const holding =
@@ -510,7 +545,7 @@ export function useNavigation({ destination, avoidStairs, follow, facingUp }: Op
       setShownAt(shown);
       if (nav.current.following) follow(followTarget(shown, travel));
     },
-    [commit, facing, follow, followTarget, offerParkingHere, rerouteStreet, showNotice, showParking],
+    [commit, facing, follow, followTarget, offerParkingHere, rerouteStreet, showNotice, showParking, switchTravel],
   );
 
   useEffect(() => onFix(handleFix), [handleFix]);
@@ -530,6 +565,9 @@ export function useNavigation({ destination, avoidStairs, follow, facingUp }: Op
     riding.current = false;
     arrivalCount.current = 0;
     insideCount.current = 0;
+    travelSwitch.current.reset();
+    travelSwitchOff.current = false;
+    setTravelSwitched(null);
     onCampusCount.current = 0;
     lastGood.current = null;
     lastPoint.current = null;
@@ -663,6 +701,18 @@ export function useNavigation({ destination, avoidStairs, follow, facingUp }: Op
     [],
   );
 
+  /** Goes back to how the trip was travelling before it switched, and stops switching for the rest of it. */
+  const undoTravelSwitch = useCallback(() => {
+    const current = nav.current.route?.travel;
+    const at = latestFix.current?.position ?? lastPoint.current;
+    travelSwitchOff.current = true;
+    setTravelSwitched(null);
+    if (!canSwitchTravel(current) || !at) return null;
+    const back: SwitchableTravel = current === 'walk' ? 'drive' : 'walk';
+    switchTravel(at, back);
+    return back;
+  }, [switchTravel]);
+
   /** Keeps the lot on the card. */
   const keepParking = useCallback(() => showParking(null), [showParking]);
 
@@ -703,6 +753,8 @@ export function useNavigation({ destination, avoidStairs, follow, facingUp }: Op
     hasArrived,
     notice,
     isRiding,
+    travelSwitched,
+    undoTravelSwitch,
     isFollowing,
     manualStep,
     parking,

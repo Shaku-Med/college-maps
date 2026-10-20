@@ -31,6 +31,8 @@ import { campusActivityByPlace, eventsAtPlace } from "@/lib/campus-activity";
 import { MAP_FILTERS, type MapFilter } from "@/lib/categories";
 import { fetchTripRoute } from "@/lib/directions";
 import { metersFromBuilding } from "@/lib/buildings";
+import { autoTravelOn } from "@/lib/travel-prefs";
+import { canSwitchTravel, createTravelSwitch, type SwitchableTravel } from "@/lib/travel-switch";
 import { bearingDegrees, distanceMeters, turnAngle } from "@/lib/geo";
 import { ON_FOOT_MAX_MPS, RIDING_MAX_MPS, createMotionTracker, isOnFoot, type MotionState } from "@/lib/motion";
 import {
@@ -339,6 +341,10 @@ export function MapApp({ initialPlaceId, initialRoom, initialAccountOpen = false
   const progressHintRef = useRef(0);
   const offRouteCountRef = useRef(0);
   const insideFixesRef = useRef(0);
+  const travelSwitchRef = useRef(createTravelSwitch());
+  // Someone who undoes a switch has said how they travel, so this trip stops switching on its own.
+  const travelSwitchOffRef = useRef(false);
+  const [travelSwitched, setTravelSwitched] = useState<{ to: SwitchableTravel; at: number } | null>(null);
   const otherWalkwayCountRef = useRef(0);
   const lastRecheckRef = useRef({ at: 0, along: 0 });
   const noticeTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -413,11 +419,16 @@ export function MapApp({ initialPlaceId, initialRoom, initialAccountOpen = false
     (
       position: Coordinate,
       asked = false,
-      choice?: { parkAt?: string | null; skipLots?: readonly string[]; onRoute?: (chosen: Route) => void },
+      choice?: {
+        parkAt?: string | null;
+        skipLots?: readonly string[];
+        travel?: TravelMode;
+        onRoute?: (chosen: Route) => void;
+      },
     ) => {
       const nav = navRef.current;
       const leaving = nav.navRoute;
-      const travel = leaving?.travel;
+      const travel = choice?.travel ?? leaving?.travel;
       const state = streetRerouteRef.current;
       if (!leaving || !travel || !nav.destination) return;
       // Someone tapping a choice gets an answer now; only automatic reroutes wait between tries.
@@ -451,6 +462,22 @@ export function MapApp({ initialPlaceId, initialRoom, initialAccountOpen = false
         });
     },
     [commitRoute, travelHeading],
+  );
+
+  // A fresh street route for the new way of travel, from where the traveller is now.
+  const switchTravel = useCallback(
+    (position: Coordinate, to: SwitchableTravel, onRoute?: () => void) => {
+      rerouteStreet(position, true, {
+        travel: to,
+        parkAt: undefined,
+        onRoute: () => {
+          setTravelMode(to);
+          showParking(null);
+          onRoute?.();
+        },
+      });
+    },
+    [rerouteStreet, showParking],
   );
 
   // Driving right up to the place, then needing a lot: the trip there is ready before the card asks.
@@ -526,6 +553,11 @@ export function MapApp({ initialPlaceId, initialRoom, initialAccountOpen = false
       if (riding !== ridingRef.current) {
         ridingRef.current = riding;
         setIsRiding(riding);
+      }
+      // Getting off a bus mid trip, or picked up mid walk, swaps the street route to match. Browsers count no steps.
+      if (canSwitchTravel(travel) && !travelSwitchOffRef.current && autoTravelOn()) {
+        const to = travelSwitchRef.current.update({ at: Date.now(), speed: motionState.speed }, travel);
+        if (to) switchTravel(position, to, () => setTravelSwitched({ to, at: Date.now() }));
       }
       // Being sure someone is riding takes a few seconds.
       const fastest = Math.max(motionState.speed, speed ?? 0);
@@ -730,7 +762,7 @@ export function MapApp({ initialPlaceId, initialRoom, initialAccountOpen = false
         mapRef.current?.follow(shown, navigationPadding(), zoom);
       }
     },
-    [setCourse, rerouteStreet, facing, commitRoute, showParking, offerParkingHere],
+    [setCourse, rerouteStreet, facing, commitRoute, showParking, offerParkingHere, switchTravel],
   );
 
   const handleGeoError = useCallback((status: "denied" | "unavailable" | "error") => {
@@ -767,6 +799,27 @@ export function MapApp({ initialPlaceId, initialRoom, initialAccountOpen = false
   });
   const primeVoice = voice.prime;
   const sayLine = voice.say;
+
+  const announcedSwitchRef = useRef(0);
+  useEffect(() => {
+    if (!travelSwitched || announcedSwitchRef.current === travelSwitched.at) return;
+    announcedSwitchRef.current = travelSwitched.at;
+    const walking = travelSwitched.to === "walk";
+    sayLine(walking ? "Switching to walking directions." : "Switching to driving directions.");
+    const id = toast.info(walking ? "Switched to walking" : "Switched to driving", {
+      description: walking ? "Looks like you got out and are on foot." : "Looks like you are in a vehicle now.",
+      timeout: 10_000,
+      actionProps: {
+        children: "Undo",
+        onPress: () => {
+          toast.close(id);
+          travelSwitchOffRef.current = true;
+          const at = latestFixRef.current;
+          if (at) switchTravel(at, walking ? "drive" : "walk");
+        },
+      },
+    });
+  }, [travelSwitched, sayLine, switchTravel]);
   // Each parking card is read out once, as it appears.
   useEffect(() => {
     if (parking) sayLine(parkingSpoken(parking));
@@ -1161,6 +1214,8 @@ export function MapApp({ initialPlaceId, initialRoom, initialAccountOpen = false
     progressHintRef.current = 0;
     offRouteCountRef.current = 0;
     insideFixesRef.current = 0;
+    travelSwitchRef.current.reset();
+    travelSwitchOffRef.current = false;
     otherWalkwayCountRef.current = 0;
     maxAlongRef.current = 0;
     lastRecheckRef.current = { at: Date.now(), along: 0 };

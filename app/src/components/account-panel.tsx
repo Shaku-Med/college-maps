@@ -1,7 +1,7 @@
 "use client";
 
 import { AlertDialog, Button, CloseButton, Input, InputOTP, Label, Spinner, Surface, Switch, TextField, toast } from "@heroui/react";
-import { ArrowLeft, AtSign, Bell, ChevronRight, Download, FileText, Info, Layers, Lock, LogOut, Mail, MessageSquareWarning, MonitorSmartphone, Pencil, Shield, Trash2, UserRound } from "lucide-react";
+import { ArrowLeft, AtSign, Bell, Car, ChevronRight, Download, FileText, Info, Layers, Lock, LogOut, Mail, MessageSquareWarning, MonitorSmartphone, Pencil, Shield, Trash2, UserRound } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 
@@ -10,6 +10,7 @@ import { CollapseButton, SheetGrabber } from "@/components/sheet-chrome";
 import { VoicePicker } from "@/components/voice-picker";
 import type { AccountState } from "@/hooks/use-account";
 import { useLiquidGlass } from "@/hooks/use-liquid-glass";
+import { setAutoTravel, useAutoTravel } from "@/lib/travel-prefs";
 import {
   CODE_LENGTH,
   MAX_EMAIL_LENGTH,
@@ -64,6 +65,7 @@ export function AccountPanel({
   const settingRows = (
     <>
       <VoicePicker voice={voice} savedTo={voiceSavedTo} onChoose={onChooseVoice} />
+      <AutoTravelSetting />
       <LiquidGlassSetting />
     </>
   );
@@ -122,6 +124,28 @@ export function AccountPanel({
         ) : null}
       </div>
     </Surface>
+  );
+}
+
+function AutoTravelSetting() {
+  const on = useAutoTravel();
+  return (
+    <div className="flex items-center gap-3 rounded-2xl border border-separator px-4 py-3.5">
+      <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-accent-soft text-accent-soft-foreground">
+        <Car className="size-4" aria-hidden />
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-medium">Switch between driving and walking</p>
+        <p className="text-sm text-muted">On a trip from off campus, getting out or getting picked up switches the route.</p>
+      </div>
+      <Switch isSelected={on} onChange={setAutoTravel} aria-label="Switch between driving and walking">
+        <Switch.Content>
+          <Switch.Control>
+            <Switch.Thumb />
+          </Switch.Control>
+        </Switch.Content>
+      </Switch>
+    </div>
   );
 }
 

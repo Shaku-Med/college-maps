@@ -1,10 +1,10 @@
 import { useSyncExternalStore } from 'react';
 
 /** Choices kept on this phone, not with the account. */
-export type DevicePrefs = { keepAwake: boolean; siri: boolean };
+export type DevicePrefs = { keepAwake: boolean; siri: boolean; autoTravel: boolean };
 
 const KEY = 'csimap.device';
-const DEFAULTS: DevicePrefs = { keepAwake: true, siri: true };
+const DEFAULTS: DevicePrefs = { keepAwake: true, siri: true, autoTravel: true };
 const listeners = new Set<() => void>();
 
 function load(): DevicePrefs {
@@ -13,6 +13,7 @@ function load(): DevicePrefs {
     return {
       keepAwake: typeof saved.keepAwake === 'boolean' ? saved.keepAwake : DEFAULTS.keepAwake,
       siri: typeof saved.siri === 'boolean' ? saved.siri : DEFAULTS.siri,
+      autoTravel: typeof saved.autoTravel === 'boolean' ? saved.autoTravel : DEFAULTS.autoTravel,
     };
   } catch {
     return { ...DEFAULTS };

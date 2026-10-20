@@ -88,6 +88,12 @@
     "plugins": [
       "expo-router",
       [
+        "expo-sensors",
+        {
+          "motionPermission": "CSI Map counts your steps during directions to tell walking from riding, so it can switch between driving and walking routes. Your steps stay on this phone."
+        }
+      ],
+      [
         "expo-splash-screen",
         {
           "backgroundColor": "#1268D2",

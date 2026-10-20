@@ -49,6 +49,8 @@ import { stepText } from '@/lib/instructions';
 import { endTrip, showTrip } from '@/lib/live-activity';
 import { currentCompass, currentFix, subscribeCompass, useLocation } from '@/lib/location';
 import { parkingSpoken } from '@/lib/parking';
+import { watchSteps } from '@/lib/steps';
+import { canSwitchTravel } from '@/lib/travel-switch';
 import { askForRating, finishedWalk } from '@/lib/rating';
 import { roomDirections } from '@/lib/search';
 import { legSeconds, stopsStart } from '@/lib/stops';
@@ -65,6 +67,7 @@ import {
   removeStop,
   setAvoidStairs,
   setStopsContext,
+  setTravelMode,
   startNavigating,
   useTrip,
 } from '@/lib/trip';
@@ -356,7 +359,33 @@ export default function MapScreen() {
   useEffect(() => (directionsOpen ? holdVoice() : undefined), [directionsOpen]);
 
   // The screen stays on while guiding when the user leaves Keep awake on (Account → Directions).
-  const keepAwake = useDevicePrefs().keepAwake;
+  const { keepAwake, autoTravel } = useDevicePrefs();
+
+  // Steps are only counted on a street trip with the driving and walking switch on, which is when they matter.
+  const streetTrip = navigating && canSwitchTravel(navigation.route?.travel);
+  useEffect(() => (streetTrip && autoTravel ? watchSteps() : undefined), [streetTrip, autoTravel]);
+
+  const travelSwitched = navigation.travelSwitched;
+  const undoTravelSwitch = navigation.undoTravelSwitch;
+  const announcedSwitch = useRef(0);
+  useEffect(() => {
+    if (!travelSwitched || announcedSwitch.current === travelSwitched.at) return;
+    announcedSwitch.current = travelSwitched.at;
+    const walking = travelSwitched.to === 'walk';
+    setTravelMode(travelSwitched.to);
+    sayLine(walking ? 'Switching to walking directions.' : 'Switching to driving directions.');
+    toast.show({
+      label: walking ? 'Switched to walking' : 'Switched to driving',
+      description: walking ? 'Looks like you got out and are on foot.' : 'Looks like you are in a vehicle now.',
+      duration: 10_000,
+      actionLabel: 'Undo',
+      onActionPress: ({ hide }) => {
+        hide();
+        const back = undoTravelSwitch();
+        if (back) setTravelMode(back);
+      },
+    });
+  }, [travelSwitched, undoTravelSwitch, sayLine, toast]);
   useEffect(() => {
     if (!navigating || !keepAwake) return;
     void activateKeepAwakeAsync('navigation');
