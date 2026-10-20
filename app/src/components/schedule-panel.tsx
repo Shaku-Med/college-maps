@@ -13,7 +13,7 @@ import {
   ToggleButtonGroup,
   toast,
 } from "@heroui/react";
-import { AlertTriangle, CalendarClock, ClipboardPaste, Navigation, Plus, Trash2 } from "lucide-react";
+import { AlertTriangle, CalendarClock, ChevronRight, ClipboardPaste, Navigation, Plus, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { CAMPUS, getPlace, type Coordinate } from "@/data/campus";
@@ -43,6 +43,19 @@ import { parseRoomCode } from "@/lib/search";
 const BUFFER_MINUTES = 3;
 const NEARBY_METERS = 2500;
 const WEEKDAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+const DAY_NAMES: Record<Day, string> = {
+  mon: "Monday",
+  tue: "Tuesday",
+  wed: "Wednesday",
+  thu: "Thursday",
+  fri: "Friday",
+  sat: "Saturday",
+  sun: "Sunday",
+};
+
+function timeInput(minutes: number) {
+  return `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
+}
 
 type SchedulePanelProps = {
   classes: ClassEntry[];
@@ -54,7 +67,7 @@ type SchedulePanelProps = {
   onClose: () => void;
 };
 
-type View = "overview" | "add" | "paste";
+type View = "overview" | "add" | "paste" | "edit";
 
 function walkMinutes(meters: number) {
   return Math.max(1, Math.round(meters / WALK_SPEED_MPS / 60));
@@ -70,6 +83,8 @@ export function SchedulePanel({
   onClose,
 }: SchedulePanelProps) {
   const [view, setView] = useState<View>("overview");
+  const [editingId, setEditingId] = useState<string>();
+  const [picked, setPicked] = useState<Day>();
   const [now, setNow] = useState(() => new Date());
 
   useEffect(() => {
@@ -77,8 +92,14 @@ export function SchedulePanel({
     return () => clearInterval(timer);
   }, []);
 
-  const today = useMemo(() => classesOn(classes, dayKey(now)), [classes, now]);
   const upcoming = useMemo(() => findUpcoming(classes, now), [classes, now]);
+  const busy = useMemo(() => new Set(DAYS.filter((day) => classesOn(classes, day).length > 0)), [classes]);
+  const todayKey = dayKey(now);
+  // Opens on today, or on the day of the next class when today has none.
+  const firstDay = busy.has(todayKey) || !upcoming ? todayKey : DAYS[(DAYS.indexOf(todayKey) + upcoming.daysAhead) % 7];
+  const day = picked ?? firstDay;
+  const dayEntries = classesOn(classes, day);
+  const editing = classes.find((entry) => entry.id === editingId);
 
   function addClasses(entries: NewClass[]) {
     const room = MAX_CLASSES - classes.length;
@@ -93,7 +114,19 @@ export function SchedulePanel({
   }
 
   function removeClass(id: string) {
+    const removed = classes.find((c) => c.id === id);
     onChange(classes.filter((c) => c.id !== id));
+    if (removed) toast.success(`Removed ${removed.name}`);
+  }
+
+  function saveClass(id: string, entry: NewClass) {
+    onChange(classes.map((c) => (c.id === id ? { ...entry, id } : c)).sort((a, b) => a.start - b.start));
+    toast.success(`Saved ${entry.name}`);
+  }
+
+  function closeForm() {
+    setView("overview");
+    setEditingId(undefined);
   }
 
   return (
@@ -117,15 +150,23 @@ export function SchedulePanel({
 
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-[max(1.25rem,var(--map-safe-bottom))] pt-2">
         {view === "add" ? (
-          <AddClassForm
-            onCancel={() => setView("overview")}
-            onAdd={(entry) => addClasses([entry]) && setView("overview")}
+          <ClassForm title="Add a class" onCancel={closeForm} onSave={(entry) => addClasses([entry]) && closeForm()} />
+        ) : view === "edit" && editing ? (
+          <ClassForm
+            title="Edit class"
+            initial={editing}
+            onCancel={closeForm}
+            onSave={(entry) => {
+              saveClass(editing.id, entry);
+              closeForm();
+            }}
+            onDelete={() => {
+              removeClass(editing.id);
+              closeForm();
+            }}
           />
         ) : view === "paste" ? (
-          <PasteSchedule
-            onCancel={() => setView("overview")}
-            onImport={(entries) => addClasses(entries) && setView("overview")}
-          />
+          <PasteSchedule onCancel={closeForm} onImport={(entries) => addClasses(entries) && closeForm()} />
         ) : (
           <div className="flex flex-col gap-5">
             {upcoming ? (
@@ -146,24 +187,43 @@ export function SchedulePanel({
               </div>
             )}
 
-            {today.length > 0 ? (
-              <section aria-labelledby="today-heading">
-                <h3 id="today-heading" className="pb-2 text-[11px] font-semibold uppercase tracking-wider text-muted">
-                  Today
-                </h3>
-                <ol className="flex flex-col">
-                  {today.map((entry, index) => (
-                    <li key={entry.id}>
-                      {index > 0 ? <WalkGap from={today[index - 1]} to={entry} walkMeters={walkMeters} /> : null}
-                      <ClassRow entry={entry} isPast={entry.end <= minutesOfDay(now)} />
-                    </li>
-                  ))}
-                </ol>
+            {classes.length > 0 ? (
+              <section aria-labelledby="day-heading" className="flex flex-col gap-3">
+                <DayPicker selected={day} today={todayKey} busy={busy} onSelect={setPicked} />
+                <div>
+                  <h3 id="day-heading" className="pb-1 text-[11px] font-semibold uppercase tracking-wider text-muted">
+                    {day === todayKey ? "Today" : DAY_NAMES[day]}
+                    {dayEntries.length > 0
+                      ? ` · ${dayEntries.length} ${dayEntries.length === 1 ? "class" : "classes"}`
+                      : ""}
+                  </h3>
+                  {dayEntries.length === 0 ? (
+                    <p className="rounded-2xl bg-surface-secondary px-4 py-4 text-sm text-muted">
+                      No classes on {DAY_NAMES[day]}.
+                    </p>
+                  ) : (
+                    <ol className="flex flex-col">
+                      {dayEntries.map((entry, index) => (
+                        <li key={entry.id}>
+                          {index > 0 ? <WalkGap from={dayEntries[index - 1]} to={entry} walkMeters={walkMeters} /> : null}
+                          <ClassRow
+                            entry={entry}
+                            isPast={day === todayKey && entry.end <= minutesOfDay(now)}
+                            onEdit={() => {
+                              setEditingId(entry.id);
+                              setView("edit");
+                            }}
+                          />
+                        </li>
+                      ))}
+                    </ol>
+                  )}
+                </div>
               </section>
             ) : null}
 
             <div className="flex gap-2">
-              <Button variant="primary" className="flex-1" onPress={() => setView("add")}>
+              <Button variant={classes.length === 0 ? "primary" : "secondary"} className="flex-1" onPress={() => setView("add")}>
                 <Plus aria-hidden />
                 Add class
               </Button>
@@ -172,31 +232,6 @@ export function SchedulePanel({
                 Paste schedule
               </Button>
             </div>
-
-            {classes.length > 0 ? (
-              <section aria-labelledby="all-heading">
-                <h3 id="all-heading" className="pb-2 text-[11px] font-semibold uppercase tracking-wider text-muted">
-                  All classes
-                </h3>
-                <ul className="flex flex-col gap-1">
-                  {classes.map((entry) => (
-                    <li key={entry.id} className="flex items-center gap-2">
-                      <div className="min-w-0 flex-1">
-                        <ClassRow entry={entry} showDays />
-                      </div>
-                      <Button
-                        isIconOnly
-                        variant="ghost"
-                        size="sm"
-                        aria-label={`Remove ${entry.name}`}
-                        onPress={() => removeClass(entry.id)}>
-                        <Trash2 aria-hidden />
-                      </Button>
-                    </li>
-                  ))}
-                </ul>
-              </section>
-            ) : null}
           </div>
         )}
       </div>
@@ -268,9 +303,56 @@ function NextClassCard({ upcoming, now, userPosition, walkMeters, onDirections }
   );
 }
 
-function ClassRow({ entry, isPast, showDays }: { entry: ClassEntry; isPast?: boolean; showDays?: boolean }) {
+function DayPicker({
+  selected,
+  today,
+  busy,
+  onSelect,
+}: {
+  selected: Day;
+  today: Day;
+  busy: ReadonlySet<Day>;
+  onSelect: (day: Day) => void;
+}) {
   return (
-    <div className={`flex items-center gap-3 rounded-xl py-2 ${isPast ? "opacity-50" : ""}`}>
+    <div role="tablist" aria-label="Day of the week" className="grid grid-cols-7 gap-1">
+      {DAYS.map((day) => {
+        const on = day === selected;
+        return (
+          <button
+            key={day}
+            type="button"
+            role="tab"
+            aria-selected={on}
+            aria-label={`${DAY_NAMES[day]}${day === today ? ", today" : ""}${busy.has(day) ? ", has classes" : ""}`}
+            onClick={() => onSelect(day)}
+            className={`flex flex-col items-center gap-1 rounded-xl py-2 text-xs outline-none transition-colors focus-visible:ring-2 focus-visible:ring-accent ${
+              on
+                ? "bg-accent-soft font-semibold text-accent-soft-foreground"
+                : day === today
+                  ? "font-semibold text-foreground hover:bg-surface-secondary"
+                  : "text-muted hover:bg-surface-secondary"
+            }`}>
+            {DAY_SHORT[day]}
+            <span
+              aria-hidden
+              className={`size-1 rounded-full ${busy.has(day) ? (on ? "bg-accent-soft-foreground" : "bg-muted") : "bg-transparent"}`}
+            />
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function ClassRow({ entry, isPast, onEdit }: { entry: ClassEntry; isPast?: boolean; onEdit: () => void }) {
+  const place = getPlace(entry.placeId);
+  return (
+    <button
+      type="button"
+      onClick={onEdit}
+      aria-label={`Edit ${entry.name}`}
+      className={`group -mx-2 flex w-[calc(100%+1rem)] items-center gap-3 rounded-xl px-2 py-2 text-left outline-none transition-colors hover:bg-surface-secondary focus-visible:ring-2 focus-visible:ring-accent ${isPast ? "opacity-50" : ""}`}>
       <div className="w-[4.5rem] shrink-0 text-xs tabular-nums text-muted">
         <div className="font-medium text-foreground">{formatClock(entry.start)}</div>
         <div>{formatClock(entry.end)}</div>
@@ -279,10 +361,11 @@ function ClassRow({ entry, isPast, showDays }: { entry: ClassEntry; isPast?: boo
         <p className="truncate text-sm font-medium">{entry.name}</p>
         <p className="truncate text-xs text-muted">
           {entry.placeId}-{entry.room}
-          {showDays ? ` · ${formatDays(entry.days)}` : ""}
+          {place ? ` · ${place.name}` : ""}
         </p>
       </div>
-    </div>
+      <ChevronRight className="size-4 shrink-0 text-muted opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100" aria-hidden />
+    </button>
   );
 }
 
@@ -321,12 +404,24 @@ function WalkGap({
   );
 }
 
-function AddClassForm({ onAdd, onCancel }: { onAdd: (entry: NewClass) => void; onCancel: () => void }) {
-  const [name, setName] = useState("");
-  const [roomCode, setRoomCode] = useState("");
-  const [days, setDays] = useState<Day[]>([]);
-  const [start, setStart] = useState("");
-  const [end, setEnd] = useState("");
+function ClassForm({
+  title,
+  initial,
+  onSave,
+  onCancel,
+  onDelete,
+}: {
+  title: string;
+  initial?: ClassEntry;
+  onSave: (entry: NewClass) => void;
+  onCancel: () => void;
+  onDelete?: () => void;
+}) {
+  const [name, setName] = useState(initial?.name ?? "");
+  const [roomCode, setRoomCode] = useState(initial ? `${initial.placeId}-${initial.room}` : "");
+  const [days, setDays] = useState<Day[]>(initial?.days ?? []);
+  const [start, setStart] = useState(initial ? timeInput(initial.start) : "");
+  const [end, setEnd] = useState(initial ? timeInput(initial.end) : "");
   const [error, setError] = useState<string>();
 
   function submit() {
@@ -350,7 +445,7 @@ function AddClassForm({ onAdd, onCancel }: { onAdd: (entry: NewClass) => void; o
       end: endMinutes,
     });
     if (!entry) return setError("Something in this class looks off. Check each field.");
-    onAdd(entry);
+    onSave(entry);
   }
 
   return (
@@ -360,6 +455,7 @@ function AddClassForm({ onAdd, onCancel }: { onAdd: (entry: NewClass) => void; o
         event.preventDefault();
         submit();
       }}>
+      <h3 className="text-base font-semibold">{title}</h3>
       <TextField value={name} onChange={(value) => setName(value.slice(0, MAX_CLASS_NAME))} isRequired fullWidth>
         <Label>Class</Label>
         <Input placeholder="BIO 170" maxLength={MAX_CLASS_NAME} autoComplete="off" />
@@ -416,6 +512,12 @@ function AddClassForm({ onAdd, onCancel }: { onAdd: (entry: NewClass) => void; o
           Cancel
         </Button>
       </div>
+      {onDelete ? (
+        <Button variant="ghost" className="text-danger" onPress={onDelete}>
+          <Trash2 aria-hidden />
+          Delete class
+        </Button>
+      ) : null}
     </form>
   );
 }

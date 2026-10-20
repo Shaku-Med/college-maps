@@ -1,9 +1,11 @@
 import * as Haptics from 'expo-haptics';
 import { router, Stack } from 'expo-router';
-import { Button, Card, ListGroup, Separator, useThemeColor } from 'heroui-native';
+import { Button, Card, cn, ListGroup, Separator, useThemeColor } from 'heroui-native';
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { ScrollView, Text, View } from 'react-native';
 
+import { ActionRow } from '@/components/action-row';
+import { DayStrip } from '@/components/day-strip';
 import { Icon } from '@/components/icon';
 import { EmptyState, SectionTitle } from '@/components/section';
 import { StackLinkedItem } from '@/components/stack-linked-item';
@@ -11,10 +13,9 @@ import { CAMPUS, getPlace } from '@/data/campus';
 import { useLinkedParam } from '@/hooks/use-linked-row-opacity';
 import { useReadableStyle } from '@/hooks/use-layout';
 import { useClasses } from '@/lib/classes';
-import { DAYS, classesOn, dayKey, findUpcoming, formatClock, type ClassEntry, type Day } from '@/lib/schedule';
+import { DAYS, classesOn, dayKey, findUpcoming, formatClock, minutesOfDay, type ClassEntry, type Day } from '@/lib/schedule';
 import { floorForRoom, floorLabel } from '@/lib/search';
 import { planTrip } from '@/lib/trip';
-import { HEADER_ICONS } from '@/lib/header-icons';
 
 const DAY_NAMES: Record<Day, string> = {
   mon: 'Monday',
@@ -45,6 +46,7 @@ export default function ClassesScreen() {
   const classes = useClasses();
   const [accentForeground, muted] = useThemeColor(['accent-foreground', 'muted']);
   const [now, setNow] = useState(() => new Date());
+  const [picked, setPicked] = useState<Day | null>(null);
   const activeClassId = useLinkedParam(/\/class\/([^/?]+)/);
 
   // The next class moves on as the day goes by.
@@ -54,96 +56,118 @@ export default function ClassesScreen() {
   }, []);
 
   const upcoming = useMemo(() => findUpcoming(classes, now), [classes, now]);
+  const busy = useMemo(() => new Set(DAYS.filter((day) => classesOn(classes, day).length > 0)), [classes]);
   const today = dayKey(now);
-  const order = [...DAYS.slice(DAYS.indexOf(today)), ...DAYS.slice(0, DAYS.indexOf(today))];
-  const byDay = order.map((day) => ({ day, entries: classesOn(classes, day) })).filter((d) => d.entries.length > 0);
+  // Opens on today, or on the day of the next class when today has none.
+  const firstDay = busy.has(today) || !upcoming ? today : DAYS[(DAYS.indexOf(today) + upcoming.daysAhead) % 7];
+  const day = picked ?? firstDay;
+  const entries = classesOn(classes, day);
+  const minutesNow = minutesOfDay(now);
+  const portal = CAMPUS.schedule.portalName ?? 'your school portal';
+
+  const actions = (
+    <ListGroup>
+      <ActionRow
+        symbol="plus"
+        title="Add a class"
+        onPress={() => router.push({ pathname: '/class/[id]', params: { id: 'new' } })}
+      />
+      <Separator className="ml-16 mr-4" />
+      <ActionRow
+        symbol="doc.on.clipboard"
+        title="Paste your schedule"
+        description={`Copy it from ${portal}`}
+        onPress={() => router.push('/class-import')}
+      />
+    </ListGroup>
+  );
 
   return (
     <>
       <Stack.Title large>Classes</Stack.Title>
-      <Stack.Toolbar placement="right">
-        <Stack.Toolbar.Menu icon={HEADER_ICONS.add} accessibilityLabel="Add classes">
-          <Stack.Toolbar.MenuAction icon="plus" onPress={() => router.push({ pathname: '/class/[id]', params: { id: 'new' } })}>
-            Add a class
-          </Stack.Toolbar.MenuAction>
-          <Stack.Toolbar.MenuAction icon="doc.on.clipboard" onPress={() => router.push('/class-import')}>
-            Paste schedule
-          </Stack.Toolbar.MenuAction>
-        </Stack.Toolbar.Menu>
-      </Stack.Toolbar>
       <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerClassName="gap-6 px-4 pb-16 pt-2" contentContainerStyle={readable}>
-        {upcoming ? (
-          <Card className="gap-4 rounded-3xl bg-accent p-5">
-            <View className="flex-row items-center gap-2">
-              <Icon name="clock.fill" size={13} tintColor={accentForeground} />
-              <Text className="text-xs font-semibold uppercase tracking-wide text-accent-foreground opacity-80">
-                Next class
-              </Text>
-            </View>
-            <View className="gap-1">
-              <Text className="text-2xl font-bold text-accent-foreground" numberOfLines={1}>
-                {upcoming.entry.name}
-              </Text>
-              <Text className="text-base text-accent-foreground opacity-85">
-                {whenText(upcoming.daysAhead, upcoming.entry.start)} · {upcoming.entry.room}
-              </Text>
-            </View>
-            <Button
-              variant="secondary"
-              onPress={() => goTo(upcoming.entry, upcoming.daysAhead === 0 ? upcoming.previous?.placeId : undefined)}>
-              <Icon name="figure.walk" size={15} weight="semibold" tintColor={muted} />
-              <Button.Label>Directions</Button.Label>
-            </Button>
-          </Card>
-        ) : null}
-
-        <View className="flex-row gap-3">
-          <Button className="flex-1" onPress={() => router.push({ pathname: '/class/[id]', params: { id: 'new' } })}>
-            <Icon name="plus" size={14} weight="bold" tintColor={accentForeground} />
-            <Button.Label>Add a class</Button.Label>
-          </Button>
-          <Button className="flex-1" variant="secondary" onPress={() => router.push('/class-import')}>
-            <Icon name="doc.on.clipboard" size={14} tintColor={muted} />
-            <Button.Label>Paste schedule</Button.Label>
-          </Button>
-        </View>
-
-        {byDay.length === 0 ? (
-          <EmptyState
-            title="No classes yet"
-            description={`Add your classes, or paste your schedule from ${CAMPUS.schedule.portalName ?? 'your school portal'}, and the next one is always a tap away. They stay on this phone.`}
-          />
+        {classes.length === 0 ? (
+          <>
+            <EmptyState
+              title="No classes yet"
+              description={`Add your classes, or paste your schedule from ${portal}, and the next one is always a tap away. They stay on this phone.`}
+            />
+            {actions}
+          </>
         ) : (
-          byDay.map(({ day, entries }) => (
-            <View key={day}>
-              <SectionTitle>{day === today ? `Today · ${DAY_NAMES[day]}` : DAY_NAMES[day]}</SectionTitle>
-              <ListGroup>
-                {entries.map((entry, index) => {
-                  const place = getPlace(entry.placeId);
-                  const floor = floorLabel(floorForRoom(entry.room));
-                  return (
-                    <Fragment key={entry.id}>
-                      {index > 0 ? <Separator className="mx-4" /> : null}
-                      <StackLinkedItem
-                        linked={activeClassId === entry.id}
-                        gestureSync={false}
-                        onPress={() => router.push({ pathname: '/class/[id]', params: { id: entry.id } })}>
-                        <ListGroup.ItemContent>
-                          <ListGroup.ItemTitle numberOfLines={1}>{entry.name}</ListGroup.ItemTitle>
-                          <ListGroup.ItemDescription numberOfLines={1}>
-                            {formatClock(entry.start)} to {formatClock(entry.end)} · {entry.room}
-                            {floor ? ` · ${floor}` : ''}
-                            {place ? ` · ${place.name}` : ''}
-                          </ListGroup.ItemDescription>
-                        </ListGroup.ItemContent>
-                        <ListGroup.ItemSuffix />
-                      </StackLinkedItem>
-                    </Fragment>
-                  );
-                })}
-              </ListGroup>
+          <>
+            {upcoming ? (
+              <Card className="gap-4 rounded-3xl bg-accent p-5">
+                <View className="flex-row items-center gap-2">
+                  <Icon name="clock.fill" size={13} tintColor={accentForeground} />
+                  <Text className="text-xs font-semibold uppercase tracking-wide text-accent-foreground opacity-80">
+                    {upcoming.daysAhead === 0 && upcoming.entry.start <= minutesNow ? 'Happening now' : 'Next class'}
+                  </Text>
+                </View>
+                <View className="gap-1">
+                  <Text className="text-2xl font-bold text-accent-foreground" numberOfLines={1}>
+                    {upcoming.entry.name}
+                  </Text>
+                  <Text className="text-base text-accent-foreground opacity-85" numberOfLines={1}>
+                    {whenText(upcoming.daysAhead, upcoming.entry.start)} · {upcoming.entry.placeId}-{upcoming.entry.room}
+                  </Text>
+                </View>
+                <Button
+                  variant="secondary"
+                  onPress={() => goTo(upcoming.entry, upcoming.daysAhead === 0 ? upcoming.previous?.placeId : undefined)}>
+                  <Icon name="figure.walk" size={15} weight="semibold" tintColor={muted} />
+                  <Button.Label>Directions to {upcoming.entry.placeId}</Button.Label>
+                </Button>
+              </Card>
+            ) : null}
+
+            <View className="gap-3">
+              <DayStrip selected={day} today={today} busy={busy} names={DAY_NAMES} onSelect={setPicked} />
+              <View>
+                <SectionTitle>
+                  {`${day === today ? 'Today' : DAY_NAMES[day]}${entries.length > 0 ? ` · ${entries.length} ${entries.length === 1 ? 'class' : 'classes'}` : ''}`}
+                </SectionTitle>
+                {entries.length === 0 ? (
+                  <View className="rounded-3xl bg-default px-5 py-6">
+                    <Text className="text-center text-sm leading-5 text-muted">No classes on {DAY_NAMES[day]}.</Text>
+                  </View>
+                ) : (
+                  <ListGroup>
+                    {entries.map((entry, index) => {
+                      const place = getPlace(entry.placeId);
+                      const floor = floorLabel(floorForRoom(entry.room));
+                      const over = day === today && entry.end <= minutesNow;
+                      return (
+                        <Fragment key={entry.id}>
+                          {index > 0 ? <Separator className="ml-[100px] mr-4" /> : null}
+                          <StackLinkedItem
+                            linked={activeClassId === entry.id}
+                            gestureSync={false}
+                            onPress={() => router.push({ pathname: '/class/[id]', params: { id: entry.id } })}>
+                            <ListGroup.ItemPrefix>
+                              <View className={cn('w-[72px]', over && 'opacity-50')}>
+                                <Text className="text-sm font-semibold text-foreground">{formatClock(entry.start)}</Text>
+                                <Text className="text-xs text-muted">{formatClock(entry.end)}</Text>
+                              </View>
+                            </ListGroup.ItemPrefix>
+                            <ListGroup.ItemContent className={cn(over && 'opacity-50')}>
+                              <ListGroup.ItemTitle numberOfLines={1}>{entry.name}</ListGroup.ItemTitle>
+                              <ListGroup.ItemDescription numberOfLines={1}>
+                                {[`${entry.placeId}-${entry.room}`, floor, place?.name].filter(Boolean).join(' · ')}
+                              </ListGroup.ItemDescription>
+                            </ListGroup.ItemContent>
+                            <ListGroup.ItemSuffix />
+                          </StackLinkedItem>
+                        </Fragment>
+                      );
+                    })}
+                  </ListGroup>
+                )}
+              </View>
             </View>
-          ))
+
+            {actions}
+          </>
         )}
       </ScrollView>
     </>

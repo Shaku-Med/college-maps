@@ -3,6 +3,7 @@ import { Button, ListGroup, Separator, useToast } from 'heroui-native';
 import { Fragment, useMemo, useState } from 'react';
 import { RefreshControl, ScrollView, Text, View } from 'react-native';
 
+import { Avatar } from '@/components/person';
 import { EmptyState } from '@/components/section';
 import { useProfile } from '@/lib/account';
 import { useReadableStyle } from '@/hooks/use-layout';
@@ -72,8 +73,11 @@ export default function BlockedScreen() {
           <ListGroup>
             {filtered.map((person, index) => (
               <Fragment key={person.username}>
-                {index > 0 ? <Separator className="mx-4" /> : null}
+                {index > 0 ? <Separator className="ml-16 mr-4" /> : null}
                 <ListGroup.Item disabled>
+                  <ListGroup.ItemPrefix>
+                    <Avatar person={person} />
+                  </ListGroup.ItemPrefix>
                   <ListGroup.ItemContent>
                     <ListGroup.ItemTitle numberOfLines={1}>
                       {person.displayName || `@${person.username}`}

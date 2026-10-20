@@ -104,6 +104,7 @@ function Navigation() {
         <Stack.Screen name="class/[id]" options={sheetTall} />
         <Stack.Screen name="class-import" options={sheetTall} />
         <Stack.Screen name="profile" options={sheetMedium} />
+        <Stack.Screen name="add-friend" options={sheetMedium} />
         <Stack.Screen name="download-data" options={sheetMedium} />
         <Stack.Screen name="voice" options={sheetMedium} />
         <Stack.Screen name="delete-account" options={sheetMedium} />

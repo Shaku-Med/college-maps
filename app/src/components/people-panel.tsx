@@ -14,7 +14,7 @@ import {
   ToggleButtonGroup,
   toast,
 } from "@heroui/react";
-import { Ban, Check, ChevronLeft, ChevronRight, Flag, MapPin, MoreHorizontal, Plus, Send, UserMinus, UserPlus, Users, X } from "lucide-react";
+import { Ban, CalendarDays, Check, ChevronLeft, ChevronRight, Copy, Flag, MapPin, MoreHorizontal, Plus, Send, UserMinus, UserPlus, Users } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { CampusTab } from "@/components/campus-tab";
@@ -39,7 +39,6 @@ type PeoplePanelProps = {
   onClose: () => void;
 };
 
-type Tab = "meetups" | "campus" | "friends";
 
 export function initialsFor(name: string, fallback: string) {
   const parts = (name || fallback).split(/[ ._]+/).filter(Boolean);
@@ -70,12 +69,32 @@ function Row({ name, username, children }: { name: string; username: string; chi
 }
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
-  return <h3 className="pb-1 pt-4 text-[11px] font-semibold uppercase tracking-wider text-muted">{children}</h3>;
+  return <h3 className="pb-1.5 pt-5 text-[11px] font-semibold uppercase tracking-wider text-muted">{children}</h3>;
 }
 
+const FRIENDS_SHOWN = 5;
+
+type Page = "home" | "add" | "friends" | "sent" | "blocked" | "campus" | "new-meetup";
+type Run = (action: () => Promise<{ ok: boolean; message?: string }>, success: string) => Promise<void>;
+
 export function PeoplePanel({ myUsername, friends, meetups, campus, isLoading, onRefresh, onMeetupChange, onOpenMeetup, onCollapse, onClose }: PeoplePanelProps) {
-  const [tab, setTab] = useState<Tab>(meetups.length > 0 ? "meetups" : "friends");
-  const [isCreating, setIsCreating] = useState(false);
+  const [page, setPage] = useState<Page>("home");
+  const [isBusy, setIsBusy] = useState(false);
+  const report = useReportFlow(onRefresh);
+  const confirm = useConfirmDialog();
+  const home = () => setPage("home");
+
+  const run: Run = async (action, success) => {
+    setIsBusy(true);
+    const res = await action();
+    setIsBusy(false);
+    if (!res.ok) {
+      toast.danger(res.message ?? "That didn't work.");
+      return;
+    }
+    toast.success(success);
+    onRefresh();
+  };
 
   return (
     <Surface
@@ -83,6 +102,8 @@ export function PeoplePanel({ myUsername, friends, meetups, campus, isLoading, o
       aria-label="Friends and meetups"
       className="animate-sheet-in flex max-h-[82dvh] flex-col rounded-t-[28px] shadow-2xl md:max-h-[calc(100dvh-2rem)] md:rounded-3xl">
       <SheetGrabber />
+      {report.dialog}
+      {confirm.dialog}
 
       <div className="flex items-center gap-3 px-5 pb-2 pt-3">
         <span className="flex size-9 items-center justify-center rounded-xl bg-accent-soft text-accent-soft-foreground">
@@ -97,56 +118,47 @@ export function PeoplePanel({ myUsername, friends, meetups, campus, isLoading, o
         <CloseButton aria-label="Close friends" onPress={onClose} />
       </div>
 
-      <div className="px-5 pb-1">
-        <ToggleButtonGroup
-          aria-label="Friends or meetups"
-          selectionMode="single"
-          disallowEmptySelection
-          isDetached
-          size="sm"
-          selectedKeys={[tab]}
-          onSelectionChange={(keys) => {
-            const [next] = keys;
-            if (next) setTab(next as Tab);
-          }}
-          className="gap-2">
-          <ToggleButton id="meetups" className="rounded-full data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground">
-            Meetups
-          </ToggleButton>
-          <ToggleButton id="campus" className="rounded-full data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground">
-            Campus
-          </ToggleButton>
-          <ToggleButton id="friends" className="rounded-full data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground">
-            People
-          </ToggleButton>
-        </ToggleButtonGroup>
-      </div>
-
-      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-[max(1.25rem,var(--map-safe-bottom))] pt-1">
-        {tab === "friends" ? (
-          <FriendsTab friends={friends} onRefresh={onRefresh} />
-        ) : tab === "campus" ? (
-          <CampusTab myUsername={myUsername} campus={campus} onMeetupChange={onMeetupChange} onRefresh={onRefresh} />
-        ) : isCreating ? (
-          <NewMeetupForm
-            myUsername={myUsername}
-            friends={friends.friends}
-            onCancel={() => setIsCreating(false)}
-            onCreated={(meetup) => {
-              setIsCreating(false);
-              onMeetupChange(meetup);
-              onOpenMeetup(meetup.id);
-            }}
-          />
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-[max(1.25rem,var(--map-safe-bottom))]">
+        {page === "add" ? (
+          <AddFriendPage myUsername={myUsername} onBack={home} onAdded={onRefresh} />
+        ) : page === "friends" ? (
+          <FriendsListPage friends={friends} isBusy={isBusy} report={report} confirm={confirm} onBack={home} run={run} />
+        ) : page === "sent" ? (
+          <SentPage friends={friends} isBusy={isBusy} onBack={home} run={run} />
+        ) : page === "blocked" ? (
+          <BlockedPage friends={friends} isBusy={isBusy} onBack={home} run={run} />
+        ) : page === "campus" ? (
+          <div className="pt-1">
+            <PageHeader title="Happening on campus" subtitle="Open to every student" onBack={home} />
+            <CampusTab myUsername={myUsername} campus={campus} onMeetupChange={onMeetupChange} onRefresh={onRefresh} />
+          </div>
+        ) : page === "new-meetup" ? (
+          <div className="pt-1">
+            <PageHeader title="New meetup" subtitle="Your friends get an invite" onBack={home} />
+            <NewMeetupForm
+              myUsername={myUsername}
+              friends={friends.friends}
+              onCancel={home}
+              onCreated={(meetup) => {
+                home();
+                onMeetupChange(meetup);
+                onOpenMeetup(meetup.id);
+              }}
+            />
+          </div>
         ) : (
-          <MeetupsTab
+          <PeopleHome
             myUsername={myUsername}
+            friends={friends}
             meetups={meetups}
-            canCreate={friends.friends.length > 0}
-            onCreate={() => setIsCreating(true)}
+            campusCount={campus.length}
+            isBusy={isBusy}
+            report={report}
+            confirm={confirm}
+            run={run}
+            onOpen={setPage}
             onOpenMeetup={onOpenMeetup}
             onMeetupChange={onMeetupChange}
-            onSeeFriends={() => setTab("friends")}
           />
         )}
       </div>
@@ -160,37 +172,219 @@ function countLabel(count: number, empty: string, one: string, many: (n: number)
   return many(count);
 }
 
-type PeoplePage = "home" | "friends" | "sent" | "blocked";
-
 function matchesPerson(person: Person, query: string) {
   const q = query.trim().toLowerCase().replace(/^@/, "");
   if (!q) return true;
   return person.username.toLowerCase().includes(q) || person.displayName.toLowerCase().includes(q);
 }
 
-function FriendsTab({ friends, onRefresh }: { friends: FriendsOverview; onRefresh: () => void }) {
-  const [username, setUsername] = useState("");
-  const [isBusy, setIsBusy] = useState(false);
-  const [page, setPage] = useState<PeoplePage>("home");
-  const report = useReportFlow(onRefresh);
-  const confirm = useConfirmDialog();
+/** The one place an action lives, at the end of the list it adds to, lined up with the avatars above it. */
+function ActionRow({ icon, title, subtitle, onPress }: { icon: React.ReactNode; title: string; subtitle?: string; onPress: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onPress}
+      className="-mx-2 flex w-[calc(100%+1rem)] items-center gap-3 rounded-2xl px-2 py-2 text-left outline-none transition-colors hover:bg-surface-secondary focus-visible:ring-2 focus-visible:ring-accent">
+      <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent-soft-foreground">{icon}</span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-sm font-medium text-accent">{title}</span>
+        {subtitle ? <span className="block truncate text-xs text-muted">{subtitle}</span> : null}
+      </span>
+    </button>
+  );
+}
 
-  async function run(action: () => Promise<{ ok: boolean; message?: string }>, success: string) {
-    setIsBusy(true);
-    const res = await action();
-    setIsBusy(false);
+function PeopleHome({
+  myUsername,
+  friends,
+  meetups,
+  campusCount,
+  isBusy,
+  report,
+  confirm,
+  run,
+  onOpen,
+  onOpenMeetup,
+  onMeetupChange,
+}: {
+  myUsername: string;
+  friends: FriendsOverview;
+  meetups: Meetup[];
+  campusCount: number;
+  isBusy: boolean;
+  report: ReturnType<typeof useReportFlow>;
+  confirm: ReturnType<typeof useConfirmDialog>;
+  run: Run;
+  onOpen: (page: Page) => void;
+  onOpenMeetup: (id: string) => void;
+  onMeetupChange: (meetup: Meetup) => void;
+}) {
+  const [isResponding, setIsResponding] = useState(false);
+  const list = friends.friends;
+  const ordered = [...meetups.filter((m) => m.yourStatus === "invited"), ...meetups.filter((m) => m.yourStatus !== "invited")];
+
+  async function respond(meetup: Meetup, accept: boolean, stayOut = false) {
+    setIsResponding(true);
+    const res = await socialApi.respond(meetup.id, accept, stayOut);
+    setIsResponding(false);
     if (!res.ok) {
-      toast.danger(res.message ?? "That didn't work.");
+      toast.danger(res.message);
       return;
     }
-    toast.success(success);
-    onRefresh();
+    onMeetupChange(res.data);
+    if (accept) onOpenMeetup(res.data.id);
   }
+
+  return (
+    <div className="flex flex-col">
+      {friends.incoming.length > 0 ? (
+        <section>
+          <SectionTitle>{friends.incoming.length === 1 ? "Wants to be friends" : `${friends.incoming.length} want to be friends`}</SectionTitle>
+          {friends.incoming.map((person) => (
+            <Row key={person.username} name={person.displayName} username={person.username}>
+              <Button
+                size="sm"
+                variant="ghost"
+                isDisabled={isBusy}
+                onPress={() => void run(() => socialApi.removeRequest(person.username), "Request declined")}>
+                Decline
+              </Button>
+              <Button
+                size="sm"
+                isDisabled={isBusy}
+                onPress={() => void run(() => socialApi.acceptFriend(person.username), `You and @${person.username} are friends`)}>
+                <Check aria-hidden />
+                Accept
+              </Button>
+            </Row>
+          ))}
+        </section>
+      ) : null}
+
+      <section>
+        <SectionTitle>Meetups</SectionTitle>
+        <div className="flex flex-col gap-1">
+          {ordered.map((meetup) => {
+            const joined = meetup.members.filter((m) => m.status === "joined").length;
+            const invited = meetup.yourStatus === "invited";
+            return (
+              <div key={meetup.id} className={invited ? "rounded-2xl border border-separator p-2" : "-mx-2"}>
+                <button
+                  type="button"
+                  onClick={() => onOpenMeetup(meetup.id)}
+                  className="flex w-full items-center gap-3 rounded-xl px-2 py-2 text-left outline-none transition-colors hover:bg-surface-secondary focus-visible:ring-2 focus-visible:ring-accent">
+                  <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-surface-secondary text-muted">
+                    <MapPin className="size-4" aria-hidden />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-medium">{meetup.note || meetupWhere(meetup, myUsername)}</span>
+                    <span className="block truncate text-xs text-muted">
+                      {meetup.yourRole === "host" ? "You started this" : `${meetup.host.displayName} invited you`} · {joined} in ·{" "}
+                      {timeLeft(meetup.expiresAt)}
+                    </span>
+                  </span>
+                  {invited ? null : <ChevronRight className="size-4 shrink-0 text-muted" aria-hidden />}
+                </button>
+                {invited ? (
+                  <div className="flex flex-wrap gap-2 px-2 pb-1 pt-1">
+                    <Button size="sm" isDisabled={isResponding} onPress={() => void respond(meetup, true)}>
+                      Join
+                    </Button>
+                    <Button size="sm" variant="secondary" isDisabled={isResponding} onPress={() => void respond(meetup, false)}>
+                      No thanks
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      isDisabled={isResponding}
+                      aria-label="Decline and don't invite me again"
+                      onPress={() => void respond(meetup, false, true)}>
+                      Don&apos;t ask again
+                    </Button>
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
+          <ActionRow
+            icon={<Plus className="size-4" aria-hidden />}
+            title="Start a meetup"
+            subtitle={
+              list.length === 0 ? "Add a friend first" : ordered.length === 0 ? "Share where you are with friends for a few hours" : undefined
+            }
+            onPress={() => onOpen(list.length === 0 ? "add" : "new-meetup")}
+          />
+        </div>
+      </section>
+
+      <section>
+        <div className="flex items-end justify-between">
+          <SectionTitle>{list.length > 0 ? `Friends · ${list.length}` : "Friends"}</SectionTitle>
+          {list.length > FRIENDS_SHOWN ? (
+            <button
+              type="button"
+              onClick={() => onOpen("friends")}
+              className="mb-1 rounded-md text-xs font-medium text-accent outline-none hover:underline focus-visible:ring-2 focus-visible:ring-accent">
+              See all
+            </button>
+          ) : null}
+        </div>
+        {list.slice(0, FRIENDS_SHOWN).map((person) => (
+          <Row key={person.username} name={person.displayName} username={person.username}>
+            <FriendMenu person={person} isBusy={isBusy} report={report} confirm={confirm} run={run} />
+          </Row>
+        ))}
+        <ActionRow
+          icon={<UserPlus className="size-4" aria-hidden />}
+          title="Add a friend"
+          subtitle={list.length === 0 ? `Or share your username, @${myUsername}` : undefined}
+          onPress={() => onOpen("add")}
+        />
+      </section>
+
+      <section>
+        <SectionTitle>On campus</SectionTitle>
+        <NavRow
+          icon={<CalendarDays className="size-4" aria-hidden />}
+          title="Happening on campus"
+          subtitle={countLabel(campusCount, "Nothing posted yet", "1 open event", (n) => `${n} open events`)}
+          onPress={() => onOpen("campus")}
+        />
+      </section>
+
+      <div className="mt-4 flex flex-col border-t border-separator pt-3">
+        <NavRow
+          icon={<Send className="size-4" aria-hidden />}
+          title="Sent requests"
+          subtitle={countLabel(friends.outgoing.length, "None waiting", "1 waiting", (n) => `${n} waiting`)}
+          onPress={() => onOpen("sent")}
+          quiet
+        />
+        <NavRow
+          icon={<Ban className="size-4" aria-hidden />}
+          title="Blocked"
+          subtitle={countLabel(friends.blocked.length, "Nobody", "1 person", (n) => `${n} people`)}
+          onPress={() => onOpen("blocked")}
+          quiet
+        />
+      </div>
+    </div>
+  );
+}
+
+function AddFriendPage({ myUsername, onBack, onAdded }: { myUsername: string; onBack: () => void; onAdded: () => void }) {
+  const [username, setUsername] = useState("");
+  const [isBusy, setIsBusy] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   async function add() {
     const handle = normalizeUsername(username);
     if (handle.length < 3) {
       toast.danger("Enter your friend's username.");
+      return;
+    }
+    if (handle === myUsername) {
+      toast.danger("That's you.");
       return;
     }
     setIsBusy(true);
@@ -200,103 +394,111 @@ function FriendsTab({ friends, onRefresh }: { friends: FriendsOverview; onRefres
       toast.danger(res.message);
       return;
     }
-    setUsername("");
     toast.success(res.data.status === "friends" ? `You and @${handle} are now friends` : `Request sent to @${handle}`);
-    onRefresh();
+    onAdded();
+    onBack();
   }
 
-  if (page === "friends") {
-    return (
-      <FriendsListPage
-        friends={friends}
-        isBusy={isBusy}
-        report={report}
-        confirm={confirm}
-        onBack={() => setPage("home")}
-        run={run}
-      />
-    );
-  }
-  if (page === "sent") {
-    return <SentPage friends={friends} isBusy={isBusy} onBack={() => setPage("home")} run={run} />;
-  }
-  if (page === "blocked") {
-    return <BlockedPage friends={friends} isBusy={isBusy} onBack={() => setPage("home")} run={run} />;
+  async function copyMine() {
+    try {
+      await navigator.clipboard.writeText(`@${myUsername}`);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch {
+      toast.danger(`Couldn't copy. Your username is @${myUsername}`);
+    }
   }
 
   return (
-    <div className="flex flex-col gap-1">
-      {report.dialog}
-      {confirm.dialog}
+    <div className="flex flex-col gap-4 pt-1">
+      <PageHeader title="Add a friend" subtitle="Friends find each other by username" onBack={onBack} />
       <form
-        className="flex items-end gap-2 pt-3"
+        className="flex flex-col gap-3"
         onSubmit={(event) => {
           event.preventDefault();
           void add();
         }}>
-        <TextField
-          value={username}
-          onChange={(value) => setUsername(normalizeUsername(value))}
-          className="min-w-0 flex-1"
-          fullWidth>
-          <Label>Add a friend</Label>
-          <Input variant="secondary" placeholder="their username" maxLength={MAX_USERNAME_LENGTH} autoComplete="off" />
+        <TextField value={username} onChange={(value) => setUsername(normalizeUsername(value))} fullWidth>
+          <Label>Their username</Label>
+          <Input variant="secondary" placeholder="username" maxLength={MAX_USERNAME_LENGTH} autoComplete="off" autoFocus />
         </TextField>
-        <Button type="submit" isPending={isBusy} isDisabled={username.length < 3}>
-          <UserPlus aria-hidden />
-          Add
+        <Button type="submit" isPending={isBusy} isDisabled={username.length < 3} fullWidth>
+          Send request
         </Button>
       </form>
-      <p className="text-xs text-muted">Friends find each other by username. Emails stay private.</p>
-
-      {friends.incoming.length > 0 ? (
-        <>
-          <SectionTitle>Wants to be friends</SectionTitle>
-          {friends.incoming.map((person) => (
-            <Row key={person.username} name={person.displayName} username={person.username}>
-              <Button
-                size="sm"
-                isDisabled={isBusy}
-                onPress={() => void run(() => socialApi.acceptFriend(person.username), `You and @${person.username} are friends`)}>
-                <Check aria-hidden />
-                Accept
-              </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                aria-label={`Decline ${person.username}`}
-                isIconOnly
-                isDisabled={isBusy}
-                onPress={() => void run(() => socialApi.removeRequest(person.username), "Request declined")}>
-                <X aria-hidden />
-              </Button>
-            </Row>
-          ))}
-        </>
-      ) : null}
-
-      <SectionTitle>People</SectionTitle>
-      <div className="flex flex-col gap-2">
-        <NavRow
-          icon={<Users className="size-4" aria-hidden />}
-          title="Your friends"
-          subtitle={countLabel(friends.friends.length, "No friends yet", "1 friend", (n) => `${n} friends`)}
-          onPress={() => setPage("friends")}
-        />
-        <NavRow
-          icon={<Send className="size-4" aria-hidden />}
-          title="Sent"
-          subtitle={countLabel(friends.outgoing.length, "No pending requests", "1 waiting", (n) => `${n} waiting`)}
-          onPress={() => setPage("sent")}
-        />
-        <NavRow
-          icon={<Ban className="size-4" aria-hidden />}
-          title="Blocked"
-          subtitle={countLabel(friends.blocked.length, "Nobody blocked yet", "1 person", (n) => `${n} people`)}
-          onPress={() => setPage("blocked")}
-        />
+      <div className="flex items-center gap-3 rounded-2xl bg-surface-secondary px-4 py-3">
+        <div className="min-w-0 flex-1">
+          <p className="text-xs text-muted">Your username</p>
+          <p className="truncate text-base font-semibold">@{myUsername}</p>
+        </div>
+        <Button size="sm" variant="secondary" onPress={() => void copyMine()}>
+          {copied ? <Check aria-hidden /> : <Copy aria-hidden />}
+          {copied ? "Copied" : "Copy"}
+        </Button>
       </div>
+      <p className="text-xs text-muted">Emails stay private. Only your name and username are shown.</p>
     </div>
+  );
+}
+
+function FriendMenu({
+  person,
+  isBusy,
+  report,
+  confirm,
+  run,
+}: {
+  person: Person;
+  isBusy: boolean;
+  report: ReturnType<typeof useReportFlow>;
+  confirm: ReturnType<typeof useConfirmDialog>;
+  run: Run;
+}) {
+  return (
+    <Dropdown>
+      <Button size="sm" variant="ghost" isIconOnly aria-label={`${person.displayName} options`} isDisabled={isBusy}>
+        <MoreHorizontal aria-hidden />
+      </Button>
+      <Dropdown.Popover>
+        <Dropdown.Menu
+          onAction={(key) => {
+            if (key === "report") {
+              report.openPerson({ username: person.username, displayName: person.displayName, isFriend: true });
+              return;
+            }
+            if (key === "unfriend") {
+              confirm.ask({
+                title: `Remove @${person.username}?`,
+                body: "You will no longer see each other as friends. You can add them again later.",
+                action: "Remove",
+                onConfirm: () => run(() => socialApi.unfriend(person.username), `Removed @${person.username}`),
+              });
+              return;
+            }
+            if (key === "block") {
+              confirm.ask({
+                title: `Block @${person.username}?`,
+                body: "They will not be able to find you, add you, or invite you.",
+                action: "Block",
+                onConfirm: () => run(() => socialApi.block(person.username), `Blocked @${person.username}`),
+              });
+            }
+          }}>
+          <Dropdown.Item id="report" textValue="Report">
+            <Flag className="size-4 shrink-0 text-muted" aria-hidden />
+            <Label>Report</Label>
+          </Dropdown.Item>
+          <Dropdown.Item id="unfriend" textValue="Remove friend" variant="danger">
+            <UserMinus className="size-4 shrink-0" aria-hidden />
+            <Label>Remove friend</Label>
+          </Dropdown.Item>
+          <Dropdown.Item id="block" textValue="Block" variant="danger">
+            <Ban className="size-4 shrink-0" aria-hidden />
+            <Label>Block</Label>
+          </Dropdown.Item>
+        </Dropdown.Menu>
+      </Dropdown.Popover>
+    </Dropdown>
   );
 }
 
@@ -305,18 +507,23 @@ function NavRow({
   title,
   subtitle,
   onPress,
+  quiet = false,
 }: {
   icon: React.ReactNode;
   title: string;
   subtitle: string;
   onPress: () => void;
+  quiet?: boolean;
 }) {
   return (
     <button
       type="button"
       onClick={onPress}
-      className="flex w-full items-center gap-3 rounded-2xl border border-separator px-4 py-3.5 text-left outline-none transition-colors hover:bg-surface-secondary focus-visible:ring-2 focus-visible:ring-accent">
-      <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-accent-soft text-accent-soft-foreground">{icon}</span>
+      className="-mx-2 flex w-[calc(100%+1rem)] items-center gap-3 rounded-2xl px-2 py-2 text-left outline-none transition-colors hover:bg-surface-secondary focus-visible:ring-2 focus-visible:ring-accent">
+      <span
+        className={`flex size-9 shrink-0 items-center justify-center rounded-full ${quiet ? "bg-surface-secondary text-muted" : "bg-accent-soft text-accent-soft-foreground"}`}>
+        {icon}
+      </span>
       <div className="min-w-0 flex-1">
         <p className="text-sm font-medium">{title}</p>
         <p className="text-xs text-muted">{subtitle}</p>
@@ -361,8 +568,6 @@ function FriendsListPage({
 
   return (
     <div className="flex flex-col gap-3 pt-3">
-      {report.dialog}
-      {confirm.dialog}
       <PageHeader title="Your friends" subtitle="Search friends" onBack={onBack} />
       <SearchField value={query} onChange={setQuery} aria-label="Search friends" fullWidth>
         <SearchField.Group>
@@ -373,7 +578,7 @@ function FriendsListPage({
       </SearchField>
       {list.length === 0 ? (
         <p className="rounded-2xl bg-surface-secondary px-4 py-5 text-sm text-muted">
-          No friends yet. Add someone by username on the previous screen.
+          No friends yet. Go back and tap Add a friend.
         </p>
       ) : filtered.length === 0 ? (
         <p className="rounded-2xl bg-surface-secondary px-4 py-5 text-sm text-muted">
@@ -382,54 +587,7 @@ function FriendsListPage({
       ) : (
         filtered.map((person) => (
           <Row key={person.username} name={person.displayName} username={person.username}>
-            <Dropdown>
-              <Button size="sm" variant="ghost" isIconOnly aria-label={`${person.displayName} options`} isDisabled={isBusy}>
-                <MoreHorizontal aria-hidden />
-              </Button>
-              <Dropdown.Popover>
-                <Dropdown.Menu
-                  onAction={(key) => {
-                    if (key === "report") {
-                      report.openPerson({
-                        username: person.username,
-                        displayName: person.displayName,
-                        isFriend: true,
-                      });
-                      return;
-                    }
-                    if (key === "unfriend") {
-                      confirm.ask({
-                        title: `Remove @${person.username}?`,
-                        body: "You will no longer see each other as friends. You can add them again later.",
-                        action: "Remove",
-                        onConfirm: () => run(() => socialApi.unfriend(person.username), `Removed @${person.username}`),
-                      });
-                      return;
-                    }
-                    if (key === "block") {
-                      confirm.ask({
-                        title: `Block @${person.username}?`,
-                        body: "They will not be able to find you, add you, or invite you.",
-                        action: "Block",
-                        onConfirm: () => run(() => socialApi.block(person.username), `Blocked @${person.username}`),
-                      });
-                    }
-                  }}>
-                  <Dropdown.Item id="report" textValue="Report">
-                    <Flag className="size-4 shrink-0 text-muted" aria-hidden />
-                    <Label>Report</Label>
-                  </Dropdown.Item>
-                  <Dropdown.Item id="unfriend" textValue="Remove friend" variant="danger">
-                    <UserMinus className="size-4 shrink-0" aria-hidden />
-                    <Label>Remove friend</Label>
-                  </Dropdown.Item>
-                  <Dropdown.Item id="block" textValue="Block" variant="danger">
-                    <Ban className="size-4 shrink-0" aria-hidden />
-                    <Label>Block</Label>
-                  </Dropdown.Item>
-                </Dropdown.Menu>
-              </Dropdown.Popover>
-            </Dropdown>
+            <FriendMenu person={person} isBusy={isBusy} report={report} confirm={confirm} run={run} />
           </Row>
         ))
       )}
@@ -554,100 +712,6 @@ function timeLeft(expiresAt: string) {
   if (minutes <= 0) return "ending";
   if (minutes < 60) return `${minutes} min left`;
   return `${Math.round(minutes / 60)} h left`;
-}
-
-function MeetupsTab({
-  myUsername,
-  meetups,
-  canCreate,
-  onCreate,
-  onOpenMeetup,
-  onMeetupChange,
-  onSeeFriends,
-}: {
-  myUsername: string;
-  meetups: Meetup[];
-  canCreate: boolean;
-  onCreate: () => void;
-  onOpenMeetup: (id: string) => void;
-  onMeetupChange: (meetup: Meetup) => void;
-  onSeeFriends: () => void;
-}) {
-  const [isBusy, setIsBusy] = useState(false);
-
-  async function respond(meetup: Meetup, accept: boolean, stayOut = false) {
-    setIsBusy(true);
-    const res = await socialApi.respond(meetup.id, accept, stayOut);
-    setIsBusy(false);
-    if (!res.ok) {
-      toast.danger(res.message);
-      return;
-    }
-    onMeetupChange(res.data);
-    if (accept) onOpenMeetup(res.data.id);
-  }
-
-  return (
-    <div className="flex flex-col gap-3 pt-3">
-      <Button
-        onPress={canCreate ? onCreate : onSeeFriends}
-        fullWidth
-        variant={canCreate ? "primary" : "secondary"}>
-        <Plus aria-hidden />
-        {canCreate ? "New meetup" : "Add a friend first"}
-      </Button>
-
-      {meetups.length === 0 ? (
-        <p className="rounded-2xl bg-surface-secondary px-4 py-5 text-sm text-muted">
-          No meetups right now. Start one and your friends get an invite.
-        </p>
-      ) : (
-        meetups.map((meetup) => {
-          const joined = meetup.members.filter((m) => m.status === "joined").length;
-          return (
-            <div key={meetup.id} className="rounded-2xl border border-separator px-4 py-3">
-              <div className="flex items-start gap-3">
-                <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent-soft-foreground">
-                  <MapPin className="size-4" aria-hidden />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium">{meetup.note || meetupWhere(meetup, myUsername)}</p>
-                  <p className="truncate text-xs text-muted">
-                    {meetup.yourRole === "host" ? "You started this" : `${meetup.host.displayName} invited you`} ·{" "}
-                    {joined} in · {timeLeft(meetup.expiresAt)}
-                  </p>
-                </div>
-              </div>
-              <div className="mt-2 flex gap-2">
-                {meetup.yourStatus === "invited" ? (
-                  <>
-                    <Button size="sm" isDisabled={isBusy} onPress={() => void respond(meetup, true)} className="flex-1">
-                      Join
-                    </Button>
-                    <Button size="sm" variant="secondary" isDisabled={isBusy} onPress={() => void respond(meetup, false)} className="flex-1">
-                      No thanks
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      isDisabled={isBusy}
-                      aria-label="Decline and don't invite me again"
-                      onPress={() => void respond(meetup, false, true)}>
-                      Don&apos;t ask again
-                    </Button>
-                  </>
-                ) : (
-                  <Button size="sm" onPress={() => onOpenMeetup(meetup.id)} fullWidth>
-                    Open
-                  </Button>
-                )}
-              </div>
-            </div>
-          );
-        })
-      )}
-    </div>
-  );
 }
 
 const DURATIONS = [
