@@ -4,11 +4,14 @@ import * as Crypto from 'expo-crypto';
 import { Directory, File, Paths } from 'expo-file-system';
 
 import { WEB_ORIGIN } from '@/lib/links';
+import { BANK_MANIFEST_PATH, MAX_BANK_CLIP_BYTES, bankClipPath, parseBankManifest, type VoiceBank } from '@/lib/voice-bank';
 import { VOICE_OPTIONS, isNaturalVoice, type NaturalVoiceId } from '@/lib/voice-options';
 
 // The natural voices run on the website's voice engine page inside a hidden web view; the clips it makes are kept as files.
+// The campus lines come ready made from the same site.
 const devOrigin = __DEV__ ? (process.env.EXPO_PUBLIC_VOICE_ENGINE_ORIGIN ?? '') : '';
-export const ENGINE_URL = `${/^https?:\/\/[\w.-]+(:\d+)?$/.test(devOrigin) ? devOrigin : WEB_ORIGIN}/voice-engine`;
+const VOICE_ORIGIN = /^https?:\/\/[\w.-]+(:\d+)?$/.test(devOrigin) ? devOrigin : WEB_ORIGIN;
+export const ENGINE_URL = `${VOICE_ORIGIN}/voice-engine`;
 
 // A build without the web view's native code would crash drawing it, so it keeps the phone's voice instead.
 export const NATURAL_VOICES_AVAILABLE = requireOptionalNativeModule('ExpoDomWebViewModule') !== null;
@@ -23,6 +26,9 @@ const STALL_MS = 60_000;
 // A page that has not said hello by now is the wrong page or never loaded, such as with no connection.
 const HELLO_MS = 20_000;
 const MAX_RELOADS = 3;
+// A missing manifest is asked for again after this long, not on every line.
+const BANK_RETRY_MS = 30_000;
+const MAX_MANIFEST_CHARS = 500_000;
 
 type Priority = 0 | 1 | 2;
 export type EngineState = 'off' | 'loading' | 'ready' | 'failed';
@@ -277,10 +283,12 @@ export function handleEngineMessage(data: string) {
 
 const clipKey = (voice: NaturalVoiceId, text: string) => `${voice}|${text}`;
 const voiceFolder = (voice: NaturalVoiceId) => new Directory(Paths.document, ...CLIP_ROOT, voice);
+const clipName = (voice: NaturalVoiceId, text: string) =>
+  Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, clipKey(voice, text));
 
-async function clipFile(voice: NaturalVoiceId, text: string) {
-  const name = await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, clipKey(voice, text));
-  return new File(voiceFolder(voice), `${name}.wav`);
+// Lines the engine makes are WAV files; ready made ones from the site are MP3.
+async function clipFile(voice: NaturalVoiceId, text: string, kind: 'wav' | 'mp3' = 'wav') {
+  return new File(voiceFolder(voice), `${await clipName(voice, text)}.${kind}`);
 }
 
 async function saveClip(voice: NaturalVoiceId, text: string, wav: string) {
@@ -298,7 +306,8 @@ async function saveClip(voice: NaturalVoiceId, text: string, wav: string) {
 export async function protectClips(voice: NaturalVoiceId, texts: readonly string[]) {
   for (const text of texts) {
     try {
-      protectedNames.add((await clipFile(voice, text)).name);
+      const name = await clipName(voice, text);
+      protectedNames.add(`${name}.wav`).add(`${name}.mp3`);
     } catch {
       // Unprotected lines can still be made again if pruned.
     }
@@ -346,9 +355,84 @@ export async function storedClip(voice: NaturalVoiceId, text: string) {
   const remembered = known.get(key);
   if (remembered) return remembered;
   try {
-    const file = await clipFile(voice, text);
-    if (!file.exists) return null;
+    const name = await clipName(voice, text);
+    const file = [new File(voiceFolder(voice), `${name}.wav`), new File(voiceFolder(voice), `${name}.mp3`)].find((kept) => kept.exists);
+    if (!file) return null;
     known.set(key, file.uri);
+    return file.uri;
+  } catch {
+    return null;
+  }
+}
+
+// ---- Ready made campus lines ------------------------------------------------------------------------
+
+let bank: VoiceBank | null = null;
+let bankLoading: Promise<VoiceBank | null> | null = null;
+let bankFresh = false;
+let bankFailedAt = Number.NEGATIVE_INFINITY;
+const bankCopy = () => new File(Paths.document, ...CLIP_ROOT, 'bank-manifest.json');
+
+function readBankCopy() {
+  try {
+    const copy = bankCopy();
+    return copy.exists ? parseBankManifest(JSON.parse(copy.textSync())) : null;
+  } catch {
+    return null;
+  }
+}
+
+// Asked for once a launch; the copy kept from last time works offline in the meantime.
+function refreshBank() {
+  if (bankLoading || bankFresh || Date.now() - bankFailedAt < BANK_RETRY_MS) return bankLoading;
+  bankLoading = fetch(`${VOICE_ORIGIN}${BANK_MANIFEST_PATH}`, { cache: 'no-cache' })
+    .then((response) => (response.ok ? response.text() : null))
+    .then((text) => {
+      const fresh = text && text.length <= MAX_MANIFEST_CHARS ? parseBankManifest(JSON.parse(text)) : null;
+      if (!fresh || !text) throw new Error('No usable manifest');
+      bank = fresh;
+      bankFresh = true;
+      const copy = bankCopy();
+      if (!copy.parentDirectory.exists) copy.parentDirectory.create({ intermediates: true });
+      if (!copy.exists) copy.create();
+      copy.write(text);
+      return fresh;
+    })
+    .catch(() => {
+      bankFailedAt = Date.now();
+      return bank;
+    })
+    .finally(() => {
+      bankLoading = null;
+    });
+  return bankLoading;
+}
+
+/** The list of ready made campus lines, from the copy kept on the phone or the site. */
+export function loadVoiceBank(): Promise<VoiceBank | null> {
+  bank ??= readBankCopy();
+  const fresh = refreshBank();
+  return bank ? Promise.resolve(bank) : (fresh ?? Promise.resolve(null));
+}
+
+export const isBanked = (voice: NaturalVoiceId, text: string) => bankClipPath(bank, voice, text) !== null;
+
+// Saved beside the clips the engine makes, so it plays offline from then on.
+async function fetchBankClip(voice: NaturalVoiceId, text: string) {
+  const path = bankClipPath(await loadVoiceBank(), voice, text);
+  if (!path) return null;
+  try {
+    const response = await fetch(`${VOICE_ORIGIN}${path}`);
+    if (!response.ok || !response.headers.get('content-type')?.startsWith('audio/')) return null;
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    if (bytes.length === 0 || bytes.length > MAX_BANK_CLIP_BYTES) return null;
+    const folder = voiceFolder(voice);
+    if (!folder.exists) folder.create({ intermediates: true });
+    const file = await clipFile(voice, text, 'mp3');
+    if (!file.exists) file.create();
+    file.write(bytes);
+    known.set(clipKey(voice, text), file.uri);
+    if (++writes % 25 === 0) prune(folder);
     return file.uri;
   } catch {
     return null;
@@ -372,7 +456,7 @@ export function makeClip(voice: NaturalVoiceId, text: string, priority: Priority
   }
   const entry: { job: Promise<string | null>; id?: number; priority: Priority } = { job: Promise.resolve(null), priority };
   entry.job = (async () => {
-    const stored = await storedClip(voice, text);
+    const stored = (await storedClip(voice, text)) ?? (await fetchBankClip(voice, text));
     if (stored) return stored;
     startEngine();
     if (status.state === 'failed') return null;

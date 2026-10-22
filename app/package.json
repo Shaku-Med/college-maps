@@ -15,7 +15,8 @@
     "campus:sync": "node scripts/sync-backend-campus.mjs",
     "campus:icons": "node scripts/build-icons.mjs",
     "campus:art": "node scripts/build-campus-art.mjs",
-    "campus:outlines": "node scripts/build-building-outlines.mjs"
+    "campus:outlines": "node scripts/build-building-outlines.mjs",
+    "voice:bank": "node --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/build-voice-bank.mjs"
   },
   "dependencies": {
     "@heroui/react": "^3.2.6",

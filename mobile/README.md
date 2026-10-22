@@ -62,11 +62,17 @@ once (about 90 MB) and turns each line into a WAV clip. The app saves the clips 
 line that is not ready in time falls back to a plainer stand in, then to the phone's voice, the same as the web.
 Remove downloaded voices deletes the model and every clip.
 
+Campus lines and the voice samples do not need the engine at all: the website serves them ready made in every
+voice (`/voice-bank`, see the main README), and the app downloads each one the first time it is needed into the
+same folder, so a walk on campus plays at once and the engine only loads for a line the bank lacks, like a street
+name. The list of ready made lines is kept on the phone too, so it works offline.
+
 The engine only stays loaded while directions are open, then unloads to free memory. A few seconds after the
-app opens, the chosen voice makes the everyday lines it is still missing (the stand ins, "Route updated", wrong
-way), once per voice (`src/lib/voice-warmup.ts`); after that, opening the app loads nothing. That quiet step never
-starts the first 90 MB download on mobile data or with Data Saver on (Android tells the page; iPhone does not
-say, so it goes ahead). Nothing downloads for students still on the phone's voice; they see a one time "Try a
+app opens, the chosen voice gets the everyday lines it is still missing (the stand ins, "Route updated", wrong
+way), once per voice (`src/lib/voice-warmup.ts`); they come from the bank, so this is a small download, and after
+that opening the app loads nothing. If a line ever had to come from the engine instead, that quiet step would never
+start the first 90 MB download on mobile data or with Data Saver on (Android tells the page; iPhone does not say,
+so it goes ahead). Nothing downloads for students still on the phone's voice; they see a one time "Try a
 natural voice" card in the directions panel instead.
 
 The engine page is on the website, so deploy the website before shipping an app update that relies on a change

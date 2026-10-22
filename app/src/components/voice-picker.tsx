@@ -110,8 +110,8 @@ export function VoicePicker({ voice, savedTo, onChoose }: VoicePickerProps) {
             })}
           </ul>
           <p className="px-3 pb-1 pt-2.5 text-xs leading-relaxed text-muted">
-            Voices run on your phone. The first one downloads once, about 90 MB, and each one after that adds very
-            little. {savedTo === "account" ? "Saved to your account." : "Saved on this device. Sign in to keep it on every device."}
+            Directions on campus play right away in any voice. Off campus, the voice is made on your device, which
+            downloads about 90 MB once. {savedTo === "account" ? "Saved to your account." : "Saved on this device. Sign in to keep it on every device."}
           </p>
         </div>
       ) : null}

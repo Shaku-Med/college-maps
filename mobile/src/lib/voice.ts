@@ -7,6 +7,8 @@ import {
   clearQueuedClips,
   engineStatus,
   holdEngine,
+  isBanked,
+  loadVoiceBank,
   makeClip,
   resetQueuedClips,
   startEngine,
@@ -20,8 +22,10 @@ const CHOICE_KEY = 'csimap.voiceName';
 const VOICE_ID_KEY = 'csimap.voice.id';
 const REPEAT_WINDOW_MS = 8_000;
 const MAX_TEXT = 300;
-// How long a heads up may wait for its own clip before a stand in or the phone's voice says it.
+// How long a heads up may wait for its own clip before a stand in or the phone's voice says it,
+// and how long a line said right now waits for its ready made clip.
 const WAIT_FOR_CLIP_MS = 4_000;
+const WAIT_FOR_BANK_MS = 1_500;
 // Until a clip reports its length, the longest it may hold up the next one.
 const CLIP_TIMEOUT_MS = 30_000;
 
@@ -296,20 +300,25 @@ export async function speak(line: string, { urgent = false, fallback }: { urgent
     else await speakWithDevice(text);
   };
 
+  // A ready made line is a quick download, worth a short wait even at the turn.
+  const banked = isBanked(voice, text);
   const state = engineStatus().state;
-  if (urgent || (state !== 'loading' && state !== 'ready')) {
+  if ((urgent && !banked) || (!banked && state !== 'loading' && state !== 'ready')) {
     await standInOrDevice();
     // Made now, so the same line is ready in the natural voice the next time it comes up.
-    if (canMakeClips()) void makeClip(voice, text, 1);
+    if (canMakeClips() || banked) void makeClip(voice, text, 1);
     return;
   }
 
   let spoken = false;
-  const late = setTimeout(() => {
-    if (spoken || asked !== epoch) return;
-    spoken = true;
-    void standInOrDevice();
-  }, WAIT_FOR_CLIP_MS);
+  const late = setTimeout(
+    () => {
+      if (spoken || asked !== epoch) return;
+      spoken = true;
+      void standInOrDevice();
+    },
+    urgent ? WAIT_FOR_BANK_MS : WAIT_FOR_CLIP_MS,
+  );
   const clip = await makeClip(voice, text, 0);
   if (spoken || asked !== epoch) return;
   spoken = true;
@@ -321,10 +330,11 @@ export async function speak(line: string, { urgent = false, fallback }: { urgent
 /** Gets lines ready ahead of time, so they play in the natural voice the moment they are needed. */
 export function prepareSpeech(lines: readonly string[], { later = false } = {}) {
   const voice = naturalVoice();
-  if (!voice || !canMakeClips()) return;
+  if (!voice) return;
   for (const line of lines) {
     const text = clean(line);
-    if (text) void makeClip(voice, text, later ? 2 : 1);
+    // Ready made lines still download when the engine cannot run.
+    if (text && (canMakeClips() || isBanked(voice, text))) void makeClip(voice, text, later ? 2 : 1);
   }
 }
 
@@ -333,7 +343,7 @@ export function clearPreparedSpeech() {
   if (naturalVoice()) clearQueuedClips();
 }
 
-/** Plays a short sample of a natural voice, downloading the model first if needed. */
+/** Plays a short sample of a natural voice, a ready made clip that needs no model. */
 export async function previewNaturalVoice(id: NaturalVoiceId): Promise<'played' | 'failed'> {
   silenceAll();
   const asked = epoch;
@@ -350,8 +360,9 @@ export function holdVoice() {
   return naturalVoice() ? holdEngine() : () => undefined;
 }
 
+// The model only loads for a line the bank does not have, so a walk on campus never waits for it.
 export async function warmUpVoice() {
-  if (naturalVoice()) startEngine();
+  if (naturalVoice()) void loadVoiceBank();
   const [voice] = await Promise.all([pickVoice(), prepareAudio()]);
   if (!canSpeak) return;
   Speech.speak(' ', { voice, language: voice ? undefined : 'en-US', volume: 0 });
@@ -359,15 +370,4 @@ export async function warmUpVoice() {
 
 export function stopSpeaking() {
   silenceAll();
-}
-
-export function spokenDistance(meters: number) {
-  const feet = meters * 3.28084;
-  if (feet < 100) return `${Math.max(10, Math.round(feet / 10) * 10)} feet`;
-  if (feet < 1000) return `${Math.round(feet / 50) * 50} feet`;
-  const miles = feet / 5280;
-  if (miles < 0.35) return 'a quarter mile';
-  if (miles < 0.65) return 'half a mile';
-  if (miles < 1.15) return '1 mile';
-  return `${miles < 10 ? miles.toFixed(1) : Math.round(miles)} miles`;
 }

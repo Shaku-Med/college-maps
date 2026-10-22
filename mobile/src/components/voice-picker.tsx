@@ -222,8 +222,8 @@ export function VoicePicker() {
           </Button>
         ) : null}
         <Text className="px-1 pt-3 text-sm leading-5 text-muted">
-          They run on your phone. The first one downloads once, about 90 MB, so Wi‑Fi is best. Lines it has already
-          made play without a connection.
+          Directions on campus come ready made and play right away. Off campus lines are made on your phone, which
+          downloads about 90 MB once, so Wi‑Fi is best. Lines already on your phone play without a connection.
         </Text>
       </View>
       ) : (

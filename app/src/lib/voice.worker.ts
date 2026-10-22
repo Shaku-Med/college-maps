@@ -2,13 +2,11 @@
 import { env as transformers } from "@huggingface/transformers";
 import { KokoroTTS, env } from "kokoro-js";
 
-const MODEL = "onnx-community/Kokoro-82M-v1.0-ONNX";
-// Pinned to one model version, so a change to that repository cannot change what devices download.
-const MODEL_REVISION = "1939ad2a8e416c0acfeecc08a694d14ef25f2231";
+import { VOICE_MODEL } from "./voice-bank";
 
 // Served from this site by scripts/copy-onnx-runtime.mjs instead of the CDN transformers.js defaults to.
 env.wasmPaths = "/ort/";
-transformers.remotePathTemplate = `{model}/resolve/${MODEL_REVISION}/`;
+transformers.remotePathTemplate = `{model}/resolve/${VOICE_MODEL.revision}/`;
 const MAX_TEXT = 300;
 const MAX_JOBS = 60;
 // Only the model file counts toward progress.
@@ -46,7 +44,7 @@ function reportProgress(info: { status: string; loaded?: number; total?: number 
 
 // The smaller quantized model: about 90 MB, and it runs on any phone's CPU through WebAssembly.
 function load() {
-  model ??= KokoroTTS.from_pretrained(MODEL, { dtype: "q8", device: "wasm", progress_callback: reportProgress }).catch((err: unknown) => {
+  model ??= KokoroTTS.from_pretrained(VOICE_MODEL.id, { dtype: VOICE_MODEL.dtype, device: "wasm", progress_callback: reportProgress }).catch((err: unknown) => {
     model = null;
     throw err;
   });

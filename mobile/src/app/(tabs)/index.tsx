@@ -51,6 +51,7 @@ import { currentCompass, currentFix, subscribeCompass, useLocation } from '@/lib
 import { parkingSpoken } from '@/lib/parking';
 import { watchSteps } from '@/lib/steps';
 import { canSwitchTravel } from '@/lib/travel-switch';
+import { TRAVEL_SWITCH_LINES } from '@/lib/voice-lines';
 import { askForRating, finishedWalk } from '@/lib/rating';
 import { roomDirections } from '@/lib/search';
 import { legSeconds, stopsStart } from '@/lib/stops';
@@ -373,7 +374,7 @@ export default function MapScreen() {
     announcedSwitch.current = travelSwitched.at;
     const walking = travelSwitched.to === 'walk';
     setTravelMode(travelSwitched.to);
-    sayLine(walking ? 'Switching to walking directions.' : 'Switching to driving directions.');
+    sayLine(TRAVEL_SWITCH_LINES[travelSwitched.to]);
     toast.show({
       label: walking ? 'Switched to walking' : 'Switched to driving',
       description: walking ? 'Looks like you got out and are on foot.' : 'Looks like you are in a vehicle now.',

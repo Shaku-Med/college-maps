@@ -1,6 +1,7 @@
 // Spoken directions.
 
-import { DEFAULT_VOICE, PREVIEW_LINE, isVoiceId, type VoiceId } from "./voice-options";
+import { BANK_MANIFEST_PATH, MAX_BANK_CLIP_BYTES, bankClipPath, parseBankManifest, type VoiceBank } from "./voice-bank";
+import { DEFAULT_VOICE, PREVIEW_LINE, isVoiceId, type NaturalVoiceId, type VoiceId } from "./voice-options";
 
 export { DEFAULT_VOICE, VOICE_OPTIONS, isVoiceId, type VoiceId } from "./voice-options";
 
@@ -9,8 +10,13 @@ const CHOICE_KEY = "csimap.voiceName";
 
 let voice: VoiceId = DEFAULT_VOICE;
 const MAX_TEXT = 300;
-// How long a heads up may wait for its own clip.
+// How long a heads up may wait for its own clip, and a line said right now for its ready made one.
 const WAIT_FOR_CLIP_MS = 4_000;
+const WAIT_FOR_BANK_MS = 1_500;
+// A missing manifest is asked for again after this long, not on every line.
+const BANK_RETRY_MS = 30_000;
+// Kokoro speaks at 24 kHz, so ready made clips decode without resampling.
+const BANK_RATE = 24_000;
 const MAX_CLIPS_IN_MEMORY = 160;
 const MAX_CLIPS_STORED = 250;
 // The same heads up twice in a row, as happens right after a reroute, is said once.
@@ -75,18 +81,6 @@ export function selectVoice(id: VoiceId) {
   worker?.postMessage({ type: "reset" });
 }
 
-/** Speech for distances, so "80 ft" is read as "80 feet" and long ones are rounded the way people say them. */
-export function spokenDistance(meters: number) {
-  const feet = meters * 3.28084;
-  if (feet < 100) return `${Math.max(10, Math.round(feet / 10) * 10)} feet`;
-  if (feet < 1000) return `${Math.round(feet / 50) * 50} feet`;
-  const miles = feet / 5280;
-  if (miles < 0.35) return "a quarter mile";
-  if (miles < 0.65) return "half a mile";
-  if (miles < 1.15) return "1 mile";
-  return `${miles < 10 ? miles.toFixed(1) : Math.round(miles)} miles`;
-}
-
 const clean = (text: string) => text.trim().slice(0, MAX_TEXT);
 // Clips are kept per voice, so switching voices never plays a line in the wrong one.
 const clipId = (text: string, speaker: VoiceId = voice) => `${speaker}|${text}`;
@@ -138,16 +132,18 @@ function watchEngine() {
   }, 5_000);
 }
 
-// Whether this device can run the natural voices at all, whichever voice is chosen right now.
+const canPlayClips = () => typeof window !== "undefined" && typeof AudioContext !== "undefined";
+
+// Whether this device can run the natural voices' model, whichever voice is chosen right now.
 function modelAllowed() {
-  if (typeof window === "undefined" || typeof Worker === "undefined" || typeof AudioContext === "undefined") return false;
-  // The model is a large download, so a phone asking to save data keeps the device voice.
+  if (!canPlayClips() || typeof Worker === "undefined") return false;
+  // The model is a large download, so a phone asking to save data keeps the device voice for lines the bank lacks.
   const connection = (navigator as Navigator & { connection?: { saveData?: boolean } }).connection;
   return !connection?.saveData;
 }
 
-// Whether directions are said in a natural voice.
-const neuralAllowed = () => voice !== "device" && modelAllowed();
+// Whether directions are said in a natural voice, from the bank or the model.
+const neuralAllowed = () => voice !== "device" && canPlayClips();
 
 // A tap asking for a natural voice tries the model again after it failed, a few times per visit at most.
 function retryModel() {
@@ -190,9 +186,9 @@ function giveUp() {
   waiting.clear();
 }
 
-/** Starts downloading the model, about 90 MB the first time and cached by the browser after that. */
+/** Gets the ready made campus lines' list. The model, about 90 MB once, only loads for a line the bank does not have. */
 export function warmUpVoice() {
-  if (neuralAllowed()) loadModel();
+  if (neuralAllowed()) void loadBank();
 }
 
 function loadModel() {
@@ -211,8 +207,52 @@ function remember(id: string, clip: Clip) {
   if (clips.size > MAX_CLIPS_IN_MEMORY) clips.delete(clips.keys().next().value as string);
 }
 
+// ---- Ready made campus lines --------------------------------------------------------------------------
+
+let bank: VoiceBank | null = null;
+let bankLoading: Promise<VoiceBank | null> | null = null;
+let bankFailedAt = Number.NEGATIVE_INFINITY;
+let decoder: OfflineAudioContext | null = null;
+
+function loadBank(): Promise<VoiceBank | null> {
+  if (bank) return Promise.resolve(bank);
+  if (Date.now() - bankFailedAt < BANK_RETRY_MS) return Promise.resolve(null);
+  bankLoading ??= fetch(BANK_MANIFEST_PATH, { cache: "no-cache" })
+    .then((response) => (response.ok ? response.json() : null))
+    .then(parseBankManifest)
+    .catch(() => null)
+    .then((loaded) => {
+      bank = loaded;
+      bankLoading = null;
+      if (!loaded) bankFailedAt = Date.now();
+      return loaded;
+    });
+  return bankLoading;
+}
+
+const isBanked = (text: string) => voice !== "device" && bankClipPath(bank, voice, text) !== null;
+
+// The browser keeps these files for a year, so a line heard once plays from disk after that, even offline.
+async function fetchBankClip(text: string, speaker: NaturalVoiceId): Promise<Clip | null> {
+  const path = bankClipPath(await loadBank(), speaker, text);
+  if (!path || typeof OfflineAudioContext === "undefined") return null;
+  try {
+    const response = await fetch(path);
+    const isAudio = response.headers.get("content-type")?.startsWith("audio/");
+    if (!response.ok || !isAudio || Number(response.headers.get("content-length")) > MAX_BANK_CLIP_BYTES) return null;
+    const bytes = await response.arrayBuffer();
+    if (bytes.byteLength > MAX_BANK_CLIP_BYTES) return null;
+    decoder ??= new OfflineAudioContext(1, 1, BANK_RATE);
+    const audio = await decoder.decodeAudioData(bytes);
+    return { samples: audio.getChannelData(0).slice(), rate: audio.sampleRate };
+  } catch {
+    return null;
+  }
+}
+
 function synthesize(text: string, priority: Priority, speaker: VoiceId = voice): Promise<Clip | null> {
   if (speaker === "device") return Promise.resolve(null);
+  const natural: NaturalVoiceId = speaker;
   const id = clipId(text, speaker);
   const cached = clips.get(id);
   if (cached) return Promise.resolve(cached);
@@ -227,7 +267,7 @@ function synthesize(text: string, priority: Priority, speaker: VoiceId = voice):
 
   const entry: { job: Promise<Clip | null>; id?: number; priority: Priority } = { job: Promise.resolve(null), priority };
   entry.job = (async () => {
-    const stored = await readStoredClip(text, speaker);
+    const stored = (await fetchBankClip(text, natural)) ?? (await readStoredClip(text, speaker));
     if (stored) {
       remember(id, stored);
       return stored;
@@ -427,21 +467,26 @@ export function speak(line: string, { urgent = false, fallback }: { urgent?: boo
     return clip !== undefined && play(clip);
   };
 
-  const modelComing = modelState === "loading" || modelState === "ready";
-  if (urgent || !modelComing || !neuralAllowed()) {
+  // A ready made line is a quick download, worth a short wait even at the turn.
+  const banked = isBanked(text);
+  const coming = banked || modelState === "loading" || modelState === "ready";
+  if ((urgent && !banked) || !coming || !neuralAllowed()) {
     if (!standIn()) speakWithDevice(text);
     // Made now, so the same line is ready in the natural voice the next time it comes up.
-    if (modelComing && neuralAllowed()) void synthesize(text, 1);
+    if (coming && neuralAllowed()) void synthesize(text, 1);
     return;
   }
 
   const asked = epoch;
   let spoken = false;
-  const giveUp = setTimeout(() => {
-    if (spoken || asked !== epoch) return;
-    spoken = true;
-    if (!standIn()) speakWithDevice(text);
-  }, WAIT_FOR_CLIP_MS);
+  const giveUp = setTimeout(
+    () => {
+      if (spoken || asked !== epoch) return;
+      spoken = true;
+      if (!standIn()) speakWithDevice(text);
+    },
+    urgent ? WAIT_FOR_BANK_MS : WAIT_FOR_CLIP_MS,
+  );
   void synthesize(text, 0).then((clip) => {
     if (spoken || asked !== epoch) return;
     spoken = true;
@@ -463,7 +508,8 @@ export async function previewVoice(id: VoiceId): Promise<"played" | "unsupported
     return "played";
   }
   // Any voice can be heard, not just the chosen one, including while the phone's own voice is chosen.
-  if (!modelAllowed()) return "unsupported";
+  // The sample is a ready made clip, so it plays without the model.
+  if (!canPlayClips()) return "unsupported";
   startAudio();
   retryModel();
   const clip = await synthesize(PREVIEW_LINE, 0, id);

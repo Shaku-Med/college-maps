@@ -33,6 +33,7 @@ import { fetchTripRoute } from "@/lib/directions";
 import { metersFromBuilding } from "@/lib/buildings";
 import { autoTravelOn } from "@/lib/travel-prefs";
 import { canSwitchTravel, createTravelSwitch, type SwitchableTravel } from "@/lib/travel-switch";
+import { TRAVEL_SWITCH_LINES } from "@/lib/voice-lines";
 import { bearingDegrees, distanceMeters, turnAngle } from "@/lib/geo";
 import { ON_FOOT_MAX_MPS, RIDING_MAX_MPS, createMotionTracker, isOnFoot, type MotionState } from "@/lib/motion";
 import {
@@ -805,7 +806,7 @@ export function MapApp({ initialPlaceId, initialRoom, initialAccountOpen = false
     if (!travelSwitched || announcedSwitchRef.current === travelSwitched.at) return;
     announcedSwitchRef.current = travelSwitched.at;
     const walking = travelSwitched.to === "walk";
-    sayLine(walking ? "Switching to walking directions." : "Switching to driving directions.");
+    sayLine(TRAVEL_SWITCH_LINES[travelSwitched.to]);
     const id = toast.info(walking ? "Switched to walking" : "Switched to driving", {
       description: walking ? "Looks like you got out and are on foot." : "Looks like you are in a vehicle now.",
       timeout: 10_000,

@@ -93,9 +93,14 @@ export default function PrivacyPage() {
           through our servers and we do not keep them.
         </p>
         <p className="text-sm leading-relaxed text-muted">
-          Voice directions are made on your device by an open source voice model. The first time you use
-          them, your browser, or the phone app once you pick a natural voice, downloads the model, about
-          90 MB, from Hugging Face and keeps it. The words being spoken never leave your device. Spoken
+          The lines every campus walk uses, like &ldquo;Turn left&rdquo; or the name of the building you are
+          walking to, are recorded ahead of time in each voice and downloaded from this site as they are
+          needed. Like any file from this site, that request names only the recording, not where you are.
+        </p>
+        <p className="text-sm leading-relaxed text-muted">
+          Other lines, like street names, are made on your device by an open source voice model. The first
+          time one is needed, your browser, or the phone app once you pick a natural voice, downloads the
+          model, about 90 MB, from Hugging Face and keeps it. Those words never leave your device. Spoken
           lines are saved on your device so they play instantly next time. In the app, Remove downloaded
           voices deletes the model and every saved line.
         </p>

@@ -35,6 +35,11 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       { source: "/(.*)", headers: securityHeaders },
+      // Each clip's name comes from its line and the model, so a changed clip gets a new name and this one never changes.
+      {
+        source: "/voice-bank/:voice/:clip",
+        headers: [{ key: "Cache-Control", value: "public, max-age=31536000, immutable" }],
+      },
       {
         source: "/sw.js",
         headers: [
