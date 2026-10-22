@@ -47,8 +47,10 @@ export function proxy(request: NextRequest) {
 export const config = {
   matcher: [
     {
+      // Folders are skipped only as a whole segment and files only by exact name, so a look alike path like
+      // /iconsx still renders the app with its policy.
       source:
-        "/((?!api|_next/static|_next/image|maplibre|favicon.ico|manifest.webmanifest|icons|opengraph-image|twitter-image|sw.js|v1/).*)",
+        "/((?!(?:api|_next/static|maplibre|voice-bank|icons|v1)/|(?:_next/image|favicon\\.ico|manifest\\.webmanifest|opengraph-image|twitter-image|sw\\.js)$).*)",
       missing: [
         { type: "header", key: "next-router-prefetch" },
         { type: "header", key: "purpose", value: "prefetch" },
