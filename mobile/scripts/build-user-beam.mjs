@@ -1,4 +1,4 @@
-// Draws the facing cone under the location dot in the campus accent, light and dark, at 1x, 2x, and 3x.
+// Draws the soft facing beam under the location dot in the campus accent, light and dark, at 1x, 2x, and 3x.
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -13,33 +13,36 @@ if (!/^#[0-9a-f]{6}$/i.test(ACCENTS.light ?? "") || !/^#[0-9a-f]{6}$/i.test(ACCE
   throw new Error("campus.json theme.accent and theme.dark.accent must be colors like #1268D2");
 }
 
-// The same shape the cone had as an SVG: a 140 point square, the dot at its center, the light reaching up.
-const SIZE = 140;
-const CENTER = 70;
-const REACH = 66;
+// A soft beam like a flashlight, the same one the web map draws: a 104 point square with the dot at its center,
+// fanning up about 76 degrees, fading out toward both sides and toward its end, with no hard edge anywhere.
+const SIZE = 104;
+const CENTER = SIZE / 2;
+const REACH = 48;
+// Degrees either side of straight ahead: full strength out to FULL, gone by EDGE.
+const FULL = 24;
+const EDGE = 38;
 const STOPS = [
-  [0, 0.7],
-  [0.45, 0.28],
+  [0, 0.55],
+  [0.2, 0.45],
+  [0.6, 0.16],
   [1, 0],
 ];
 const SAMPLES = 4;
 
-const capCenterY = 8 + Math.sqrt(64 ** 2 - 40 ** 2);
+const smooth = (t) => t * t * (3 - 2 * t);
 
-function inside(x, y) {
-  if (y >= 8 && y <= CENTER) {
-    const half = ((CENTER - y) / (CENTER - 8)) * 40;
-    return Math.abs(x - CENTER) <= half;
-  }
-  return y < 8 && Math.abs(x - CENTER) <= 40 && (x - CENTER) ** 2 + (y - capCenterY) ** 2 <= 64 ** 2;
-}
-
-function glow(x, y) {
-  const t = Math.min(1, Math.hypot(x - CENTER, y - CENTER) / REACH);
+function beam(x, y) {
+  const dx = x - CENTER;
+  const dy = CENTER - y;
+  if (dy <= 0) return 0;
+  const angle = Math.abs((Math.atan2(dx, dy) * 180) / Math.PI);
+  const t = Math.hypot(dx, dy) / REACH;
+  if (angle >= EDGE || t >= 1) return 0;
+  const side = angle <= FULL ? 1 : 1 - smooth((angle - FULL) / (EDGE - FULL));
   for (let i = 1; i < STOPS.length; i++) {
     const [t1, a1] = STOPS[i];
     const [t0, a0] = STOPS[i - 1];
-    if (t <= t1) return a0 + ((t - t0) / (t1 - t0)) * (a1 - a0);
+    if (t <= t1) return side * (a0 + ((t - t0) / (t1 - t0)) * (a1 - a0));
   }
   return 0;
 }
@@ -77,7 +80,7 @@ function png(hex, scale) {
         for (let sx = 0; sx < SAMPLES; sx++) {
           const ux = (x + (sx + 0.5) / SAMPLES) / scale;
           const uy = (y + (sy + 0.5) / SAMPLES) / scale;
-          if (inside(ux, uy)) alpha += glow(ux, uy);
+          alpha += beam(ux, uy);
         }
       }
       const at = row + 1 + x * 4;

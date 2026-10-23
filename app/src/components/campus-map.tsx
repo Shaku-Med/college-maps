@@ -422,11 +422,12 @@ function createUserMarker() {
   el.setAttribute("role", "img");
   el.setAttribute("aria-label", "Your location");
 
-  // A wedge that fans out from the dot toward where the phone is pointing, like Apple Maps.
+  // A soft beam toward where the phone points, like a flashlight: it fades out to both sides and toward its end,
+  // the same as the phone app's (mobile/scripts/build-user-beam.mjs).
   const cone = document.createElement("div");
   cone.dataset.headingCone = "";
   cone.className =
-    "pointer-events-none absolute bottom-1/2 left-1/2 h-14 w-16 -translate-x-1/2 origin-bottom opacity-0 transition-opacity duration-300 will-change-transform [clip-path:polygon(50%_100%,0_0,100%_0)] bg-[radial-gradient(circle_at_50%_100%,color-mix(in_oklab,var(--accent)_70%,transparent),transparent_72%)]";
+    "pointer-events-none absolute bottom-1/2 left-1/2 h-12 w-24 -translate-x-1/2 origin-bottom opacity-0 transition-opacity duration-300 will-change-transform bg-[radial-gradient(circle_48px_at_50%_100%,color-mix(in_oklab,var(--accent)_55%,transparent),color-mix(in_oklab,var(--accent)_45%,transparent)_20%,color-mix(in_oklab,var(--accent)_16%,transparent)_60%,transparent)] [mask-image:conic-gradient(from_-38deg_at_50%_100%,transparent,black_14deg,black_62deg,transparent_76deg,transparent)]";
 
   const dot = document.createElement("div");
   dot.className =

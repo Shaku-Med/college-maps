@@ -98,9 +98,10 @@ export function UserPin({ fix, at }: { fix: Fix; at?: Coordinate | null }) {
           id="user-glow"
           type="circle"
           paint={{
-            'circle-radius': 18,
+            // The same ring as the web dot, small enough that the beam reads from close to the dot.
+            'circle-radius': 14,
             'circle-color': accent,
-            'circle-opacity': 0.28,
+            'circle-opacity': 0.25,
             'circle-pitch-alignment': 'map',
           }}
         />
