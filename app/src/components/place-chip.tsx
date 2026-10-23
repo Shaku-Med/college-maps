@@ -51,24 +51,24 @@ export function PlaceChip({ place, state, stop, activity, onPress, onHover }: Pl
   const kind = markerKind(place);
   const picked = state === "selected";
   const Glyph = CATEGORY_ICONS[place.category];
-  const glow = activity > 0 && !picked ? Math.min(activity, 6) : 0;
+  // Campus events here: the heat on the map shows where, the badge says how many.
+  const busy = activity > 0 && state === "idle";
   const hover = (id: string | null) => (event: PointerEvent) => {
     if (event.pointerType === "mouse") onHover(id);
   };
+  const label =
+    stop !== undefined
+      ? `Stop ${stop}, ${place.name}`
+      : busy
+        ? `${place.name}, ${activity} campus ${activity === 1 ? "event" : "events"}`
+        : place.name;
 
   return (
     <div className="relative flex items-center justify-center">
-      {glow > 0 ? (
-        <span
-          aria-hidden
-          className="pointer-events-none absolute rounded-full bg-accent/40"
-          style={{ width: 34 + glow * 6, height: 34 + glow * 6, opacity: 0.35 + glow * 0.08 }}
-        />
-      ) : null}
       <button
         type="button"
         data-place-marker={place.id}
-        aria-label={stop !== undefined ? `Stop ${stop}, ${place.name}` : place.name}
+        aria-label={label}
         aria-pressed={picked}
         onClick={(event) => {
           event.stopPropagation();
@@ -76,7 +76,7 @@ export function PlaceChip({ place, state, stop, activity, onPress, onHover }: Pl
         }}
         onPointerEnter={hover(place.id)}
         onPointerLeave={hover(null)}
-        className={cn(SHELL, SHAPE[kind], COLORS[state])}>
+        className={cn(SHELL, SHAPE[kind], COLORS[state], busy && "border-accent animate-marker-live motion-reduce:animate-none")}>
         {kind === "lot" ? (
           <span className={cn("flex size-5 shrink-0 items-center justify-center rounded-md text-[11px] font-bold", TILE[state])}>P</span>
         ) : kind === "stop" ? (
@@ -113,6 +113,12 @@ export function PlaceChip({ place, state, stop, activity, onPress, onHover }: Pl
         {state === "stop" && stop !== undefined ? (
           <span className="absolute -right-1.5 -top-1.5 flex size-4 items-center justify-center rounded-full bg-accent text-[10px] font-bold leading-none text-accent-foreground">
             {stop}
+          </span>
+        ) : busy ? (
+          <span
+            aria-hidden
+            className="absolute -right-2 -top-2 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-[10px] font-bold leading-none tabular-nums text-accent-foreground ring-2 ring-overlay">
+            {activity > 9 ? "9+" : activity}
           </span>
         ) : null}
       </button>

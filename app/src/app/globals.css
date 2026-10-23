@@ -7,6 +7,7 @@
   --animate-sheet-in: sheet-in 280ms cubic-bezier(0.22, 1, 0.36, 1);
   --animate-fade-in: fade-in 160ms ease-out;
   --animate-marker-ring: marker-ring 900ms cubic-bezier(0.22, 1, 0.36, 1);
+  --animate-marker-live: marker-live 2.6s cubic-bezier(0.22, 1, 0.36, 1) infinite;
 }
 
 /* The page matches the app someone would install. Set before paint by APPEARANCE_SCRIPT. */
@@ -46,6 +47,17 @@
   }
   to {
     box-shadow: 0 0 0 14px color-mix(in oklab, var(--accent) 0%, transparent);
+  }
+}
+
+/* A slow, quiet pulse on places with campus events happening, most of the time resting. */
+@keyframes marker-live {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in oklab, var(--accent) 40%, transparent);
+  }
+  60%,
+  100% {
+    box-shadow: 0 0 0 10px color-mix(in oklab, var(--accent) 0%, transparent);
   }
 }
 

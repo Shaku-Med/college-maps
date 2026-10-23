@@ -1,7 +1,9 @@
+import type { ExpressionSpecification } from '@maplibre/maplibre-gl-style-spec';
 import type * as GeoJSON from 'geojson';
 import {
   Camera,
   GeoJSONSource,
+  Images,
   Layer,
   Map,
   Marker,
@@ -51,6 +53,8 @@ import { currentCompass, currentFix, subscribeCompass, useLocation } from '@/lib
 import { parkingSpoken } from '@/lib/parking';
 import { watchSteps } from '@/lib/steps';
 import { buildingPolygon } from '@/lib/buildings';
+import { withAlpha } from '@/lib/color-alpha';
+import { heatColors } from '@/lib/map-paint';
 import { zoomBand, type ZoomBand } from '@/lib/place-marker';
 import { canSwitchTravel } from '@/lib/travel-switch';
 import { TRAVEL_SWITCH_LINES } from '@/lib/voice-lines';
@@ -99,6 +103,9 @@ const REROUTE_HOLD_MS = 2_000;
 const RATING_DELAY_MS = 2_000;
 
 const toLngLat = ({ latitude, longitude }: Coordinate): [number, number] => [longitude, latitude];
+// Map sizes that grow from the campus overview to close up, the same steps as the web map.
+const zoomed = (low: number, high: number) => ['interpolate', ['linear'], ['zoom'], 14, low, 18, high] as ExpressionSpecification;
+const ROUTE_CHEVRON = { 'route-chevron': { source: require('@/assets/images/route-chevron.png'), sdf: true } };
 
 function line(path: Coordinate[] | undefined | null): GeoJSON.Feature<GeoJSON.LineString> | null {
   if (!path || path.length < 2) return null;
@@ -152,8 +159,8 @@ export default function MapScreen() {
   const [activePerson, setActivePerson] = useState<string | null>(null);
   const [ratingDue, setRatingDue] = useState(false);
   const [permission, requestPermission] = Location.useForegroundPermissions();
-  const [accent, danger, background] = useThemeColor(['accent', 'danger', 'background']);
-  const casing = scheme === 'dark' ? '#0b1a33' : '#ffffff';
+  // The color made to sit on the accent: the route's casing and chevrons, the same as the web map.
+  const [accent, danger, background, casing] = useThemeColor(['accent', 'danger', 'background', 'accent-foreground']);
 
   const meetup =
     social.meetups.find((m) => m.id === shownMeetupId && m.active && m.yourStatus === 'joined') ?? null;
@@ -162,6 +169,15 @@ export default function MapScreen() {
     for (const row of campusActivityByPlace(social.campus)) map[row.placeId] = row.count;
     return map;
   }, [social.campus]);
+  const activityHeat = useMemo((): GeoJSON.FeatureCollection<GeoJSON.Point> => {
+    const features: GeoJSON.Feature<GeoJSON.Point>[] = [];
+    for (const place of PLACES) {
+      const count = activityCounts[place.id] ?? 0;
+      if (count < 1) continue;
+      features.push({ type: 'Feature', properties: { weight: Math.min(count, 6) }, geometry: { type: 'Point', coordinates: toLngLat(place.coordinate) } });
+    }
+    return { type: 'FeatureCollection', features };
+  }, [activityCounts]);
   const tripEvents = useMemo(
     () => (trip.destination ? eventsAtPlace(social.campus, trip.destination.id) : []),
     [social.campus, trip.destination],
@@ -657,6 +673,8 @@ export default function MapScreen() {
       ? [...previewRoute.path, ...preview.later.flatMap((leg) => leg.path)]
       : undefined;
   const routeLine = line(routePath);
+  const routeEnd = routeLine ? routeLine.geometry.coordinates[routeLine.geometry.coordinates.length - 1] : null;
+  const routeColor = navigation.isWrongWay && navigating ? danger : accent;
   const previousLine = navigating ? line(navigation.previousPath) : null;
   const originPlace = planning && trip.origin !== MY_LOCATION ? getPlace(trip.origin) : undefined;
   const destinationId = trip.phase !== 'idle' ? trip.destination?.id : focused?.id;
@@ -828,6 +846,25 @@ export default function MapScreen() {
         ) : null}
 
         <Camera ref={camera} initialViewState={{ center: CAMPUS_CENTER, zoom }} maxBounds={MAX_BOUNDS} minZoom={10} maxZoom={19.5} />
+        <Images images={ROUTE_CHEVRON} />
+
+        {activityHeat.features.length > 0 ? (
+          <GeoJSONSource id="campus-activity" data={activityHeat}>
+            {/* Campus events glow in the accent under their buildings; the badge on each chip says how many. */}
+            <Layer
+              id="campus-activity-heat"
+              type="heatmap"
+              afterId="building"
+              maxzoom={19}
+              paint={{
+                'heatmap-weight': ['interpolate', ['linear'], ['get', 'weight'], 1, 0.6, 6, 1],
+                'heatmap-intensity': ['interpolate', ['linear'], ['zoom'], 14, 0.8, 18, 1.4],
+                'heatmap-color': heatColors(accent) as ExpressionSpecification,
+                'heatmap-radius': ['interpolate', ['linear'], ['zoom'], 14, 30, 18, 96],
+              }}
+            />
+          </GeoJSONSource>
+        ) : null}
 
         {outline ? (
           <GeoJSONSource id="place-outline" data={{ type: 'Feature', properties: {}, geometry: outline }}>
@@ -866,7 +903,7 @@ export default function MapScreen() {
               id="previous-route-casing"
               type="line"
               layout={{ 'line-cap': 'round', 'line-join': 'round' }}
-              paint={{ 'line-color': casing, 'line-width': 9, 'line-opacity': 0.45 }}
+              paint={{ 'line-color': casing, 'line-width': 9, 'line-opacity': 0.4 }}
             />
             <Layer
               id="previous-route-line"
@@ -880,45 +917,54 @@ export default function MapScreen() {
 
         {routeLine ? (
           <GeoJSONSource id="route" data={routeLine}>
+            {/* The same route as the web map: a soft glow, the casing, the line, and chevrons pointing the way. */}
+            <Layer
+              id="route-glow"
+              type="line"
+              layout={{ 'line-cap': 'round', 'line-join': 'round' }}
+              paint={{ 'line-color': withAlpha(routeColor, 0.3), 'line-width': zoomed(12, 30), 'line-blur': zoomed(6, 14) }}
+            />
             <Layer
               id="route-casing"
               type="line"
               layout={{ 'line-cap': 'round', 'line-join': 'round' }}
-              paint={{ 'line-color': casing, 'line-width': 11 }}
+              paint={{ 'line-color': casing, 'line-width': zoomed(6, 15) }}
             />
             <Layer
               id="route-line"
               type="line"
               layout={{ 'line-cap': 'round', 'line-join': 'round' }}
-              paint={{ 'line-color': navigation.isWrongWay && navigating ? danger : accent, 'line-width': 7 }}
+              paint={{ 'line-color': routeColor, 'line-width': zoomed(3.5, 9) }}
+            />
+            <Layer
+              id="route-chevrons"
+              type="symbol"
+              minzoom={16}
+              layout={{
+                'symbol-placement': 'line',
+                'symbol-spacing': ['interpolate', ['linear'], ['zoom'], 16, 44, 19, 72] as ExpressionSpecification,
+                'icon-image': 'route-chevron',
+                // Only close up, sized to sit inside the line like the web map (the image is 64 px, twice the web's 32).
+                'icon-size': ['interpolate', ['linear'], ['zoom'], 16, 0.16, 19, 0.26] as ExpressionSpecification,
+                'icon-rotation-alignment': 'map',
+                'icon-allow-overlap': true,
+                'icon-ignore-placement': true,
+              }}
+              paint={{ 'icon-color': casing, 'icon-opacity': 0.9 }}
             />
           </GeoJSONSource>
         ) : null}
 
-        {trip.destination && trip.phase !== 'idle' ? (
-          <GeoJSONSource
-            id="destination-point"
-            data={{
-              type: 'Feature',
-              properties: {},
-              geometry: {
-                type: 'Point',
-                coordinates: [trip.destination.coordinate.longitude, trip.destination.coordinate.latitude],
-              },
-            }}>
+        {routeEnd ? (
+          <GeoJSONSource id="route-end" data={{ type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: routeEnd } }}>
             <Layer
-              id="destination-glow"
-              type="circle"
-              paint={{ 'circle-radius': 16, 'circle-color': accent, 'circle-opacity': 0.22 }}
-            />
-            <Layer
-              id="destination-dot"
+              id="route-end-dot"
               type="circle"
               paint={{
-                'circle-radius': 7,
-                'circle-color': accent,
-                'circle-stroke-width': 3,
-                'circle-stroke-color': '#ffffff',
+                'circle-radius': zoomed(4.5, 7.5),
+                'circle-color': routeColor,
+                'circle-stroke-width': zoomed(2, 3),
+                'circle-stroke-color': casing,
               }}
             />
           </GeoJSONSource>

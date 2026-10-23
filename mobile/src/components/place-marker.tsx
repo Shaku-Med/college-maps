@@ -79,18 +79,16 @@ export const PlaceMarker = memo(function PlaceMarker({
       anchor="center"
       onPress={() => onPress(place)}>
       <View className="items-center justify-center">
-        {busy ? (
-          <View
-            className="absolute rounded-full bg-accent/25"
-            style={{ width: 28 + Math.min(activity, 4) * 6, height: 28 + Math.min(activity, 4) * 6 }}
-          />
-        ) : null}
         <View
           accessibilityRole="button"
           accessibilityLabel={
-            stop !== undefined ? `Stop ${stop}, ${place.name}` : busy ? `${place.name}, ${activity} campus events` : place.name
+            stop !== undefined
+              ? `Stop ${stop}, ${place.name}`
+              : busy
+                ? `${place.name}, ${activity} campus ${activity === 1 ? 'event' : 'events'}`
+                : place.name
           }
-          className={cn('flex-row items-center border shadow-sm', far ? 'h-6' : 'h-7', shape, SURFACE[state])}>
+          className={cn('flex-row items-center border shadow-sm', far ? 'h-6' : 'h-7', shape, SURFACE[state], busy && 'border-accent')}>
           {kind === 'lot' ? (
             <View className={cn('size-5 items-center justify-center rounded-md', TILE[state])}>
               <Text className={cn('text-[11px] font-bold', TEXT[state])}>P</Text>
@@ -119,6 +117,11 @@ export const PlaceMarker = memo(function PlaceMarker({
           {stop !== undefined && !selected ? (
             <View className="absolute -right-1.5 -top-1.5 size-4 items-center justify-center rounded-full bg-accent">
               <Text className="text-[10px] font-bold text-accent-foreground">{stop}</Text>
+            </View>
+          ) : busy ? (
+            // The heat on the map shows where campus events are; this says how many.
+            <View className="absolute -right-2 -top-2 h-4 min-w-4 items-center justify-center rounded-full border-2 border-overlay bg-accent px-1">
+              <Text className="text-[10px] font-bold text-accent-foreground">{activity > 9 ? '9+' : activity}</Text>
             </View>
           ) : null}
         </View>

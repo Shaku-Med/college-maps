@@ -26,9 +26,11 @@ import {
 } from "@/data/campus";
 import { buildingPolygon } from "@/lib/buildings";
 import { cn } from "@/lib/cn";
-import { zoomBand } from "@/lib/place-marker";
+import { withAlpha } from "@/lib/color-alpha";
 import { resolveCssColor } from "@/lib/css-color";
 import { distanceMeters, interpolate } from "@/lib/geo";
+import { heatColors } from "@/lib/map-paint";
+import { zoomBand } from "@/lib/place-marker";
 
 const STYLE_LIGHT = CAMPUS.map.styles.light;
 const STYLE_DARK = CAMPUS.map.styles.dark;
@@ -52,8 +54,10 @@ const PREVIOUS_HIT = "route-previous-hit";
 const BUILDINGS_3D = "campus-buildings-3d";
 const ACTIVITY_SOURCE = "campus-activity";
 const ACTIVITY_HEAT = "campus-activity-heat";
-const ACTIVITY_GLOW = "campus-activity-glow";
 const OUTLINE_SOURCE = "place-outline";
+const ROUTE_END = "route-end";
+const ROUTE_CHEVRON = "route-chevron";
+const ROUTE_REVEAL_MS = 650;
 const BUILDING_PITCH = 52;
 const NO_PADDING = { top: 0, right: 0, bottom: 0, left: 0 };
 
@@ -178,73 +182,151 @@ function routeFeature(
   };
 }
 
+function routeEnd(path: Coordinate[] | undefined): GeoJSON.FeatureCollection<GeoJSON.Point> {
+  const end = path && path.length > 1 ? path[path.length - 1] : undefined;
+  return {
+    type: "FeatureCollection",
+    features: end ? [{ type: "Feature", properties: {}, geometry: { type: "Point", coordinates: toLngLat(end) } }] : [],
+  };
+}
+
 type RouteLines = { active?: Coordinate[]; previous?: Coordinate[] };
 
-// isStyleLoaded() is false while any tile loads, so only creating the layers waits for the style.
+// The glow, casing and line share one gradient, so the route can draw itself in from where it starts.
+const ROUTE_DRAWN = [`${ROUTE_SOURCE}-glow`, `${ROUTE_SOURCE}-casing`, `${ROUTE_SOURCE}-line`] as const;
+
+function routeColors() {
+  const accent = resolveCssColor("--accent", "#3b82f6");
+  return {
+    accent,
+    // The color made to sit on the accent, so the casing and chevrons read in both themes.
+    onAccent: resolveCssColor("--accent-foreground", "#ffffff"),
+    glow: withAlpha(accent, 0.3),
+  };
+}
+
+function drawnUpTo(color: string, progress: number): ExpressionSpecification {
+  return progress >= 1
+    ? ["interpolate", ["linear"], ["line-progress"], 0, color, 1, color]
+    : ["step", ["line-progress"], color, Math.max(progress, 0.0001), "rgba(0, 0, 0, 0)"];
+}
+
+/** Shows the route drawn up to this share of its length, and its chevrons and end once it is all there. */
+function setRouteDrawn(map: MapLibreMap, progress: number, colors = routeColors()) {
+  if (!map.getLayer(ROUTE_DRAWN[2])) return;
+  const { accent, onAccent, glow } = colors;
+  [glow, onAccent, accent].forEach((color, i) => map.setPaintProperty(ROUTE_DRAWN[i], "line-gradient", drawnUpTo(color, progress)));
+  const shown = progress >= 1 ? 1 : 0;
+  map.setPaintProperty(`${ROUTE_SOURCE}-chevrons`, "icon-opacity", 0.9 * shown);
+  map.setPaintProperty(`${ROUTE_END}-dot`, "circle-opacity", shown);
+  map.setPaintProperty(`${ROUTE_END}-dot`, "circle-stroke-opacity", shown);
+}
+
+let chevron: Promise<ImageBitmap | HTMLImageElement | ImageData | null> | null = null;
+
+// A signed distance field, so it takes the theme's color at any size (scripts/build-route-chevron.mjs).
+function addChevron(map: MapLibreMap) {
+  chevron ??= map
+    .loadImage("/icons/route-chevron.png")
+    .then((image) => image.data)
+    .catch(() => {
+      chevron = null;
+      return null;
+    });
+  void chevron.then((image) => {
+    if (!image || map.hasImage(ROUTE_CHEVRON)) return;
+    map.addImage(ROUTE_CHEVRON, image, { sdf: true, pixelRatio: 2 });
+  });
+}
+
 function applyRouteLayers(map: MapLibreMap, { active, previous }: RouteLines) {
   const activeSource = map.getSource<GeoJSONSource>(ROUTE_SOURCE);
   if (activeSource) {
     activeSource.setData(routeFeature(active));
-    map
-      .getSource<GeoJSONSource>(PREVIOUS_SOURCE)
-      ?.setData(routeFeature(previous));
+    map.getSource<GeoJSONSource>(PREVIOUS_SOURCE)?.setData(routeFeature(previous));
+    map.getSource<GeoJSONSource>(ROUTE_END)?.setData(routeEnd(active));
     return;
   }
-  if (!map.isStyleLoaded()) return;
+  // isStyleLoaded() stays false while tiles load; the style's own source is there as soon as the style is.
+  if (!map.getSource("openmaptiles")) return;
 
-  map.addSource(PREVIOUS_SOURCE, {
-    type: "geojson",
-    data: routeFeature(previous),
-  });
-  map.addSource(ROUTE_SOURCE, { type: "geojson", data: routeFeature(active) });
+  map.addSource(PREVIOUS_SOURCE, { type: "geojson", data: routeFeature(previous) });
+  map.addSource(ROUTE_SOURCE, { type: "geojson", data: routeFeature(active), lineMetrics: true });
+  map.addSource(ROUTE_END, { type: "geojson", data: routeEnd(active) });
+  addChevron(map);
 
   // Draw above every road and path layer but below the first label that follows them.
   const layers = map.getStyle().layers;
-  const lastShapeIndex = layers.findLastIndex(
-    (layer) => layer.type !== "symbol",
-  );
-  const beforeLabels = layers
-    .slice(lastShapeIndex + 1)
-    .find((layer) => layer.type === "symbol")?.id;
+  const lastShapeIndex = layers.findLastIndex((layer) => layer.type !== "symbol");
+  const beforeLabels = layers.slice(lastShapeIndex + 1).find((layer) => layer.type === "symbol")?.id;
   const layout = { "line-cap": "round", "line-join": "round" } as const;
-  const casing = resolveCssColor("--overlay", "#ffffff");
-  const accent = resolveCssColor("--accent", "#3b82f6");
-  const wide = ["interpolate", ["linear"], ["zoom"], 14, 5, 18, 13] as const;
-  const narrow = ["interpolate", ["linear"], ["zoom"], 14, 3, 18, 8] as const;
+  const { accent, onAccent, glow } = routeColors();
+  const zoomed = (low: number, high: number) => ["interpolate", ["linear"], ["zoom"], 14, low, 18, high] as const;
 
-  const add = (id: string, source: string, paint: Record<string, unknown>) =>
-    map.addLayer(
-      { id, type: "line", source, layout, paint } as Parameters<
-        MapLibreMap["addLayer"]
-      >[0],
-      beforeLabels,
-    );
+  const add = (layer: Record<string, unknown>) => map.addLayer(layer as Parameters<MapLibreMap["addLayer"]>[0], beforeLabels);
+  const line = (id: string, source: string, paint: Record<string, unknown>) => add({ id, type: "line", source, layout, paint });
 
   // The old route stays visible but faded, so the walker can still choose it.
-  add(`${PREVIOUS_SOURCE}-casing`, PREVIOUS_SOURCE, {
-    "line-color": casing,
-    "line-width": wide,
-    "line-opacity": 0.45,
-  });
-  add(`${PREVIOUS_SOURCE}-line`, PREVIOUS_SOURCE, {
+  line(`${PREVIOUS_SOURCE}-casing`, PREVIOUS_SOURCE, { "line-color": onAccent, "line-width": zoomed(5, 13), "line-opacity": 0.4 });
+  line(`${PREVIOUS_SOURCE}-line`, PREVIOUS_SOURCE, {
     "line-color": accent,
-    "line-width": narrow,
+    "line-width": zoomed(3, 8),
     "line-opacity": 0.35,
     "line-dasharray": [1.2, 1.4],
   });
-  add(PREVIOUS_HIT, PREVIOUS_SOURCE, {
-    "line-color": accent,
-    "line-width": 28,
-    "line-opacity": 0,
+  line(PREVIOUS_HIT, PREVIOUS_SOURCE, { "line-color": accent, "line-width": 28, "line-opacity": 0 });
+
+  line(ROUTE_DRAWN[0], ROUTE_SOURCE, { "line-gradient": drawnUpTo(glow, 1), "line-width": zoomed(12, 30), "line-blur": zoomed(6, 14) });
+  line(ROUTE_DRAWN[1], ROUTE_SOURCE, { "line-gradient": drawnUpTo(onAccent, 1), "line-width": zoomed(6, 15) });
+  line(ROUTE_DRAWN[2], ROUTE_SOURCE, { "line-gradient": drawnUpTo(accent, 1), "line-width": zoomed(3.5, 9) });
+  // Small chevrons along the line point the way, the way the route runs.
+  add({
+    id: `${ROUTE_SOURCE}-chevrons`,
+    type: "symbol",
+    source: ROUTE_SOURCE,
+    // Only close up, and sized to sit inside the line; any bigger and they read as gaps in it.
+    minzoom: 16,
+    layout: {
+      "symbol-placement": "line",
+      "symbol-spacing": ["interpolate", ["linear"], ["zoom"], 16, 44, 19, 72],
+      "icon-image": ROUTE_CHEVRON,
+      "icon-size": ["interpolate", ["linear"], ["zoom"], 16, 0.32, 19, 0.52],
+      "icon-rotation-alignment": "map",
+      "icon-allow-overlap": true,
+      "icon-ignore-placement": true,
+    },
+    paint: { "icon-color": onAccent, "icon-opacity": 0.9 },
   });
-  add(`${ROUTE_SOURCE}-casing`, ROUTE_SOURCE, {
-    "line-color": casing,
-    "line-width": wide,
+  add({
+    id: `${ROUTE_END}-dot`,
+    type: "circle",
+    source: ROUTE_END,
+    paint: {
+      "circle-radius": zoomed(4.5, 7.5),
+      "circle-color": accent,
+      "circle-stroke-color": onAccent,
+      "circle-stroke-width": zoomed(2, 3),
+    },
   });
-  add(`${ROUTE_SOURCE}-line`, ROUTE_SOURCE, {
-    "line-color": accent,
-    "line-width": narrow,
-  });
+}
+
+// The route draws itself from start to end when it first appears, unless motion is turned down.
+function revealRoute(map: MapLibreMap, frame: { current: number | null }) {
+  if (frame.current !== null) cancelAnimationFrame(frame.current);
+  frame.current = null;
+  const colors = routeColors();
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    setRouteDrawn(map, 1, colors);
+    return;
+  }
+  const started = performance.now();
+  const step = (now: number) => {
+    const t = Math.min(1, (now - started) / ROUTE_REVEAL_MS);
+    setRouteDrawn(map, 1 - (1 - t) ** 3, colors);
+    frame.current = t < 1 ? requestAnimationFrame(step) : null;
+  };
+  setRouteDrawn(map, 0, colors);
+  frame.current = requestAnimationFrame(step);
 }
 
 // Turning is allowed in building view and while getting directions. Anywhere else the map faces north.
@@ -545,7 +627,6 @@ function applyActivityHeat(
   places: readonly Place[],
   activityByPlace: Readonly<Record<string, number>> | undefined,
 ) {
-  if (!map.isStyleLoaded()) return;
   const features: GeoJSON.Feature<GeoJSON.Point>[] = [];
   if (activityByPlace) {
     for (const place of places) {
@@ -564,12 +645,13 @@ function applyActivityHeat(
     existing.setData(data);
     return;
   }
-  if (features.length === 0) return;
+  if (features.length === 0 || !map.getSource("openmaptiles")) return;
 
   map.addSource(ACTIVITY_SOURCE, { type: "geojson", data });
-  const before = map.getLayer(`${ROUTE_SOURCE}-casing`)
-    ? `${ROUTE_SOURCE}-casing`
-    : map.getStyle().layers?.find((layer) => layer.type === "symbol")?.id;
+  // Under the picked building's outline and any route, so both stay crisp on top of it.
+  const before =
+    [`${OUTLINE_SOURCE}-fill`, `${PREVIOUS_SOURCE}-casing`].find((id) => map.getLayer(id)) ??
+    map.getStyle().layers?.find((layer) => layer.type === "symbol")?.id;
   map.addLayer(
     {
       id: ACTIVITY_HEAT,
@@ -577,41 +659,10 @@ function applyActivityHeat(
       source: ACTIVITY_SOURCE,
       maxzoom: 19,
       paint: {
-        "heatmap-weight": ["interpolate", ["linear"], ["get", "weight"], 1, 0.65, 6, 1],
-        "heatmap-intensity": ["interpolate", ["linear"], ["zoom"], 14, 0.85, 17, 1.45],
-        "heatmap-color": [
-          "interpolate",
-          ["linear"],
-          ["heatmap-density"],
-          0,
-          "rgba(0,0,0,0)",
-          0.12,
-          "rgba(61,156,240,0.28)",
-          0.35,
-          "rgba(61,156,240,0.55)",
-          0.55,
-          "rgba(255,160,60,0.65)",
-          0.75,
-          "rgba(255,110,50,0.78)",
-          1,
-          "rgba(255,70,55,0.88)",
-        ],
-        "heatmap-radius": ["interpolate", ["linear"], ["zoom"], 14, 36, 17, 68],
-        "heatmap-opacity": 0.95,
-      },
-    },
-    before,
-  );
-  map.addLayer(
-    {
-      id: ACTIVITY_GLOW,
-      type: "circle",
-      source: ACTIVITY_SOURCE,
-      paint: {
-        "circle-radius": ["interpolate", ["linear"], ["get", "weight"], 1, 22, 6, 40],
-        "circle-color": "#3d9cf0",
-        "circle-opacity": 0.32,
-        "circle-blur": 0.65,
+        "heatmap-weight": ["interpolate", ["linear"], ["get", "weight"], 1, 0.6, 6, 1],
+        "heatmap-intensity": ["interpolate", ["linear"], ["zoom"], 14, 0.8, 18, 1.4],
+        "heatmap-color": heatColors(resolveCssColor("--accent", "#3b82f6")) as ExpressionSpecification,
+        "heatmap-radius": ["interpolate", ["linear"], ["zoom"], 14, 30, 18, 96],
       },
     },
     before,
@@ -650,6 +701,8 @@ export function CampusMap({
   const [hosts, setHosts] = useState<ReadonlyMap<string, HTMLElement>>(() => new Map());
   const [hovered, setHovered] = useState<string | null>(null);
   const outlinedRef = useRef<Outlined[]>([]);
+  const revealFrameRef = useRef<number | null>(null);
+  const drawnEndRef = useRef<string | null>(null);
   const userMarkerRef = useRef<Marker | null>(null);
   const userGlideRef = useRef<Glide | null>(null);
   const peopleMarkersRef = useRef(
@@ -846,7 +899,8 @@ export function CampusMap({
       }
       // OpenFreeMap styles reference a few patterns (like wood-pattern) their sprite does not ship.
       map.setMissingStyleImageResolver((id) => {
-        if (!map.hasImage(id))
+        // The chevron is our own and arrives a moment later; a blank stand-in would block it.
+        if (id !== ROUTE_CHEVRON && !map.hasImage(id))
           map.addImage(id, { width: 1, height: 1, data: new Uint8Array(4) });
       });
       map.touchZoomRotate.disableRotation();
@@ -956,8 +1010,21 @@ export function CampusMap({
   useEffect(() => {
     routesRef.current = { active: route, previous: previousRoute };
     const map = mapRef.current;
-    if (isReady && map) applyRouteLayers(map, routesRef.current);
+    if (!isReady || !map) return;
+    applyRouteLayers(map, routesRef.current);
+    // A new route, or one to somewhere else, draws itself in; walking along it or a reroute does not.
+    const end = route && route.length > 1 ? route[route.length - 1] : undefined;
+    const drawn = end ? `${end.latitude.toFixed(5)},${end.longitude.toFixed(5)}` : null;
+    if (drawn && drawn !== drawnEndRef.current) revealRoute(map, revealFrameRef);
+    drawnEndRef.current = drawn;
   }, [isReady, route, previousRoute]);
+
+  useEffect(() => {
+    const frame = revealFrameRef;
+    return () => {
+      if (frame.current !== null) cancelAnimationFrame(frame.current);
+    };
+  }, []);
 
   useEffect(() => {
     const map = mapRef.current;
