@@ -21,6 +21,14 @@ function ringFor(placeId: string): Ring | null {
   return ring;
 }
 
+/** The building's footprint as a GeoJSON polygon for drawing on the map, or null when it has none, like a parking lot. */
+export function buildingPolygon(placeId: string): { type: "Polygon"; coordinates: number[][][] } | null {
+  const ring = ringFor(placeId);
+  if (!ring) return null;
+  const points = ring.map((point) => [point.longitude, point.latitude]);
+  return { type: "Polygon", coordinates: [[...points, points[0]]] };
+}
+
 /** How far a position is from a building's walls in meters, 0 inside it, or undefined when it has no outline. */
 export function metersFromBuilding(position: Coordinate, placeId: string): number | undefined {
   const ring = ringFor(placeId);

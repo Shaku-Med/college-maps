@@ -15,14 +15,18 @@ import {
   useState,
   type Ref,
 } from "react";
+import { createPortal } from "react-dom";
 
+import { PlaceChip, type ChipState } from "@/components/place-chip";
 import {
   CAMPUS,
   CAMPUS_CENTER,
   type Coordinate,
   type Place,
 } from "@/data/campus";
+import { buildingPolygon } from "@/lib/buildings";
 import { cn } from "@/lib/cn";
+import { zoomBand } from "@/lib/place-marker";
 import { resolveCssColor } from "@/lib/css-color";
 import { distanceMeters, interpolate } from "@/lib/geo";
 
@@ -49,6 +53,7 @@ const BUILDINGS_3D = "campus-buildings-3d";
 const ACTIVITY_SOURCE = "campus-activity";
 const ACTIVITY_HEAT = "campus-activity-heat";
 const ACTIVITY_GLOW = "campus-activity-glow";
+const OUTLINE_SOURCE = "place-outline";
 const BUILDING_PITCH = 52;
 const NO_PADDING = { top: 0, right: 0, bottom: 0, left: 0 };
 
@@ -110,18 +115,53 @@ type CampusMapProps = {
   activityByPlace?: Readonly<Record<string, number>>;
 };
 
-const markerBase =
-  "flex h-7 min-w-9 cursor-pointer items-center justify-center rounded-full border px-2.5 text-xs font-semibold shadow-sm transition-[transform,background-color] duration-150 hover:scale-105 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus";
-const markerIdle = "border-border bg-overlay text-overlay-foreground";
-const markerActive = "scale-110 border-accent bg-accent text-accent-foreground";
-// The stop's number rides on the pill's corner, read from data-stop.
-const markerStop =
-  "relative scale-105 border-accent bg-accent-soft text-accent-soft-foreground after:absolute after:-right-1.5 after:-top-1.5 after:flex after:size-4 after:items-center after:justify-center after:rounded-full after:bg-accent after:text-[10px] after:font-bold after:leading-none after:text-accent-foreground after:content-[attr(data-stop)]";
-const markerOrigin =
-  "scale-105 border-foreground bg-foreground text-background";
+type Outlined = { id: string; kind: "selected" | "hover" };
 
-function markerLabel(place: Place) {
-  return place.label ?? place.id;
+function outlineFeatures(outlined: Outlined[]): GeoJSON.FeatureCollection<GeoJSON.Polygon> {
+  const features: GeoJSON.Feature<GeoJSON.Polygon>[] = [];
+  for (const { id, kind } of outlined) {
+    const geometry = buildingPolygon(id);
+    if (geometry) features.push({ type: "Feature", properties: { kind }, geometry });
+  }
+  return { type: "FeatureCollection", features };
+}
+
+// The picked building's real footprint lights up under its chip; the one pointed at gets a fainter outline.
+function applyOutlineLayers(map: MapLibreMap, outlined: Outlined[]) {
+  const source = map.getSource<GeoJSONSource>(OUTLINE_SOURCE);
+  if (source) {
+    source.setData(outlineFeatures(outlined));
+    return;
+  }
+  // isStyleLoaded() stays false while tiles load, so a building picked on page load would never light up.
+  if (!map.getSource("openmaptiles")) return;
+  map.addSource(OUTLINE_SOURCE, { type: "geojson", data: outlineFeatures(outlined) });
+  const layers = map.getStyle().layers;
+  // Under any route, which is drawn above the roads but below the labels.
+  const before = map.getLayer(`${PREVIOUS_SOURCE}-casing`)
+    ? `${PREVIOUS_SOURCE}-casing`
+    : layers.slice(layers.findLastIndex((layer) => layer.type !== "symbol") + 1).find((layer) => layer.type === "symbol")?.id;
+  const accent = resolveCssColor("--accent", "#3b82f6");
+  const selected = ["==", ["get", "kind"], "selected"] as const;
+  const add = (layer: Record<string, unknown>) => map.addLayer({ source: OUTLINE_SOURCE, ...layer } as Parameters<MapLibreMap["addLayer"]>[0], before);
+  add({ id: `${OUTLINE_SOURCE}-fill`, type: "fill", paint: { "fill-color": accent, "fill-opacity": ["case", selected, 0.2, 0.08] } });
+  add({
+    id: `${OUTLINE_SOURCE}-glow`,
+    type: "line",
+    filter: selected,
+    layout: { "line-join": "round" },
+    paint: { "line-color": accent, "line-width": 7, "line-blur": 5, "line-opacity": 0.35 },
+  });
+  add({
+    id: `${OUTLINE_SOURCE}-edge`,
+    type: "line",
+    layout: { "line-join": "round" },
+    paint: {
+      "line-color": accent,
+      "line-width": ["interpolate", ["linear"], ["zoom"], 15, 1, 18, 2.25],
+      "line-opacity": ["case", selected, 0.95, 0.55],
+    },
+  });
 }
 
 function toLngLat({ latitude, longitude }: Coordinate): [number, number] {
@@ -606,9 +646,10 @@ export function CampusMap({
 }: CampusMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
-  const markersRef = useRef(
-    new Map<string, { marker: Marker; el: HTMLButtonElement }>(),
-  );
+  const markersRef = useRef(new Map<string, { marker: Marker; host: HTMLElement }>());
+  const [hosts, setHosts] = useState<ReadonlyMap<string, HTMLElement>>(() => new Map());
+  const [hovered, setHovered] = useState<string | null>(null);
+  const outlinedRef = useRef<Outlined[]>([]);
   const userMarkerRef = useRef<Marker | null>(null);
   const userGlideRef = useRef<Glide | null>(null);
   const peopleMarkersRef = useRef(
@@ -846,7 +887,16 @@ export function CampusMap({
           onRotatedChangeRef.current?.(nowRotated);
         }
       });
+      // Chips size themselves from this, in CSS, so zooming never re-renders them.
+      const markZoom = () => {
+        const band = zoomBand(map.getZoom());
+        if (containerRef.current && containerRef.current.dataset.zoom !== band) containerRef.current.dataset.zoom = band;
+      };
+      markZoom();
+      map.on("zoom", markZoom);
       map.on("style.load", () => {
+        // The outline goes first, so the route is drawn over it.
+        applyOutlineLayers(map, outlinedRef.current);
         applyRouteLayers(map, routesRef.current);
         applyBuildingView(map, buildingViewRef.current, "keep", rotatableRef.current);
         applyActivityHeat(map, placesRef.current, activityRef.current);
@@ -945,60 +995,38 @@ export function CampusMap({
     }
 
     for (const place of places) {
-      let entry = markers.get(place.id);
-      if (!entry) {
-        const wrapper = document.createElement("div");
-        wrapper.className = "relative flex items-center justify-center";
-        const glow = document.createElement("span");
-        glow.dataset.activityGlow = "1";
-        glow.className = "pointer-events-none absolute rounded-full bg-accent/40";
-        glow.style.display = "none";
-        const el = document.createElement("button");
-        el.type = "button";
-        el.dataset.placeMarker = place.id;
-        el.textContent = markerLabel(place);
-        el.setAttribute("aria-label", place.name);
-        el.addEventListener("click", (event) => {
-          event.stopPropagation();
-          onSelectRef.current(place);
-        });
-        wrapper.appendChild(glow);
-        wrapper.appendChild(el);
-        const marker = new lib.Marker({ element: wrapper, anchor: "center" })
-          .setLngLat(toLngLat(place.coordinate))
-          .addTo(map);
-        entry = { marker, el };
-        markers.set(place.id, entry);
-      }
-
-      const isSelected = place.id === selectedId;
-      const isOrigin = place.id === originId;
-      const stop = isSelected ? undefined : stopNumbers?.[place.id];
-      const activity = activityByPlace?.[place.id] ?? 0;
-      entry.el.className = cn(
-        markerBase,
-        isSelected ? markerActive : stop !== undefined ? markerStop : isOrigin ? markerOrigin : markerIdle,
-      );
-      if (stop !== undefined) entry.el.dataset.stop = String(stop);
-      else delete entry.el.dataset.stop;
-      entry.el.setAttribute("aria-label", stop !== undefined ? `Stop ${stop}, ${place.name}` : place.name);
-      entry.el.setAttribute("aria-pressed", String(isSelected));
-      const glow = entry.marker.getElement().querySelector("[data-activity-glow]") as HTMLElement | null;
-      if (glow) {
-        if (activity > 0) {
-          const size = 34 + Math.min(activity, 6) * 6;
-          glow.style.display = "block";
-          glow.style.width = `${size}px`;
-          glow.style.height = `${size}px`;
-          glow.style.opacity = String(0.35 + Math.min(activity, 6) * 0.08);
-        } else {
-          glow.style.display = "none";
-        }
-      }
-      entry.marker.getElement().style.zIndex =
-        isSelected || isOrigin || stop !== undefined || activity > 0 ? "2" : "1";
+      if (markers.has(place.id)) continue;
+      // MapLibre positions this element; React draws the chip inside it through a portal.
+      const host = document.createElement("div");
+      const marker = new lib.Marker({ element: host, anchor: "center" })
+        .setLngLat(toLngLat(place.coordinate))
+        .addTo(map);
+      markers.set(place.id, { marker, host });
     }
-  }, [isReady, places, selectedId, originId, stopNumbers, activityByPlace]);
+    setHosts(new Map([...markers].map(([id, { host }]) => [id, host])));
+  }, [isReady, places]);
+
+  useEffect(() => {
+    const markers = markersRef.current;
+    for (const [id, { marker }] of markers) {
+      const raised = id === selectedId || id === originId || stopNumbers?.[id] !== undefined || (activityByPlace?.[id] ?? 0) > 0;
+      // The chip pointed at grows to show its name, so it rises above its neighbours.
+      marker.getElement().style.zIndex = id === hovered ? "5" : raised ? "2" : "1";
+    }
+  }, [hosts, selectedId, originId, stopNumbers, activityByPlace, hovered]);
+
+  useEffect(() => {
+    const outlined: Outlined[] = [];
+    if (selectedId) outlined.push({ id: selectedId, kind: "selected" });
+    if (hovered && hovered !== selectedId) outlined.push({ id: hovered, kind: "hover" });
+    outlinedRef.current = outlined;
+    const map = mapRef.current;
+    if (isReady && map) applyOutlineLayers(map, outlined);
+  }, [isReady, selectedId, hovered]);
+
+  const chipState = (id: string): ChipState =>
+    id === selectedId ? "selected" : stopNumbers?.[id] !== undefined ? "stop" : id === originId ? "origin" : "idle";
+  const placesById = new Map(places.map((place) => [place.id, place]));
 
   useEffect(() => {
     const lib = libRef.current;
@@ -1090,10 +1118,26 @@ export function CampusMap({
     <div className="absolute inset-0">
       <div
         ref={containerRef}
-        className="h-full w-full"
+        className="group/map h-full w-full"
         role="application"
         aria-label="Campus map"
       />
+      {[...hosts].map(([id, host]) => {
+        const place = placesById.get(id);
+        if (!place) return null;
+        return createPortal(
+          <PlaceChip
+            place={place}
+            state={chipState(id)}
+            stop={id === selectedId ? undefined : stopNumbers?.[id]}
+            activity={activityByPlace?.[id] ?? 0}
+            onPress={(picked) => onSelectRef.current(picked)}
+            onHover={setHovered}
+          />,
+          host,
+          id,
+        );
+      })}
     </div>
   );
 }

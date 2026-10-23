@@ -6,6 +6,7 @@
   --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
   --animate-sheet-in: sheet-in 280ms cubic-bezier(0.22, 1, 0.36, 1);
   --animate-fade-in: fade-in 160ms ease-out;
+  --animate-marker-ring: marker-ring 900ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 /* The page matches the app someone would install. Set before paint by APPEARANCE_SCRIPT. */
@@ -35,6 +36,16 @@
 @keyframes fade-in {
   from {
     opacity: 0;
+  }
+}
+
+/* One soft ring out from a place's chip when it is picked; box-shadow follows the chip's own shape. */
+@keyframes marker-ring {
+  from {
+    box-shadow: 0 0 0 0 color-mix(in oklab, var(--accent) 55%, transparent);
+  }
+  to {
+    box-shadow: 0 0 0 14px color-mix(in oklab, var(--accent) 0%, transparent);
   }
 }
 

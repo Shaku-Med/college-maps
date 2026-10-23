@@ -50,6 +50,8 @@ import { endTrip, showTrip } from '@/lib/live-activity';
 import { currentCompass, currentFix, subscribeCompass, useLocation } from '@/lib/location';
 import { parkingSpoken } from '@/lib/parking';
 import { watchSteps } from '@/lib/steps';
+import { buildingPolygon } from '@/lib/buildings';
+import { zoomBand, type ZoomBand } from '@/lib/place-marker';
 import { canSwitchTravel } from '@/lib/travel-switch';
 import { TRAVEL_SWITCH_LINES } from '@/lib/voice-lines';
 import { askForRating, finishedWalk } from '@/lib/rating';
@@ -142,6 +144,7 @@ export default function MapScreen() {
   const social = useSocial(profile?.username ?? null);
   const shownMeetupId = useShownMeetup();
   const [filter, setFilter] = useState<MapFilter>('all');
+  const [band, setBand] = useState<ZoomBand>(() => zoomBand(zoom));
   const [facingUp, setFacingUp] = useState(true);
   // The turn list at the top and the trip panel at the bottom: one open at a time, so the map stays in view.
   const [hudPanel, setHudPanel] = useState<'steps' | 'trip' | null>(null);
@@ -657,6 +660,8 @@ export default function MapScreen() {
   const previousLine = navigating ? line(navigation.previousPath) : null;
   const originPlace = planning && trip.origin !== MY_LOCATION ? getPlace(trip.origin) : undefined;
   const destinationId = trip.phase !== 'idle' ? trip.destination?.id : focused?.id;
+  // The picked building's real footprint lights up under its chip.
+  const outline = destinationId ? buildingPolygon(destinationId) : null;
 
   const others = meetup
     ? people.positions.filter((position) => {
@@ -777,9 +782,13 @@ export default function MapScreen() {
             navigation.pauseFollowing();
           }
         }}
-        onRegionIsChanging={(event) => noteBearing(event.nativeEvent.bearing)}
+        onRegionIsChanging={(event) => {
+          noteBearing(event.nativeEvent.bearing);
+          setBand(zoomBand(event.nativeEvent.zoom));
+        }}
         onRegionDidChange={(event) => {
           noteBearing(event.nativeEvent.bearing);
+          setBand(zoomBand(event.nativeEvent.zoom));
           if (navigating && event.nativeEvent.userInteraction && !isProgrammaticCamera()) {
             navigation.scheduleFollowAgain();
           }
@@ -819,6 +828,31 @@ export default function MapScreen() {
         ) : null}
 
         <Camera ref={camera} initialViewState={{ center: CAMPUS_CENTER, zoom }} maxBounds={MAX_BOUNDS} minZoom={10} maxZoom={19.5} />
+
+        {outline ? (
+          <GeoJSONSource id="place-outline" data={{ type: 'Feature', properties: {}, geometry: outline }}>
+            {/* Right above the style's own buildings, which in the dark style sit above its first label. */}
+            <Layer id="place-outline-fill" type="fill" afterId="building" paint={{ 'fill-color': accent, 'fill-opacity': 0.2 }} />
+            <Layer
+              id="place-outline-glow"
+              type="line"
+              afterId="place-outline-fill"
+              layout={{ 'line-join': 'round' }}
+              paint={{ 'line-color': accent, 'line-width': 7, 'line-blur': 5, 'line-opacity': 0.35 }}
+            />
+            <Layer
+              id="place-outline-edge"
+              type="line"
+              afterId="place-outline-glow"
+              layout={{ 'line-join': 'round' }}
+              paint={{
+                'line-color': accent,
+                'line-width': ['interpolate', ['linear'], ['zoom'], 15, 1, 18, 2.25],
+                'line-opacity': 0.95,
+              }}
+            />
+          </GeoJSONSource>
+        ) : null}
 
         {previousLine ? (
           <GeoJSONSource
@@ -900,6 +934,7 @@ export default function MapScreen() {
             origin={place.id === originPlace?.id}
             stop={stopNumbers[place.id]}
             activity={activityCounts[place.id] ?? 0}
+            band={band}
             onPress={openPlace}
           />
         ))}
