@@ -86,12 +86,16 @@ On a trip from off campus, the app switches between driving and walking directio
 car or bus, or gets picked up mid walk (`src/lib/travel-switch.ts`, shared with the website). It goes by steps
 from the phone's pedometer (`expo-sensors`, `src/lib/steps.ts`) and by speed: steps at walking or jogging pace
 mean on foot, so a slow crawl in traffic does not count, and a fast pace with no steps means a vehicle. The
-evidence has to hold for 15 to 20 seconds, and after a switch the next one waits a minute. Steps are only
-counted during a street trip with the switch on, which is when iOS asks for Motion & Fitness and Android for
-physical activity. The pedometer goes quiet in the background, so with the phone locked it goes by speed
-alone until the app is open again. A toast offers Undo, which also stops switching for the rest of that trip. It is on by
-default and can be turned off in Account, Directions. Builds from before this was added get it as an update
-without the pedometer and go by speed alone, like the website, with longer waits.
+evidence has to hold for 15 to 20 seconds, and the switch only happens once the motion tracker that guidance
+uses (`src/lib/motion.ts`) agrees, so the two never contradict each other. With no steps, as on the website,
+with the phone locked (the pedometer goes quiet in the background), or on builds from before this was added,
+walking has to stay under a brisk walk for a minute and a half, with stops at crossings allowed; a car in
+traffic keeps speeding past that between stops. Riding again within five minutes of a switch to walking means
+it was wrong, so the trip goes straight back to driving. While the switch is on, riding on a walk switches the
+trip instead of announcing "Looks like you're riding". After a switch to driving, the next switch to walking
+waits a minute. Steps are only counted during a street trip with the switch on, which is when iOS asks for
+Motion & Fitness and Android for physical activity. A toast offers Undo, which also stops switching for the
+rest of that trip. It is on by default and can be turned off in Account, Directions.
 
 ## Rating prompt
 

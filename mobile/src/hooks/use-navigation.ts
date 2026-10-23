@@ -353,17 +353,20 @@ export function useNavigation({ destination, avoidStairs, follow, facingUp }: Op
       const target = current.destination;
       const travel = active.travel;
 
+      // Getting off a bus mid trip, or picked up mid walk, swaps the street route to match.
+      const switching = canSwitchTravel(travel) && !travelSwitchOff.current && getDevicePrefs().autoTravel;
+      if (switching) {
+        const sample = { at: Date.now(), speed: state.speed, motion: state.motion, reported, steps: currentSteps() };
+        const to = travelSwitch.current.update(sample, travel);
+        if (to) switchTravel(position, to, () => setTravelSwitched({ to, at: Date.now() }));
+      }
+      // With the switch on, riding on a walk turns the trip into a drive instead of being announced.
       const nowRiding =
-        travel === 'drive' ? false : travel === 'bike' ? state.motion === 'vehicle' : !isOnFoot(state.motion);
+        travel === 'drive' || switching ? false : travel === 'bike' ? state.motion === 'vehicle' : !isOnFoot(state.motion);
       const justGotOff = riding.current && !nowRiding;
       if (nowRiding !== riding.current) {
         riding.current = nowRiding;
         setIsRiding(nowRiding);
-      }
-      // Getting off a bus mid trip, or picked up mid walk, swaps the street route to match.
-      if (canSwitchTravel(travel) && !travelSwitchOff.current && getDevicePrefs().autoTravel) {
-        const to = travelSwitch.current.update({ at: Date.now(), speed: state.speed, steps: currentSteps() }, travel);
-        if (to) switchTravel(position, to, () => setTravelSwitched({ to, at: Date.now() }));
       }
       const fastest = Math.max(state.speed, reported ?? 0);
       const holding =

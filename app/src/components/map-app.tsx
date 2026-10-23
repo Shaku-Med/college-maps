@@ -547,18 +547,25 @@ export function MapApp({ initialPlaceId, initialRoom, initialAccountOpen = false
       const { graph, destination } = nav;
       const travel = route.travel;
 
+      // Getting off a bus mid trip, or picked up mid walk, swaps the street route to match. Browsers count no steps.
+      const switching = canSwitchTravel(travel) && !travelSwitchOffRef.current && autoTravelOn();
+      if (switching) {
+        const sample = { at: Date.now(), speed: motionState.speed, motion: motionState.motion, reported: speed };
+        const to = travelSwitchRef.current.update(sample, travel);
+        if (to) switchTravel(position, to, () => setTravelSwitched({ to, at: Date.now() }));
+      }
       // Too fast for the way of travel, like a bus, so guidance holds instead of rerouting onto the road.
+      // With the switch on, riding on a walk turns the trip into a drive instead of being announced.
       const riding =
-        travel === "drive" ? false : travel === "bike" ? motionState.motion === "vehicle" : !isOnFoot(motionState.motion);
+        travel === "drive" || switching
+          ? false
+          : travel === "bike"
+            ? motionState.motion === "vehicle"
+            : !isOnFoot(motionState.motion);
       const justGotOff = ridingRef.current && !riding;
       if (riding !== ridingRef.current) {
         ridingRef.current = riding;
         setIsRiding(riding);
-      }
-      // Getting off a bus mid trip, or picked up mid walk, swaps the street route to match. Browsers count no steps.
-      if (canSwitchTravel(travel) && !travelSwitchOffRef.current && autoTravelOn()) {
-        const to = travelSwitchRef.current.update({ at: Date.now(), speed: motionState.speed }, travel);
-        if (to) switchTravel(position, to, () => setTravelSwitched({ to, at: Date.now() }));
       }
       // Being sure someone is riding takes a few seconds.
       const fastest = Math.max(motionState.speed, speed ?? 0);
