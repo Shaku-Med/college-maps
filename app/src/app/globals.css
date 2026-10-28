@@ -8,6 +8,7 @@
   --animate-fade-in: fade-in 160ms ease-out;
   --animate-marker-ring: marker-ring 900ms cubic-bezier(0.22, 1, 0.36, 1);
   --animate-marker-live: marker-live 2.6s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+  --animate-safety-in: safety-in 320ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 /* The page matches the app someone would install. Set before paint by APPEARANCE_SCRIPT. */
@@ -58,6 +59,14 @@
   60%,
   100% {
     box-shadow: 0 0 0 10px color-mix(in oklab, var(--accent) 0%, transparent);
+  }
+}
+
+/* A building's exits and stairs pop up softly when someone heads there or walks in. */
+@keyframes safety-in {
+  from {
+    opacity: 0;
+    scale: 0.6;
   }
 }
 

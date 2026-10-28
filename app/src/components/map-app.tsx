@@ -30,6 +30,7 @@ import { useWakeLock } from "@/hooks/use-wake-lock";
 import { campusActivityByPlace, eventsAtPlace } from "@/lib/campus-activity";
 import { MAP_FILTERS, type MapFilter } from "@/lib/categories";
 import { fetchTripRoute } from "@/lib/directions";
+import { safetyBuildingHere, safetyBuildings } from "@/lib/building-safety";
 import { metersFromBuilding } from "@/lib/buildings";
 import { autoTravelOn } from "@/lib/travel-prefs";
 import { canSwitchTravel, createTravelSwitch, type SwitchableTravel } from "@/lib/travel-switch";
@@ -1365,6 +1366,13 @@ export function MapApp({ initialPlaceId, initialRoom, initialAccountOpen = false
     }
   }
 
+  // The building someone is in, carried from fix to fix so its exits do not flicker at the door.
+  const [safetyHere, setSafetyHere] = useState<string | null>(null);
+  const nextSafetyHere = safetyBuildingHere(geo.position, geo.accuracy, safetyHere);
+  if (nextSafetyHere !== safetyHere) setSafetyHere(nextSafetyHere);
+  const goingTo = mode === "navigate" ? target?.id : undefined;
+  const safetyIds = useMemo(() => safetyBuildings(goingTo, safetyHere), [goingTo, safetyHere]);
+
   const visiblePlaces = useMemo(() => {
     if (mode !== "browse" || filter === "all") return PLACES;
     return PLACES.filter((place) => place.category === filter || place.id === selectedId);
@@ -1437,6 +1445,7 @@ export function MapApp({ initialPlaceId, initialRoom, initialAccountOpen = false
         onSelect={selectPlace}
         onLoad={() => setMapLoaded(true)}
         activityByPlace={activityByPlace}
+        safetyBuildings={safetyIds}
         onUserPan={() => {
           if (mode !== "navigate") return;
           clearTimeout(followAgainRef.current);

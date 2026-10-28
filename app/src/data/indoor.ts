@@ -1,0 +1,16 @@
+import raw from "./indoor.json";
+
+type Point = { latitude: number; longitude: number };
+
+export type IndoorBuilding = {
+  floors: number[];
+  assembly?: Point;
+  exits: (Point & { name: string; floor: number })[];
+  stairs: (Point & { name: string; floors: number[] })[];
+  elevators: (Point & { name?: string; floors: number[] })[];
+  aeds: (Point & { floor: number })[];
+  evacuationChairs: (Point & { floor: number })[];
+};
+
+/** Exits, stairs, and the other safety points of each building, read off its evacuation maps by `npm run campus:indoor`. */
+export const INDOOR = raw as Record<string, IndoorBuilding>;

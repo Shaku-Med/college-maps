@@ -1,0 +1,500 @@
+{
+  "1N": {
+    "floors": [
+      1,
+      2
+    ],
+    "assembly": {
+      "latitude": 40.600897,
+      "longitude": -74.147728
+    },
+    "exits": [
+      {
+        "name": "Stair C",
+        "floor": 1,
+        "latitude": 40.600917,
+        "longitude": -74.148018
+      },
+      {
+        "name": "Stair A",
+        "floor": 1,
+        "latitude": 40.600923,
+        "longitude": -74.147428
+      },
+      {
+        "name": "Main entrance",
+        "floor": 1,
+        "latitude": 40.600748,
+        "longitude": -74.147719
+      }
+    ],
+    "stairs": [
+      {
+        "name": "A",
+        "floors": [
+          1,
+          2
+        ],
+        "latitude": 40.600941,
+        "longitude": -74.147406
+      },
+      {
+        "name": "B",
+        "floors": [
+          1,
+          2
+        ],
+        "latitude": 40.600679,
+        "longitude": -74.147749
+      },
+      {
+        "name": "C",
+        "floors": [
+          1,
+          2
+        ],
+        "latitude": 40.600938,
+        "longitude": -74.148047
+      }
+    ],
+    "elevators": [
+      {
+        "floors": [
+          1,
+          2
+        ],
+        "latitude": 40.600671,
+        "longitude": -74.147678
+      }
+    ],
+    "aeds": [
+      {
+        "floor": 1,
+        "latitude": 40.600695,
+        "longitude": -74.147769
+      }
+    ],
+    "evacuationChairs": [
+      {
+        "floor": 2,
+        "latitude": 40.600691,
+        "longitude": -74.147677
+      }
+    ]
+  },
+  "1S": {
+    "floors": [
+      1,
+      2
+    ],
+    "assembly": {
+      "latitude": 40.59839,
+      "longitude": -74.14772
+    },
+    "exits": [
+      {
+        "name": "Stair A",
+        "floor": 1,
+        "latitude": 40.598374,
+        "longitude": -74.148086
+      },
+      {
+        "name": "Stair C",
+        "floor": 1,
+        "latitude": 40.598382,
+        "longitude": -74.147476
+      },
+      {
+        "name": "Main entrance",
+        "floor": 1,
+        "latitude": 40.598573,
+        "longitude": -74.147717
+      }
+    ],
+    "stairs": [
+      {
+        "name": "A",
+        "floors": [
+          1,
+          2
+        ],
+        "latitude": 40.598382,
+        "longitude": -74.14804
+      },
+      {
+        "name": "B",
+        "floors": [
+          1,
+          2
+        ],
+        "latitude": 40.598649,
+        "longitude": -74.147685
+      },
+      {
+        "name": "C",
+        "floors": [
+          1,
+          2
+        ],
+        "latitude": 40.598385,
+        "longitude": -74.147421
+      }
+    ],
+    "elevators": [
+      {
+        "floors": [
+          1,
+          2
+        ],
+        "latitude": 40.598658,
+        "longitude": -74.147756
+      }
+    ],
+    "aeds": [
+      {
+        "floor": 1,
+        "latitude": 40.59864,
+        "longitude": -74.147712
+      }
+    ],
+    "evacuationChairs": [
+      {
+        "floor": 2,
+        "latitude": 40.59864,
+        "longitude": -74.147742
+      }
+    ]
+  },
+  "2N": {
+    "floors": [
+      1,
+      2
+    ],
+    "assembly": {
+      "latitude": 40.600897,
+      "longitude": -74.14932
+    },
+    "exits": [
+      {
+        "name": "Stair C",
+        "floor": 1,
+        "latitude": 40.600939,
+        "longitude": -74.149681
+      },
+      {
+        "name": "Stair A",
+        "floor": 1,
+        "latitude": 40.600942,
+        "longitude": -74.148962
+      },
+      {
+        "name": "Main entrance",
+        "floor": 1,
+        "latitude": 40.600745,
+        "longitude": -74.149309
+      }
+    ],
+    "stairs": [
+      {
+        "name": "A",
+        "floors": [
+          1,
+          2
+        ],
+        "latitude": 40.600942,
+        "longitude": -74.149
+      },
+      {
+        "name": "B",
+        "floors": [
+          1,
+          2
+        ],
+        "latitude": 40.600669,
+        "longitude": -74.14935
+      },
+      {
+        "name": "C",
+        "floors": [
+          1,
+          2
+        ],
+        "latitude": 40.60094,
+        "longitude": -74.149636
+      }
+    ],
+    "elevators": [
+      {
+        "floors": [
+          1,
+          2
+        ],
+        "latitude": 40.600676,
+        "longitude": -74.149277
+      }
+    ],
+    "aeds": [
+      {
+        "floor": 1,
+        "latitude": 40.600686,
+        "longitude": -74.149332
+      }
+    ],
+    "evacuationChairs": [
+      {
+        "floor": 2,
+        "latitude": 40.600687,
+        "longitude": -74.149283
+      }
+    ]
+  },
+  "2S": {
+    "floors": [
+      1,
+      2
+    ],
+    "assembly": {
+      "latitude": 40.598405,
+      "longitude": -74.149338
+    },
+    "exits": [
+      {
+        "name": "Stair A",
+        "floor": 1,
+        "latitude": 40.598373,
+        "longitude": -74.149613
+      },
+      {
+        "name": "Stair C",
+        "floor": 1,
+        "latitude": 40.598375,
+        "longitude": -74.149018
+      },
+      {
+        "name": "Main entrance",
+        "floor": 1,
+        "latitude": 40.598587,
+        "longitude": -74.149316
+      }
+    ],
+    "stairs": [
+      {
+        "name": "A",
+        "floors": [
+          1,
+          2
+        ],
+        "latitude": 40.598389,
+        "longitude": -74.14964
+      },
+      {
+        "name": "B",
+        "floors": [
+          1,
+          2
+        ],
+        "latitude": 40.598653,
+        "longitude": -74.149284
+      },
+      {
+        "name": "C",
+        "floors": [
+          1,
+          2
+        ],
+        "latitude": 40.598392,
+        "longitude": -74.148993
+      }
+    ],
+    "elevators": [
+      {
+        "floors": [
+          1,
+          2
+        ],
+        "latitude": 40.598662,
+        "longitude": -74.149354
+      }
+    ],
+    "aeds": [
+      {
+        "floor": 1,
+        "latitude": 40.59864,
+        "longitude": -74.149307
+      }
+    ],
+    "evacuationChairs": [
+      {
+        "floor": 2,
+        "latitude": 40.598645,
+        "longitude": -74.14934
+      }
+    ]
+  },
+  "3N": {
+    "floors": [
+      1,
+      2
+    ],
+    "assembly": {
+      "latitude": 40.601846,
+      "longitude": -74.15032
+    },
+    "exits": [
+      {
+        "name": "Stair C",
+        "floor": 1,
+        "latitude": 40.602027,
+        "longitude": -74.150184
+      },
+      {
+        "name": "Stair A",
+        "floor": 1,
+        "latitude": 40.601637,
+        "longitude": -74.150213
+      },
+      {
+        "name": "Main entrance",
+        "floor": 1,
+        "latitude": 40.601844,
+        "longitude": -74.15053
+      }
+    ],
+    "stairs": [
+      {
+        "name": "A",
+        "floors": [
+          1,
+          2
+        ],
+        "latitude": 40.601594,
+        "longitude": -74.150214
+      },
+      {
+        "name": "B",
+        "floors": [
+          1,
+          2
+        ],
+        "latitude": 40.601873,
+        "longitude": -74.150621
+      },
+      {
+        "name": "C",
+        "floors": [
+          1,
+          2
+        ],
+        "latitude": 40.60209,
+        "longitude": -74.150214
+      }
+    ],
+    "elevators": [
+      {
+        "floors": [
+          1,
+          2
+        ],
+        "latitude": 40.601817,
+        "longitude": -74.15063
+      }
+    ],
+    "aeds": [
+      {
+        "floor": 1,
+        "latitude": 40.601854,
+        "longitude": -74.150606
+      }
+    ],
+    "evacuationChairs": [
+      {
+        "floor": 2,
+        "latitude": 40.601822,
+        "longitude": -74.150608
+      }
+    ]
+  },
+  "3S": {
+    "floors": [
+      1,
+      2
+    ],
+    "assembly": {
+      "latitude": 40.597495,
+      "longitude": -74.150267
+    },
+    "exits": [
+      {
+        "name": "Stair C",
+        "floor": 1,
+        "latitude": 40.597685,
+        "longitude": -74.150193
+      },
+      {
+        "name": "Stair A",
+        "floor": 1,
+        "latitude": 40.59731,
+        "longitude": -74.1502
+      },
+      {
+        "name": "Main entrance",
+        "floor": 1,
+        "latitude": 40.597496,
+        "longitude": -74.150532
+      }
+    ],
+    "stairs": [
+      {
+        "name": "A",
+        "floors": [
+          1,
+          2
+        ],
+        "latitude": 40.597276,
+        "longitude": -74.15022
+      },
+      {
+        "name": "B",
+        "floors": [
+          1,
+          2
+        ],
+        "latitude": 40.597521,
+        "longitude": -74.150625
+      },
+      {
+        "name": "C",
+        "floors": [
+          1,
+          2
+        ],
+        "latitude": 40.597711,
+        "longitude": -74.150218
+      }
+    ],
+    "elevators": [
+      {
+        "floors": [
+          1,
+          2
+        ],
+        "latitude": 40.597465,
+        "longitude": -74.15063
+      }
+    ],
+    "aeds": [
+      {
+        "floor": 1,
+        "latitude": 40.597503,
+        "longitude": -74.150629
+      }
+    ],
+    "evacuationChairs": [
+      {
+        "floor": 2,
+        "latitude": 40.597472,
+        "longitude": -74.150609
+      }
+    ]
+  }
+}

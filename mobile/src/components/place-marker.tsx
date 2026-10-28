@@ -19,6 +19,8 @@ type PlaceMarkerProps = {
   activity?: number;
   /** How far the map is zoomed: chips shrink when far, and buildings show what they are when near. */
   band: ZoomBand;
+  /** The pin sits on an exit, shown while the building's safety points are. */
+  exit?: boolean;
   onPress: (place: Place) => void;
 };
 
@@ -52,14 +54,16 @@ export const PlaceMarker = memo(function PlaceMarker({
   stop,
   activity = 0,
   band,
+  exit = false,
   onPress,
 }: PlaceMarkerProps) {
-  const [muted, overlayInk, accentInk, background, softInk] = useThemeColor([
+  const [muted, overlayInk, accentInk, background, softInk, exitInk] = useThemeColor([
     'muted',
     'overlay-foreground',
     'accent-foreground',
     'background',
     'accent-soft-foreground',
+    'success-foreground',
   ]);
   const kind = markerKind(place);
   const state: State = selected ? 'selected' : stop !== undefined ? 'stop' : origin ? 'origin' : 'idle';
@@ -82,11 +86,11 @@ export const PlaceMarker = memo(function PlaceMarker({
         <View
           accessibilityRole="button"
           accessibilityLabel={
-            stop !== undefined
+            (stop !== undefined
               ? `Stop ${stop}, ${place.name}`
               : busy
                 ? `${place.name}, ${activity} campus ${activity === 1 ? 'event' : 'events'}`
-                : place.name
+                : place.name) + (exit ? ', main entrance exit' : '')
           }
           className={cn('flex-row items-center border shadow-sm', far ? 'h-6' : 'h-7', shape, SURFACE[state], busy && 'border-accent')}>
           {kind === 'lot' ? (
@@ -122,6 +126,11 @@ export const PlaceMarker = memo(function PlaceMarker({
             // The heat on the map shows where campus events are; this says how many.
             <View className="absolute -right-2 -top-2 h-4 min-w-4 items-center justify-center rounded-full border-2 border-overlay bg-accent px-1">
               <Text className="text-[10px] font-bold text-accent-foreground">{activity > 9 ? '9+' : activity}</Text>
+            </View>
+          ) : null}
+          {exit && !far ? (
+            <View className="absolute -left-2 -top-2 size-4 items-center justify-center rounded-full border-2 border-overlay bg-success">
+              <Icon name="door.left.hand.open" size={8} tintColor={exitInk} />
             </View>
           ) : null}
         </View>

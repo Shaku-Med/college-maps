@@ -29,6 +29,7 @@ import { MapButton } from '@/components/map-button';
 import { NavigationBanner, NavigationFooter, ParkingCard } from '@/components/navigation-hud';
 import { PlaceDetails } from '@/components/place-details';
 import { PlaceMarker } from '@/components/place-marker';
+import { SafetyMarker } from '@/components/safety-marker';
 import { EdgeScrim, TopScrim } from '@/components/top-scrim';
 import { UserPin } from '@/components/user-pin';
 import { CAMPUS, PLACES, contains, getPlace, type Coordinate, type Place } from '@/data/campus';
@@ -52,6 +53,7 @@ import { endTrip, showTrip } from '@/lib/live-activity';
 import { currentCompass, currentFix, subscribeCompass, useLocation } from '@/lib/location';
 import { parkingSpoken } from '@/lib/parking';
 import { watchSteps } from '@/lib/steps';
+import { safetyBuildingHere, safetyBuildings, safetyFor, type SafetySpot } from '@/lib/building-safety';
 import { buildingPolygon } from '@/lib/buildings';
 import { withAlpha } from '@/lib/color-alpha';
 import { heatColors } from '@/lib/map-paint';
@@ -246,6 +248,24 @@ export default function MapScreen() {
   useEffect(() => {
     facingUpRef.current = facingUp;
   }, [facingUp]);
+
+  // The building someone is in, carried from fix to fix so its exits do not flicker at the door.
+  const [safetyHere, setSafetyHere] = useState<string | null>(null);
+  const nextSafetyHere = safetyBuildingHere(location.fix?.position, location.fix?.accuracy, safetyHere);
+  if (nextSafetyHere !== safetyHere) setSafetyHere(nextSafetyHere);
+  const safetyGoingTo = navigating ? target?.id : undefined;
+  const safety = useMemo(() => {
+    const spots: SafetySpot[] = [];
+    const exits = new Set<string>();
+    for (const id of safetyBuildings(safetyGoingTo, safetyHere)) {
+      const pin = getPlace(id)?.coordinate;
+      const found = pin ? safetyFor(id, pin) : null;
+      if (!found) continue;
+      spots.push(...found.spots);
+      if (found.exitAtPin) exits.add(id);
+    }
+    return { spots, exits };
+  }, [safetyGoingTo, safetyHere]);
 
   // After a reroute, the new blue line makes MapLibre report a finger pan. Ignore it and pull follow back.
   useEffect(() => {
@@ -972,6 +992,11 @@ export default function MapScreen() {
 
         {location.fix ? <UserPin fix={location.fix} at={navigating ? navigation.shownAt : null} /> : null}
 
+        {/* Before the place chips, so the building's own pin stays on top. */}
+        {safety.spots.map((spot) => (
+          <SafetyMarker key={spot.id} spot={spot} band={band} />
+        ))}
+
         {places.map((place) => (
           <PlaceMarker
             key={place.id}
@@ -981,6 +1006,7 @@ export default function MapScreen() {
             stop={stopNumbers[place.id]}
             activity={activityCounts[place.id] ?? 0}
             band={band}
+            exit={safety.exits.has(place.id)}
             onPress={openPlace}
           />
         ))}

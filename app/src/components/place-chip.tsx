@@ -1,6 +1,6 @@
 "use client";
 
-import { Bus } from "lucide-react";
+import { Bus, DoorOpen } from "lucide-react";
 import type { PointerEvent } from "react";
 
 import type { Place } from "@/data/campus";
@@ -17,6 +17,8 @@ type PlaceChipProps = {
   stop?: number;
   /** Public events here; a soft accent glow grows with it. */
   activity: number;
+  /** The pin sits on an exit, shown while the building's safety points are. */
+  exit?: boolean;
   onPress: (place: Place) => void;
   onHover: (id: string | null) => void;
 };
@@ -47,7 +49,7 @@ const TILE: Record<ChipState, string> = {
 };
 
 /** A place on the map: a building's code, a parking lot's P, or a bus stop, and its name when picked or pointed at. */
-export function PlaceChip({ place, state, stop, activity, onPress, onHover }: PlaceChipProps) {
+export function PlaceChip({ place, state, stop, activity, exit = false, onPress, onHover }: PlaceChipProps) {
   const kind = markerKind(place);
   const picked = state === "selected";
   const Glyph = CATEGORY_ICONS[place.category];
@@ -57,11 +59,11 @@ export function PlaceChip({ place, state, stop, activity, onPress, onHover }: Pl
     if (event.pointerType === "mouse") onHover(id);
   };
   const label =
-    stop !== undefined
+    (stop !== undefined
       ? `Stop ${stop}, ${place.name}`
       : busy
         ? `${place.name}, ${activity} campus ${activity === 1 ? "event" : "events"}`
-        : place.name;
+        : place.name) + (exit ? ", main entrance exit" : "");
 
   return (
     <div className="relative flex items-center justify-center">
@@ -119,6 +121,13 @@ export function PlaceChip({ place, state, stop, activity, onPress, onHover }: Pl
             aria-hidden
             className="absolute -right-2 -top-2 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-[10px] font-bold leading-none tabular-nums text-accent-foreground ring-2 ring-overlay">
             {activity > 9 ? "9+" : activity}
+          </span>
+        ) : null}
+        {exit ? (
+          <span
+            aria-hidden
+            className="absolute -left-2 -top-2 flex size-4 animate-safety-in items-center justify-center rounded-full bg-success text-success-foreground ring-2 ring-overlay motion-reduce:animate-none group-data-[zoom=far]/map:hidden">
+            <DoorOpen className="size-2.5" strokeWidth={3} />
           </span>
         ) : null}
       </button>
