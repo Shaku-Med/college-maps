@@ -54,7 +54,7 @@ import { useFocusedPlace } from '@/lib/focus';
 import { showPlace } from '@/lib/links';
 import { closePlacePanel, usePlacePanel } from '@/lib/place-panel';
 import { formatRouteTime } from '@/lib/directions';
-import { formatDistance } from '@/lib/geo';
+import { distanceMeters, formatDistance } from '@/lib/geo';
 import { stepText } from '@/lib/instructions';
 import { endTrip, showTrip } from '@/lib/live-activity';
 import { currentCompass, currentFix, subscribeCompass, useLocation } from '@/lib/location';
@@ -72,11 +72,12 @@ import {
   buildingWallShade,
   heatColors,
 } from '@/lib/map-paint';
-import { zoomBand, type ZoomBand } from '@/lib/place-marker';
+import { compactSafetySpots, placeChipSize, roomChipSize, sameIds, type Obstacle } from '@/lib/declutter';
+import { markerLabel, zoomBand, type ZoomBand } from '@/lib/place-marker';
 import { canSwitchTravel } from '@/lib/travel-switch';
 import { TRAVEL_SWITCH_LINES } from '@/lib/voice-lines';
 import { askForRating, finishedWalk } from '@/lib/rating';
-import { roomDirections } from '@/lib/search';
+import { floorLabel, roomDirections } from '@/lib/search';
 import { legSeconds, stopsStart } from '@/lib/stops';
 import { createCameraMemory, createSmoothHeading, shortestTurn } from '@/lib/smooth-heading';
 import { markReady } from '@/lib/splash';
@@ -144,6 +145,9 @@ function initials(name: string, fallback: string) {
     .join('');
   return letters || fallback.slice(0, 2).toUpperCase();
 }
+
+// Place chips farther than this from every safety chip cannot meet one on screen close up.
+const OBSTACLE_METERS = 150;
 
 export default function MapScreen() {
   const scheme = useColorScheme();
@@ -761,6 +765,51 @@ export default function MapScreen() {
   const previousLine = navigating ? line(navigation.previousPath) : null;
   const originPlace = planning && trip.origin !== MY_LOCATION ? getPlace(trip.origin) : undefined;
   const destinationId = trip.phase !== 'idle' ? trip.destination?.id : focused?.id;
+
+  // Close up, a safety chip that would land on another chip keeps one icon; worked out again whenever the camera stops.
+  const [compactSafety, setCompactSafety] = useState<ReadonlySet<string>>(() => new Set());
+  const layoutRun = useRef(0);
+  const layoutSafety = useCallback(
+    async (level: ZoomBand) => {
+      const run = ++layoutRun.current;
+      const map = mapRef.current;
+      if (!map || level !== 'near' || safety.spots.length === 0) {
+        setCompactSafety((current) => (current.size ? new Set() : current));
+        return;
+      }
+      const nearby = places.filter((place) =>
+        safety.spots.some((spot) => distanceMeters(spot.coordinate, place.coordinate) <= OBSTACLE_METERS),
+      );
+      const at = async ({ latitude, longitude }: Coordinate) => {
+        const [x, y] = await map.project([longitude, latitude]);
+        return { x, y };
+      };
+      try {
+        const [spotPoints, placePoints, roomPoint] = await Promise.all([
+          Promise.all(safety.spots.map((spot) => at(spot.coordinate))),
+          Promise.all(nearby.map((place) => at(place.coordinate))),
+          room ? at(room.coordinate) : null,
+        ]);
+        if (run !== layoutRun.current) return;
+        const obstacles: Obstacle[] = nearby.map((place, i) => ({
+          ...placePoints[i],
+          ...placeChipSize(markerLabel(place), place.id === destinationId ? place.name : undefined),
+        }));
+        if (room && roomPoint) obstacles.push({ ...roomPoint, ...roomChipSize(room.name, floorLabel(room.floor)) });
+        const next = compactSafetySpots(
+          safety.spots.map((spot, i) => ({ ...spot, at: spotPoints[i] })),
+          obstacles,
+        );
+        setCompactSafety((current) => (sameIds(current, next) ? current : next));
+      } catch {
+        // A map still loading its style cannot place points yet; the next camera stop tries again.
+      }
+    },
+    [safety, places, room, destinationId],
+  );
+  useEffect(() => {
+    void layoutSafety(band);
+  }, [layoutSafety, band]);
   // The picked building's real footprint lights up under its chip.
   const outline = destinationId ? buildingPolygon(destinationId) : null;
 
@@ -891,6 +940,7 @@ export default function MapScreen() {
         onRegionDidChange={(event) => {
           noteBearing(event.nativeEvent.bearing);
           setBand(zoomBand(event.nativeEvent.zoom));
+          void layoutSafety(zoomBand(event.nativeEvent.zoom));
           if (navigating && event.nativeEvent.userInteraction && !isProgrammaticCamera()) {
             navigation.scheduleFollowAgain();
           }
@@ -1052,7 +1102,7 @@ export default function MapScreen() {
 
         {/* Before the place chips, so the building's own pin stays on top. */}
         {safety.spots.map((spot) => (
-          <SafetyMarker key={spot.id} spot={spot} band={band} />
+          <SafetyMarker key={spot.id} spot={spot} band={band} compact={compactSafety.has(spot.id)} />
         ))}
         {room ? <RoomMarker spot={room} band={band} /> : null}
 

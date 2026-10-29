@@ -29,8 +29,16 @@ const TILES: Record<SafetyKind, string> = {
   assembly: 'bg-success/15',
 };
 
-/** The web map's safety chips: one icon zoomed out, every icon and a name close up or once tapped. */
-export const SafetyMarker = memo(function SafetyMarker({ spot, band }: { spot: SafetySpot; band: ZoomBand }) {
+/** The web map's safety chips: one icon zoomed out, every icon and a name close up unless `compact`, or once tapped. */
+export const SafetyMarker = memo(function SafetyMarker({
+  spot,
+  band,
+  compact = false,
+}: {
+  spot: SafetySpot;
+  band: ZoomBand;
+  compact?: boolean;
+}) {
   const [open, setOpen] = useState(false);
   const [successInk, dangerInk, defaultInk, success] = useThemeColor([
     'success-foreground',
@@ -40,7 +48,7 @@ export const SafetyMarker = memo(function SafetyMarker({ spot, band }: { spot: S
   ]);
   if (band === 'far') return null;
   const near = band === 'near';
-  const full = near || open;
+  const full = (near && !compact) || open;
   const ink: Record<SafetyKind, string> = {
     exit: successInk,
     aed: dangerInk,

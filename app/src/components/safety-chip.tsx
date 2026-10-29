@@ -27,8 +27,8 @@ const TILES: Record<SafetyKind, string> = {
   assembly: "bg-success-soft text-success-soft-foreground",
 };
 
-/** Exits, stairs, and the like at one spot in a building: one icon zoomed out, all of them and a name close up. */
-export function SafetyChip({ spot }: { spot: SafetySpot }) {
+/** Exits, stairs, and the like at one spot in a building: one icon zoomed out, and close up all of them and a name unless `compact`. */
+export function SafetyChip({ spot, compact = false }: { spot: SafetySpot; compact?: boolean }) {
   const [open, setOpen] = useState(false);
   return (
     <button
@@ -49,7 +49,9 @@ export function SafetyChip({ spot }: { spot: SafetySpot }) {
             className={cn(
               "size-[18px] shrink-0 items-center justify-center rounded-full group-data-[zoom=near]/map:size-5",
               TILES[kind],
-              i === 0 || open ? "flex" : "hidden group-hover/safety:flex group-focus-visible/safety:flex group-data-[zoom=near]/map:flex",
+              i === 0 || open
+                ? "flex"
+                : cn("hidden group-hover/safety:flex group-focus-visible/safety:flex", !compact && "group-data-[zoom=near]/map:flex"),
             )}>
             <Icon className="size-3" strokeWidth={2.5} aria-hidden />
           </span>
@@ -60,7 +62,10 @@ export function SafetyChip({ spot }: { spot: SafetySpot }) {
           "grid transition-[grid-template-columns,opacity] duration-200 ease-out motion-reduce:transition-none",
           open
             ? "grid-cols-[1fr] opacity-100"
-            : "grid-cols-[0fr] opacity-0 group-hover/safety:grid-cols-[1fr] group-hover/safety:opacity-100 group-focus-visible/safety:grid-cols-[1fr] group-focus-visible/safety:opacity-100 group-data-[zoom=near]/map:grid-cols-[1fr] group-data-[zoom=near]/map:opacity-100",
+            : cn(
+                "grid-cols-[0fr] opacity-0 group-hover/safety:grid-cols-[1fr] group-hover/safety:opacity-100 group-focus-visible/safety:grid-cols-[1fr] group-focus-visible/safety:opacity-100",
+                !compact && "group-data-[zoom=near]/map:grid-cols-[1fr] group-data-[zoom=near]/map:opacity-100",
+              ),
         )}>
         <span className="min-w-0 overflow-hidden">
           <span className="block whitespace-nowrap pl-1 pr-1.5">{spot.label}</span>

@@ -36,7 +36,9 @@ import { withAlpha } from "@/lib/color-alpha";
 import { resolveCssColor } from "@/lib/css-color";
 import { distanceMeters, interpolate } from "@/lib/geo";
 import { BUILDING_PITCH, BUILDING_ZOOM, amenityLayers, buildingColor, buildingLight, buildingWallShade, heatColors } from "@/lib/map-paint";
-import { zoomBand } from "@/lib/place-marker";
+import { compactSafetySpots, placeChipSize, roomChipSize, sameIds, type Obstacle } from "@/lib/declutter";
+import { markerLabel, zoomBand } from "@/lib/place-marker";
+import { floorLabel } from "@/lib/search";
 
 const STYLE_LIGHT = CAMPUS.map.styles.light;
 const STYLE_DARK = CAMPUS.map.styles.dark;
@@ -761,6 +763,8 @@ export function CampusMap({
   const [safetyHosts, setSafetyHosts] = useState<ReadonlyMap<string, HTMLElement>>(() => new Map());
   const roomMarkerRef = useRef<{ marker: Marker; host: HTMLElement } | null>(null);
   const [roomHost, setRoomHost] = useState<HTMLElement | null>(null);
+  const [compactSafety, setCompactSafety] = useState<ReadonlySet<string>>(() => new Set());
+  const layoutSafetyRef = useRef<() => void>(() => undefined);
   const [hovered, setHovered] = useState<string | null>(null);
   const outlinedRef = useRef<Outlined[]>([]);
   const revealFrameRef = useRef<number | null>(null);
@@ -987,6 +991,7 @@ export function CampusMap({
         handling = true;
         onUserPanRef.current?.();
       });
+      map.on("moveend", () => layoutSafetyRef.current());
       map.on("moveend", () => {
         if (!handling) return;
         handling = false;
@@ -1197,6 +1202,30 @@ export function CampusMap({
     setSafetyHosts(new Map([...markers].map(([id, { host }]) => [id, host])));
   }, [isReady, safety]);
 
+  useEffect(() => {
+    const map = mapRef.current;
+    // Again whenever the camera settles, since turning or zooming the map moves the chips into each other.
+    const layout = () => {
+      if (!map || zoomBand(map.getZoom()) !== "near" || safety.spots.length === 0) {
+        setCompactSafety((current) => (current.size ? new Set() : current));
+        return;
+      }
+      const at = (coordinate: Coordinate) => map.project(toLngLat(coordinate));
+      const obstacles: Obstacle[] = places.map((place) => ({
+        ...at(place.coordinate),
+        ...placeChipSize(markerLabel(place), place.id === selectedId ? place.name : undefined),
+      }));
+      if (room) obstacles.push({ ...at(room.coordinate), ...roomChipSize(room.name, floorLabel(room.floor)) });
+      const next = compactSafetySpots(
+        safety.spots.map((spot) => ({ ...spot, at: at(spot.coordinate) })),
+        obstacles,
+      );
+      setCompactSafety((current) => (sameIds(current, next) ? current : next));
+    };
+    layoutSafetyRef.current = layout;
+    if (isReady) layout();
+  }, [isReady, safety, places, selectedId, room]);
+
   const roomAt = room ? `${room.coordinate.latitude},${room.coordinate.longitude}` : "";
   useEffect(() => {
     const lib = libRef.current;
@@ -1338,7 +1367,7 @@ export function CampusMap({
       })}
       {[...safetyHosts].map(([id, host]) => {
         const spot = spotsById.get(id);
-        return spot ? createPortal(<SafetyChip spot={spot} />, host, id) : null;
+        return spot ? createPortal(<SafetyChip spot={spot} compact={compactSafety.has(id)} />, host, id) : null;
       })}
       {roomHost && room ? createPortal(<RoomChip spot={room} />, roomHost) : null}
     </div>
