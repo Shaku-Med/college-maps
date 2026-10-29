@@ -20,6 +20,7 @@ import { createPortal } from "react-dom";
 
 import { PlaceChip, type ChipState } from "@/components/place-chip";
 import { SafetyChip } from "@/components/safety-chip";
+import { AMENITY_POINTS, type AmenityKind } from "@/data/amenities";
 import {
   CAMPUS,
   CAMPUS_CENTER,
@@ -33,7 +34,7 @@ import { cn } from "@/lib/cn";
 import { withAlpha } from "@/lib/color-alpha";
 import { resolveCssColor } from "@/lib/css-color";
 import { distanceMeters, interpolate } from "@/lib/geo";
-import { heatColors } from "@/lib/map-paint";
+import { amenityLayers, heatColors } from "@/lib/map-paint";
 import { zoomBand } from "@/lib/place-marker";
 
 const STYLE_LIGHT = CAMPUS.map.styles.light;
@@ -59,6 +60,8 @@ const BUILDINGS_3D = "campus-buildings-3d";
 const ACTIVITY_SOURCE = "campus-activity";
 const ACTIVITY_HEAT = "campus-activity-heat";
 const OUTLINE_SOURCE = "place-outline";
+const AMENITY_SOURCE = "campus-amenities";
+const AMENITY_ICONS: AmenityKind[] = ["sos", "picnic", "bench", "trash", "bikes"];
 const ROUTE_END = "route-end";
 const ROUTE_CHEVRON = "route-chevron";
 const ROUTE_REVEAL_MS = 650;
@@ -172,6 +175,43 @@ function applyOutlineLayers(map: MapLibreMap, outlined: Outlined[]) {
       "line-opacity": ["case", selected, 0.95, 0.55],
     },
   });
+}
+
+const amenityImages = new Map<string, Promise<Awaited<ReturnType<MapLibreMap["loadImage"]>>["data"] | null>>();
+
+// SOS phones and the benches, trash cans, picnic tables, and bike racks around campus, as small round icons under any route.
+function applyAmenityLayers(map: MapLibreMap) {
+  if (map.getSource(AMENITY_SOURCE) || !map.getSource("openmaptiles")) return;
+  for (const kind of AMENITY_ICONS) {
+    const id = `amenity-${kind}`;
+    let loading = amenityImages.get(id);
+    if (!loading) {
+      loading = map
+        .loadImage(`/icons/${id}.png`)
+        .then((image) => image.data)
+        .catch(() => {
+          amenityImages.delete(id);
+          return null;
+        });
+      amenityImages.set(id, loading);
+    }
+    void loading.then((image) => {
+      if (image && !map.hasImage(id)) map.addImage(id, image, { sdf: true, pixelRatio: 2 });
+    });
+  }
+  map.addSource(AMENITY_SOURCE, { type: "geojson", data: AMENITY_POINTS });
+  const layers = map.getStyle().layers;
+  const before = map.getLayer(`${PREVIOUS_SOURCE}-casing`)
+    ? `${PREVIOUS_SOURCE}-casing`
+    : layers.slice(layers.findLastIndex((layer) => layer.type !== "symbol") + 1).find((layer) => layer.type === "symbol")?.id;
+  const colors = {
+    sos: resolveCssColor("--danger", "#dc2626"),
+    other: resolveCssColor("--muted", "#71717a"),
+    halo: resolveCssColor("--overlay", "#ffffff"),
+  };
+  for (const layer of amenityLayers(1, colors)) {
+    map.addLayer({ ...layer, type: "symbol", source: AMENITY_SOURCE } as Parameters<MapLibreMap["addLayer"]>[0], before);
+  }
 }
 
 function toLngLat({ latitude, longitude }: Coordinate): [number, number] {
@@ -910,8 +950,8 @@ export function CampusMap({
       }
       // OpenFreeMap styles reference a few patterns (like wood-pattern) their sprite does not ship.
       map.setMissingStyleImageResolver((id) => {
-        // The chevron is our own and arrives a moment later; a blank stand-in would block it.
-        if (id !== ROUTE_CHEVRON && !map.hasImage(id))
+        // The chevron and amenity icons are our own and arrive a moment later; a blank stand-in would block them.
+        if (id !== ROUTE_CHEVRON && !id.startsWith("amenity-") && !map.hasImage(id))
           map.addImage(id, { width: 1, height: 1, data: new Uint8Array(4) });
       });
       map.touchZoomRotate.disableRotation();
@@ -966,6 +1006,7 @@ export function CampusMap({
         applyRouteLayers(map, routesRef.current);
         applyBuildingView(map, buildingViewRef.current, "keep", rotatableRef.current);
         applyActivityHeat(map, placesRef.current, activityRef.current);
+        applyAmenityLayers(map);
       });
       map.on("click", PREVIOUS_HIT, (event) => {
         event.preventDefault();

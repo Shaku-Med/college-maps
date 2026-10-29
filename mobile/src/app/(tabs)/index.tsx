@@ -1,4 +1,4 @@
-import type { ExpressionSpecification } from '@maplibre/maplibre-gl-style-spec';
+import type { ExpressionSpecification, FilterSpecification, SymbolLayerSpecification } from '@maplibre/maplibre-gl-style-spec';
 import type * as GeoJSON from 'geojson';
 import {
   Camera,
@@ -32,6 +32,7 @@ import { PlaceMarker } from '@/components/place-marker';
 import { SafetyMarker } from '@/components/safety-marker';
 import { EdgeScrim, TopScrim } from '@/components/top-scrim';
 import { UserPin } from '@/components/user-pin';
+import { AMENITY_POINTS } from '@/data/amenities';
 import { CAMPUS, PLACES, contains, getPlace, type Coordinate, type Place } from '@/data/campus';
 import { walkGraph } from '@/data/walk-graph';
 import { useMeetupLive } from '@/hooks/use-meetup-live';
@@ -56,7 +57,7 @@ import { watchSteps } from '@/lib/steps';
 import { safetyBuildingHere, safetyBuildings, safetyFor, type SafetySpot } from '@/lib/building-safety';
 import { buildingPolygon } from '@/lib/buildings';
 import { withAlpha } from '@/lib/color-alpha';
-import { heatColors } from '@/lib/map-paint';
+import { amenityLayers, heatColors } from '@/lib/map-paint';
 import { zoomBand, type ZoomBand } from '@/lib/place-marker';
 import { canSwitchTravel } from '@/lib/travel-switch';
 import { TRAVEL_SWITCH_LINES } from '@/lib/voice-lines';
@@ -107,7 +108,15 @@ const RATING_DELAY_MS = 2_000;
 const toLngLat = ({ latitude, longitude }: Coordinate): [number, number] => [longitude, latitude];
 // Map sizes that grow from the campus overview to close up, the same steps as the web map.
 const zoomed = (low: number, high: number) => ['interpolate', ['linear'], ['zoom'], 14, low, 18, high] as ExpressionSpecification;
-const ROUTE_CHEVRON = { 'route-chevron': { source: require('@/assets/images/route-chevron.png'), sdf: true } };
+// Drawn by app/scripts/build-route-chevron.mjs and build-map-icons.mjs, tinted with the theme on the map.
+const MAP_ICONS = {
+  'route-chevron': { source: require('@/assets/images/route-chevron.png'), sdf: true },
+  'amenity-sos': { source: require('@/assets/images/amenity-sos.png'), sdf: true },
+  'amenity-bench': { source: require('@/assets/images/amenity-bench.png'), sdf: true },
+  'amenity-trash': { source: require('@/assets/images/amenity-trash.png'), sdf: true },
+  'amenity-picnic': { source: require('@/assets/images/amenity-picnic.png'), sdf: true },
+  'amenity-bikes': { source: require('@/assets/images/amenity-bikes.png'), sdf: true },
+};
 
 function line(path: Coordinate[] | undefined | null): GeoJSON.Feature<GeoJSON.LineString> | null {
   if (!path || path.length < 2) return null;
@@ -162,7 +171,15 @@ export default function MapScreen() {
   const [ratingDue, setRatingDue] = useState(false);
   const [permission, requestPermission] = Location.useForegroundPermissions();
   // The color made to sit on the accent: the route's casing and chevrons, the same as the web map.
-  const [accent, danger, background, casing] = useThemeColor(['accent', 'danger', 'background', 'accent-foreground']);
+  const [accent, danger, background, casing, muted, overlay] = useThemeColor([
+    'accent',
+    'danger',
+    'background',
+    'accent-foreground',
+    'muted',
+    'overlay',
+  ]);
+  const amenities = useMemo(() => amenityLayers(0.5, { sos: danger, other: muted, halo: overlay }), [danger, muted, overlay]);
 
   const meetup =
     social.meetups.find((m) => m.id === shownMeetupId && m.active && m.yourStatus === 'joined') ?? null;
@@ -866,7 +883,7 @@ export default function MapScreen() {
         ) : null}
 
         <Camera ref={camera} initialViewState={{ center: CAMPUS_CENTER, zoom }} maxBounds={MAX_BOUNDS} minZoom={10} maxZoom={19.5} />
-        <Images images={ROUTE_CHEVRON} />
+        <Images images={MAP_ICONS} />
 
         {activityHeat.features.length > 0 ? (
           <GeoJSONSource id="campus-activity" data={activityHeat}>
@@ -910,6 +927,21 @@ export default function MapScreen() {
             />
           </GeoJSONSource>
         ) : null}
+
+        <GeoJSONSource id="campus-amenities" data={AMENITY_POINTS}>
+          {/* SOS phones from a little way in, and the benches, trash cans, and the rest only close up, as on the web. */}
+          {amenities.map((layer) => (
+            <Layer
+              key={layer.id}
+              id={layer.id}
+              type="symbol"
+              minzoom={layer.minzoom}
+              filter={layer.filter as FilterSpecification}
+              layout={layer.layout as SymbolLayerSpecification['layout']}
+              paint={layer.paint as SymbolLayerSpecification['paint']}
+            />
+          ))}
+        </GeoJSONSource>
 
         {previousLine ? (
           <GeoJSONSource
