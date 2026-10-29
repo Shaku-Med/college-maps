@@ -1,5 +1,5 @@
 // Paint shared by the web map and the phone app's map, so both look the same.
-import { withAlpha } from "@/lib/color-alpha";
+import { mixColor, withAlpha } from "@/lib/color-alpha";
 
 /** The heat under places with campus events: one color, the accent, from clear to a soft glow that grows with them. */
 export function heatColors(accent: string) {
@@ -44,4 +44,18 @@ export function amenityLayers(scale: number, { sos, other, halo }: { sos: string
     },
   });
   return [layer("other", AMENITY_MIN_ZOOM, [0.45, 0.55], other), layer("sos", SOS_MIN_ZOOM, [0.58, 0.68], sos)];
+}
+
+// The 3D buildings: tilted this far and zoomed at least this close when turned on, so they read as buildings.
+export const BUILDING_PITCH = 56;
+export const BUILDING_ZOOM = 16.6;
+
+/** Light from one side for the 3D buildings, so walls and roofs shade differently and look solid. */
+export function buildingLight(dark: boolean) {
+  return { anchor: "viewport" as const, position: [1.4, 210, 40] as [number, number, number], intensity: dark ? 0.55 : 0.4 };
+}
+
+/** The 3D buildings' color: a step lighter than the ground in the dark theme and a step deeper in the light one, so roofs show. */
+export function buildingColor(dark: boolean, { surface, edge, muted }: { surface: string; edge: string; muted: string }) {
+  return dark ? edge : mixColor(surface, muted, 0.25);
 }

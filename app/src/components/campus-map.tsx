@@ -34,7 +34,7 @@ import { cn } from "@/lib/cn";
 import { withAlpha } from "@/lib/color-alpha";
 import { resolveCssColor } from "@/lib/css-color";
 import { distanceMeters, interpolate } from "@/lib/geo";
-import { amenityLayers, heatColors } from "@/lib/map-paint";
+import { BUILDING_PITCH, BUILDING_ZOOM, amenityLayers, buildingColor, buildingLight, heatColors } from "@/lib/map-paint";
 import { zoomBand } from "@/lib/place-marker";
 
 const STYLE_LIGHT = CAMPUS.map.styles.light;
@@ -65,7 +65,6 @@ const AMENITY_ICONS: AmenityKind[] = ["sos", "picnic", "bench", "trash", "bikes"
 const ROUTE_END = "route-end";
 const ROUTE_CHEVRON = "route-chevron";
 const ROUTE_REVEAL_MS = 650;
-const BUILDING_PITCH = 52;
 const NO_PADDING = { top: 0, right: 0, bottom: 0, left: 0 };
 
 export type CampusMapHandle = {
@@ -396,6 +395,7 @@ function applyBuildingView(map: MapLibreMap, on: boolean, camera: "ease" | "keep
   ];
 
   if (on && !map.getLayer(BUILDINGS_3D)) {
+    map.setLight(buildingLight(dark));
     const layers = map.getStyle().layers ?? [];
     const routeCasing = `${ROUTE_SOURCE}-casing`;
     const before = map.getLayer(routeCasing)
@@ -409,8 +409,12 @@ function applyBuildingView(map: MapLibreMap, on: boolean, camera: "ease" | "keep
         "source-layer": "building",
         minzoom: 14,
         paint: {
-          "fill-extrusion-color": dark ? "#3a3a3a" : "#ddd9d2",
-          "fill-extrusion-opacity": 0.94,
+          "fill-extrusion-color": buildingColor(dark, {
+            surface: resolveCssColor("--default", "#ebebec"),
+            edge: resolveCssColor("--border", "#3f3f46"),
+            muted: resolveCssColor("--muted", "#71717a"),
+          }),
+          "fill-extrusion-opacity": 1,
           "fill-extrusion-vertical-gradient": true,
           "fill-extrusion-height": ["interpolate", ["linear"], ["zoom"], 14, 0, 15.6, height],
           "fill-extrusion-base": ["to-number", ["get", "render_min_height"]],
@@ -439,10 +443,10 @@ function applyViewCamera(map: MapLibreMap, on: boolean, camera: "ease" | "keep",
   }
   if (on) {
     map.touchPitch.enable();
-    if (camera === "ease" && (map.getPitch() < BUILDING_PITCH - 1 || map.getZoom() < 16)) {
+    if (camera === "ease" && (map.getPitch() < BUILDING_PITCH - 1 || map.getZoom() < BUILDING_ZOOM)) {
       map.easeTo({
         pitch: BUILDING_PITCH,
-        zoom: Math.max(map.getZoom(), 16),
+        zoom: Math.max(map.getZoom(), BUILDING_ZOOM),
         duration: 650,
         essential: true,
       });
