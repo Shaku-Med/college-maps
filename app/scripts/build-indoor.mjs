@@ -12,7 +12,7 @@ const PLAN_HEIGHT = 1200;
 const MAX_ANCHOR_METERS = 1.5;
 // Stairs and elevators stack; if two floors draw one further apart than this, one drawing is wrong and the lowest floor wins.
 const STACK_METERS = 2.5;
-const KINDS = new Set(["exit", "stair", "elevator", "aed", "chair", "assembly"]);
+const KINDS = new Set(["exit", "entrance", "stair", "elevator", "aed", "chair", "assembly"]);
 const NAME = /^[A-Za-z0-9][A-Za-z0-9 .'-]{0,39}$/;
 
 const fail = (message) => {
@@ -163,6 +163,7 @@ for (const building of [...new Set(plans.map((p) => p.building))].sort()) {
     floors: plans.filter((p) => p.building === building).map((p) => p.floor).sort((a, b) => a - b),
     ...(assembly.length ? { assembly: round(mean(assembly.map((p) => p.at))) } : {}),
     exits: perFloor("exit"),
+    entrances: perFloor("entrance"),
     stairs: stacked("stair"),
     elevators: stacked("elevator"),
     aeds: perFloor("aed"),

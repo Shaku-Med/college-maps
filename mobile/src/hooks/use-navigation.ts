@@ -23,6 +23,7 @@ import {
   progressAtDistance,
   remainingPath,
   routeVia,
+  sameWayAhead,
   trackProgress,
   type Route,
   type RouteProgress,
@@ -47,6 +48,8 @@ const OPPOSITE_DEGREES = 120;
 const BACK_ON_PREVIOUS_METERS = 15;
 const ALONG_PREVIOUS_METERS = 15;
 const DROP_PREVIOUS_METERS = 200;
+// How often a faded earlier route is checked against the route being walked, to drop it once both lead the same way.
+const SAME_WAY_CHECK_MS = 3_000;
 const WALKWAY_MATCH_METERS = 10;
 const WALKWAY_GAP_METERS = 10;
 // Campus paths run 10 to 15 m apart, about GPS error between buildings, so a switch needs three fixes in a row.
@@ -138,6 +141,7 @@ export function useNavigation({ destination, avoidStairs, follow, facingUp }: Op
   const previousHint = useRef(0);
   const previousStartAlong = useRef(0);
   const previousMatches = useRef(0);
+  const sameWayCheck = useRef(0);
   const streetReroute = useRef({ inflight: false, at: 0, token: 0 });
   const parkingTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const parkingOffered = useRef(false);
@@ -202,9 +206,11 @@ export function useNavigation({ destination, avoidStairs, follow, facingUp }: Op
 
   // Without a notice the change is a handover to the same way on, so nothing is left behind on the map.
   const commit = useCallback(
-    (chosen: Route, leaving: Route, position: Coordinate, kind?: RouteNotice) => {
+    (chosen: Route, leaving: Route, position: Coordinate, asked?: RouteNotice) => {
       const leftAt = trackProgress(leaving, position, hint.current);
       const next = trackProgress(chosen, position, 0);
+      // A new route that only leads back onto the old one is a quiet handover too, with nothing left behind or announced.
+      const kind = asked && !sameWayAhead(chosen, next, leaving, leftAt) ? asked : undefined;
       hint.current = next.segmentIndex;
       maxAlong.current = next.distanceAlong;
       offRouteCount.current = 0;
@@ -430,7 +436,8 @@ export function useNavigation({ destination, avoidStairs, follow, facingUp }: Op
         const leftAt = next;
         active = candidate;
         next = trackProgress(candidate, position, 0);
-        changed = kind;
+        const quiet = sameWayAhead(candidate, next, leaving, leftAt);
+        changed = quiet ? undefined : kind;
         maxAlong.current = next.distanceAlong;
         offRouteCount.current = 0;
         otherWalkwayCount.current = 0;
@@ -439,10 +446,10 @@ export function useNavigation({ destination, avoidStairs, follow, facingUp }: Op
         previousMatches.current = 0;
         lastRecheck.current = { at: Date.now(), along: next.distanceAlong };
         // Same as commit: a live reroute must not drop following, or the compass sticks until Recenter.
-        nav.current = { ...nav.current, route: candidate, previous: leaving, following: true };
+        nav.current = { ...nav.current, route: candidate, previous: quiet ? null : leaving, following: true };
         setIsFollowing(true);
         setRoute(candidate);
-        setPreviousPath(remainingPath(leaving, leftAt));
+        setPreviousPath(quiet ? null : remainingPath(leaving, leftAt));
         setIsWrongWay(false);
       };
 
@@ -457,9 +464,14 @@ export function useNavigation({ destination, avoidStairs, follow, facingUp }: Op
           next.distanceFromRoute > limit &&
           onPrevious.distanceAlong - previousStartAlong.current >= ALONG_PREVIOUS_METERS;
         previousMatches.current = followingPrevious ? previousMatches.current + 1 : 0;
+        const checkSameWay =
+          nearPrevious && next.distanceFromRoute <= limit && Date.now() - sameWayCheck.current > SAME_WAY_CHECK_MS;
+        if (checkSameWay) sameWayCheck.current = Date.now();
+        // On a stretch both routes share and lead the same way on from, the faded one offers nothing.
+        const sameWay = checkSameWay && sameWayAhead(active, next, previous, onPrevious);
         if (previousMatches.current >= 2) {
           adopt(previous, 'switched');
-        } else if (onPrevious.distanceFromRoute > DROP_PREVIOUS_METERS) {
+        } else if (onPrevious.distanceFromRoute > DROP_PREVIOUS_METERS || sameWay) {
           nav.current = { ...nav.current, previous: null };
           setPreviousPath(null);
         }

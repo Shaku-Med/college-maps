@@ -1,4 +1,5 @@
 import type { Coordinate } from "@/data/campus";
+import { buildingAt, buildingDoors } from "@/lib/buildings";
 import { bearingDegrees, distanceMeters, interpolate, projectOntoSegment, turnAngle } from "@/lib/geo";
 
 export type RawWalkGraph = {
@@ -81,6 +82,8 @@ const GOAL_SIDE_METERS = 40;
 const MAX_GOALS = 12;
 // Between two ways in, a closer one wins a near tie, but a much shorter walk always wins.
 const GOAL_SIDE_WEIGHT = 0.5;
+// A building's door counts as a way in when a walkway passes this close to it.
+const DOOR_SNAP_METERS = 15;
 const BEHIND_DEGREES = 100;
 const TURN_LOOK_METERS = 12;
 const DEPART_LOOK_METERS = 35;
@@ -172,8 +175,22 @@ function snapToGraph(g: WalkGraph, p: Coordinate, avoidStairs: boolean): Walkway
   return best && best.distance <= MAX_SNAP_METERS ? best : undefined;
 }
 
-// Every walkway reaching the destination within GOAL_SIDE_METERS, so the route uses the shortest side.
-function snapGoals(g: WalkGraph, p: Coordinate, avoidStairs: boolean): WalkwayMatch[] {
+/** Where a route may finish: a walkway point, the spot past it the route ends at, and what finishing there costs extra. */
+type Goal = WalkwayMatch & { end: Coordinate; extra: number; reach: number };
+
+// Every walkway reaching the destination within GOAL_SIDE_METERS, so the route uses the shortest side,
+// and for a building the walkway at each of its doors, so the route ends at whichever door is nearest.
+function snapGoals(g: WalkGraph, p: Coordinate, avoidStairs: boolean): Goal[] {
+  const goals: Goal[] = sideGoals(g, p, avoidStairs);
+  const building = buildingAt(p);
+  for (const door of building ? buildingDoors(g, building) : []) {
+    const hit = snapToGraph(g, door, avoidStairs);
+    if (hit && hit.distance <= DOOR_SNAP_METERS) goals.push({ ...hit, end: door, extra: 0, reach: distanceMeters(hit.point, p) });
+  }
+  return goals;
+}
+
+function sideGoals(g: WalkGraph, p: Coordinate, avoidStairs: boolean): Goal[] {
   const hits: WalkwayMatch[] = [];
   for (let e = 0; e < g.edgeA.length; e++) {
     if (avoidStairs && g.edgeStairs[e]) continue;
@@ -186,8 +203,12 @@ function snapGoals(g: WalkGraph, p: Coordinate, avoidStairs: boolean): WalkwayMa
   }
   if (hits.length === 0) return [];
   hits.sort((x, y) => x.distance - y.distance);
-  const reach = hits[0].distance + GOAL_SIDE_METERS;
-  return hits.filter((hit) => hit.distance <= reach).slice(0, MAX_GOALS);
+  const nearest = hits[0].distance;
+  return hits
+    .filter((hit) => hit.distance <= nearest + GOAL_SIDE_METERS)
+    .slice(0, MAX_GOALS)
+    // A side far from the building loses ties.
+    .map((hit) => ({ ...hit, end: p, extra: (hit.distance - nearest) * GOAL_SIDE_WEIGHT, reach: hit.distance }));
 }
 
 /** The walkway someone is actually on, stairs included. */
@@ -271,10 +292,7 @@ function searchRoute(
   const start = startOn ?? snapToGraph(g, from, avoidStairs);
   const goals = snapGoals(g, to, avoidStairs);
   if (!start || goals.length === 0) return null;
-  const nearestGoal = goals[0].distance;
-  // What finishing at each way in costs beyond the walk itself, so a side far from the building loses ties.
-  const goalExtra = goals.map((goal) => (goal.distance - nearestGoal) * GOAL_SIDE_WEIGHT);
-  const farthestGoal = goals[goals.length - 1].distance;
+  const farthestGoal = Math.max(...goals.map((goal) => goal.reach));
 
   // Someone partway down a staircase has to finish it, and long ones are several stair segments in a row.
   const flight = avoidStairs && start.stairs ? stairFlight(g, start) : undefined;
@@ -296,7 +314,7 @@ function searchRoute(
     let which = -1;
     goals.forEach((goal, k) => {
       if (i !== goal.a && i !== goal.b) return;
-      const c = distanceMeters(nodeCoord(g, i), goal.point) + goalExtra[k];
+      const c = distanceMeters(nodeCoord(g, i), goal.point) + goal.extra;
       if (c < best) {
         best = c;
         which = k;
@@ -325,7 +343,7 @@ function searchRoute(
   goals.forEach((goal, k) => {
     const sameEdge = (start.a === goal.a && start.b === goal.b) || (start.a === goal.b && start.b === goal.a);
     if (!sameEdge) return;
-    const c = distanceMeters(start.point, goal.point) + goalExtra[k];
+    const c = distanceMeters(start.point, goal.point) + goal.extra;
     if (c < cost[goalNode]) {
       cost[goalNode] = c;
       chosen = k;
@@ -367,7 +385,7 @@ function searchRoute(
   for (let at = previous[goalNode]; at !== -1; at = previous[at]) nodes.push(at);
   nodes.reverse();
 
-  const path: Coordinate[] = [from, start.point, ...nodes.map((i) => nodeCoord(g, i)), goal.point, to];
+  const path: Coordinate[] = [from, start.point, ...nodes.map((i) => nodeCoord(g, i)), goal.point, goal.end];
   // A flag at index k marks the edge that ends at path[k]; graph node j lives at index j + 2.
   const goalIndex = 2 + nodes.length;
   const stairFlags = path.map((_, k) => {
@@ -376,7 +394,7 @@ function searchRoute(
     return k >= 3 && k < goalIndex && isStairsEdge(g, nodes[k - 3], nodes[k - 2]);
   });
 
-  return buildRoute(g, dedupe(path, stairFlags), distanceMeters(goal.point, to));
+  return buildRoute(g, dedupe(path, stairFlags), distanceMeters(goal.point, goal.end));
 }
 
 // Stair nodes from the staircase someone is on to the nearest step-free exit each way.
@@ -574,6 +592,28 @@ export function progressAtDistance(route: Route, meters: number): RouteProgress 
 
 export function remainingPath(route: Route, progress: RouteProgress): Coordinate[] {
   return [progress.point, ...route.path.slice(progress.segmentIndex)];
+}
+
+// Two routes this close the whole way are the same streets and paths; campus paths beside each other sit 10 m or more apart.
+const SAME_WAY_METERS = 8;
+const SAME_WAY_SPACING_METERS = 20;
+const SAME_WAY_MAX_SAMPLES = 120;
+
+function samplesAhead(route: Route, from: number): Coordinate[] {
+  const left = route.distance - from;
+  const count = Math.max(1, Math.min(SAME_WAY_MAX_SAMPLES, Math.ceil(left / SAME_WAY_SPACING_METERS)));
+  return Array.from({ length: count + 1 }, (_, i) => progressAtDistance(route, from + (left * i) / count).point);
+}
+
+/** Whether route a, the one being taken, leads the same way on as route b, so keeping b around changes nothing. */
+export function sameWayAhead(a: Route, onA: RouteProgress, b: Route, onB: RouteProgress): boolean {
+  // The stretch of a that only leads someone back onto b, about as long as they are off it, does not count.
+  const skip = Math.min(onA.remaining, onB.distanceFromRoute + SAME_WAY_METERS);
+  const aLeft = onA.remaining - skip;
+  if (Math.abs(aLeft - onB.remaining) > Math.max(30, Math.max(aLeft, onB.remaining) * 0.1)) return false;
+  const along = (route: Route, points: Coordinate[]) =>
+    points.every((point) => trackProgress(route, point).distanceFromRoute <= SAME_WAY_METERS);
+  return along(b, samplesAhead(a, onA.distanceAlong + skip)) && along(a, samplesAhead(b, onB.distanceAlong));
 }
 
 /** A street route as far as `cutIndex` on its path, then a campus walk starting from that point, as one trip. */

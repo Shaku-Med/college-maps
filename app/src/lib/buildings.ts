@@ -1,5 +1,8 @@
 import { BUILDING_OUTLINES } from "@/data/building-outlines";
-import type { Coordinate } from "@/data/campus";
+import { getPlace, type Coordinate } from "@/data/campus";
+import { INDOOR } from "@/data/indoor";
+import { distanceMeters } from "@/lib/geo";
+import type { WalkGraph } from "@/lib/routing";
 
 type Ring = Coordinate[];
 
@@ -49,4 +52,36 @@ export function metersFromBuilding(position: Coordinate, placeId: string): numbe
     nearest = Math.min(nearest, Math.hypot(ax + t * dx, ay + t * dy));
   }
   return inside ? 0 : nearest;
+}
+
+/** The building a route is headed for when its destination is that building's own pin, or null. */
+export function buildingAt(point: Coordinate): string | null {
+  for (const id of Object.keys(BUILDING_OUTLINES.outlines)) {
+    const pin = getPlace(id)?.coordinate;
+    if (pin && distanceMeters(pin, point) < 1) return id;
+  }
+  return null;
+}
+
+// A walkway that stops this close to a building's walls stops at a door; maps draw paths right up to them.
+const DOOR_WALL_METERS = 3;
+const doorCache = new WeakMap<WalkGraph, Map<string, Coordinate[]>>();
+
+/** The doors a building is entered by: walkways that end at its walls, and entrances read off its evacuation maps. */
+export function buildingDoors(g: WalkGraph, placeId: string): Coordinate[] {
+  let byBuilding = doorCache.get(g);
+  if (!byBuilding) doorCache.set(g, (byBuilding = new Map()));
+  const cached = byBuilding.get(placeId);
+  if (cached) return cached;
+  const doors: Coordinate[] = [];
+  for (let i = 0; i < g.lat.length; i++) {
+    if (g.offsets[i + 1] - g.offsets[i] !== 1) continue;
+    const end = { latitude: g.lat[i], longitude: g.lng[i] };
+    if ((metersFromBuilding(end, placeId) ?? Infinity) <= DOOR_WALL_METERS) doors.push(end);
+  }
+  if (Object.hasOwn(INDOOR, placeId)) {
+    for (const { latitude, longitude } of INDOOR[placeId].entrances) doors.push({ latitude, longitude });
+  }
+  byBuilding.set(placeId, doors);
+  return doors;
 }

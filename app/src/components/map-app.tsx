@@ -66,6 +66,7 @@ import {
   progressAtDistance,
   remainingPath,
   routeVia,
+  sameWayAhead,
   trackProgress,
   type RawWalkGraph,
   type Route,
@@ -108,6 +109,8 @@ const OPPOSITE_DEGREES = 120;
 const BACK_ON_PREVIOUS_METERS = 15;
 const ALONG_PREVIOUS_METERS = 15;
 const DROP_PREVIOUS_METERS = 200;
+// How often a faded earlier route is checked against the route being walked, to drop it once both lead the same way.
+const SAME_WAY_CHECK_MS = 3_000;
 // Within this of a walkway, that walkway is where the walker is.
 const WALKWAY_MATCH_METERS = 10;
 // How much closer another walkway has to be than the route before it counts as the path they took.
@@ -322,6 +325,7 @@ export function MapApp({ initialPlaceId, initialRoom, initialAccountOpen = false
   const previousHintRef = useRef(0);
   const previousStartAlongRef = useRef(0);
   const previousMatchesRef = useRef(0);
+  const sameWayCheckRef = useRef(0);
 
   const handleHeading = useCallback((degrees: number) => mapRef.current?.setHeading(degrees), []);
   const handleFacing = useCallback((degrees: number) => mapRef.current?.setFacing(degrees), []);
@@ -394,9 +398,11 @@ export function MapApp({ initialPlaceId, initialRoom, initialAccountOpen = false
   }, []);
 
   // Swaps in a new route and keeps the one being left on the map, faded, unless it is a quiet handover to the same way on.
-  const commitRoute = useCallback((chosen: Route, leaving: Route, position: Coordinate, notice?: RouteNotice) => {
+  const commitRoute = useCallback((chosen: Route, leaving: Route, position: Coordinate, kind?: RouteNotice) => {
     const leftAt = trackProgress(leaving, position, progressHintRef.current);
     const next = trackProgress(chosen, position, 0);
+    // A new route that only leads back onto the old one is a quiet handover too, with nothing left behind or announced.
+    const notice = kind && !sameWayAhead(chosen, next, leaving, leftAt) ? kind : undefined;
     progressHintRef.current = next.segmentIndex;
     maxAlongRef.current = next.distanceAlong;
     offRouteCountRef.current = 0;
@@ -640,7 +646,8 @@ export function MapApp({ initialPlaceId, initialRoom, initialAccountOpen = false
         const leftAt = next;
         route = candidate;
         next = trackProgress(candidate, position, 0);
-        notice = kind;
+        const quiet = sameWayAhead(candidate, next, leaving, leftAt);
+        notice = quiet ? undefined : kind;
         maxAlongRef.current = next.distanceAlong;
         offRouteCountRef.current = 0;
         otherWalkwayCountRef.current = 0;
@@ -648,9 +655,9 @@ export function MapApp({ initialPlaceId, initialRoom, initialAccountOpen = false
         previousStartAlongRef.current = leftAt.distanceAlong;
         previousMatchesRef.current = 0;
         lastRecheckRef.current = { at: Date.now(), along: next.distanceAlong };
-        navRef.current = { ...navRef.current, navRoute: candidate, previousRoute: leaving };
+        navRef.current = { ...navRef.current, navRoute: candidate, previousRoute: quiet ? null : leaving };
         setNavRoute(candidate);
-        setPreviousRoute({ route: leaving, path: remainingPath(leaving, leftAt) });
+        setPreviousRoute(quiet ? null : { route: leaving, path: remainingPath(leaving, leftAt) });
         setIsWrongWay(false);
       };
 
@@ -666,9 +673,14 @@ export function MapApp({ initialPlaceId, initialRoom, initialAccountOpen = false
           next.distanceFromRoute > limit &&
           onPrevious.distanceAlong - previousStartAlongRef.current >= ALONG_PREVIOUS_METERS;
         previousMatchesRef.current = followingPrevious ? previousMatchesRef.current + 1 : 0;
+        const checkSameWay =
+          nearPrevious && next.distanceFromRoute <= limit && Date.now() - sameWayCheckRef.current > SAME_WAY_CHECK_MS;
+        if (checkSameWay) sameWayCheckRef.current = Date.now();
+        // On a stretch both routes share and lead the same way on from, the faded one offers nothing.
+        const sameWay = checkSameWay && sameWayAhead(route, next, previous, onPrevious);
         if (previousMatchesRef.current >= 2) {
           adopt(previous, "switched");
-        } else if (onPrevious.distanceFromRoute > DROP_PREVIOUS_METERS) {
+        } else if (onPrevious.distanceFromRoute > DROP_PREVIOUS_METERS || sameWay) {
           navRef.current = { ...navRef.current, previousRoute: null };
           setPreviousRoute(null);
         }

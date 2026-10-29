@@ -309,11 +309,17 @@ export function clearPreparedSpeech() {
 
 // ---- Playback ---------------------------------------------------------------------------------------
 
+// Natural clips and the device voice share one line, so neither ever talks over the other.
+type Line = { clip: Clip } | { text: string };
+
 let context: AudioContext | null = null;
 let current: AudioBufferSourceNode | null = null;
-const queue: Clip[] = [];
+const queue: Line[] = [];
 // Bumped by anything that should silence lines still on their way, like an urgent turn or muting.
 let epoch = 0;
+let deviceSpeaking = false;
+// Each device voice line gets its own number, so a late end event from a line already cut off is ignored.
+let deviceLine = 0;
 
 /** Call from a tap. iPhones only let audio start inside one, and once started it keeps working. */
 export function unlockAudio() {
@@ -336,13 +342,16 @@ function startAudio() {
 }
 
 function playNext() {
-  if (current || !context) return;
-  const clip = queue.shift();
-  if (!clip) return;
-  // Wait for a device voice line that is still talking rather than speaking over it.
-  if (voiceSupported() && window.speechSynthesis.speaking) {
-    queue.unshift(clip);
-    setTimeout(playNext, 200);
+  if (current || deviceSpeaking) return;
+  const line = queue.shift();
+  if (!line) return;
+  if ("text" in line) {
+    sayWithDevice(line.text);
+    return;
+  }
+  const { clip } = line;
+  if (!context) {
+    playNext();
     return;
   }
   const buffer = context.createBuffer(1, clip.samples.length, clip.rate);
@@ -375,7 +384,7 @@ function play(clip: Clip) {
     void context.resume();
     return false;
   }
-  queue.push(clip);
+  queue.push({ clip });
   playNext();
   return true;
 }
@@ -392,6 +401,8 @@ function silenceAll() {
       // Already finished.
     }
   }
+  deviceLine++;
+  deviceSpeaking = false;
   if (voiceSupported()) window.speechSynthesis.cancel();
 }
 
@@ -435,7 +446,25 @@ if (voiceSupported()) {
 
 function speakWithDevice(text: string) {
   if (!voiceSupported()) return;
+  queue.push({ text });
+  playNext();
+}
+
+function sayWithDevice(text: string) {
+  deviceSpeaking = true;
+  const line = ++deviceLine;
+  const done = () => {
+    if (line !== deviceLine) return;
+    deviceLine++;
+    clearTimeout(guard);
+    deviceSpeaking = false;
+    playNext();
+  };
+  // Safari sometimes never fires "end", which would hold every line after this one.
+  const guard = setTimeout(done, text.length * 90 + 4_000);
   const utterance = new SpeechSynthesisUtterance(text);
+  utterance.onend = done;
+  utterance.onerror = done;
   systemVoice ??= pickSystemVoice();
   if (systemVoice) {
     utterance.voice = systemVoice;

@@ -159,16 +159,10 @@ export async function setDirectionVoice(id: string | null) {
   return pickVoice();
 }
 
-let deviceSpeaking = false;
-
 async function speakWithDevice(text: string) {
-  const [voice] = await Promise.all([pickVoice(), prepareAudio()]);
-  if (!canSpeak) return;
-  deviceSpeaking = true;
-  const done = () => {
-    deviceSpeaking = false;
-  };
-  Speech.speak(text, { voice, language: voice ? undefined : 'en-US', rate: 1.0, onDone: done, onStopped: done, onError: done });
+  await prepareAudio();
+  queue.push({ text });
+  playNext();
 }
 
 export async function previewDirectionVoice(id: string) {
@@ -180,10 +174,39 @@ export async function previewDirectionVoice(id: string) {
 
 // ---- Playing natural clips -------------------------------------------------------------------------
 
+// Natural clips and the phone's voice share one line, so neither ever talks over the other.
+type Line = { uri: string } | { text: string };
+
 let player: AudioPlayer | null = null;
-const queue: string[] = [];
+const queue: Line[] = [];
 // Bumped by anything that should silence lines still on their way, like an urgent turn or muting.
 let epoch = 0;
+let deviceSpeaking = false;
+// Each phone voice line gets its own number, so a late done event from a line already cut off is ignored.
+let deviceLine = 0;
+
+function sayWithDevice(text: string) {
+  deviceSpeaking = true;
+  const line = ++deviceLine;
+  const asked = epoch;
+  const done = () => {
+    if (line !== deviceLine) return;
+    deviceLine++;
+    clearTimeout(guard);
+    deviceSpeaking = false;
+    playNext();
+  };
+  // A call or the system can cut the phone's voice off without a done event, which would hold every line after it.
+  const guard = setTimeout(done, text.length * 90 + 4_000);
+  void pickVoice().then((voice) => {
+    if (asked !== epoch || line !== deviceLine) return;
+    if (!canSpeak) {
+      done();
+      return;
+    }
+    Speech.speak(text, { voice, language: voice ? undefined : 'en-US', rate: 1.0, onDone: done, onStopped: done, onError: done });
+  });
+}
 
 function finishClip(done: AudioPlayer) {
   if (player !== done) return;
@@ -197,13 +220,13 @@ function finishClip(done: AudioPlayer) {
 }
 
 function playNext() {
-  if (player || queue.length === 0) return;
-  // Waits for a phone voice line that is still talking rather than speaking over it.
-  if (deviceSpeaking) {
-    setTimeout(playNext, 200);
+  if (player || deviceSpeaking || queue.length === 0) return;
+  const line = queue.shift() as Line;
+  if ('text' in line) {
+    sayWithDevice(line.text);
     return;
   }
-  const uri = queue.shift() as string;
+  const { uri } = line;
   let next: AudioPlayer;
   try {
     next = createAudioPlayer({ uri });
@@ -230,7 +253,7 @@ function playNext() {
 
 async function play(uri: string) {
   await prepareAudio();
-  queue.push(uri);
+  queue.push({ uri });
   playNext();
 }
 
@@ -247,6 +270,7 @@ function silenceAll() {
       // Already finished.
     }
   }
+  deviceLine++;
   deviceSpeaking = false;
   void Speech.stop();
 }

@@ -6,6 +6,8 @@ export type IndoorBuilding = {
   floors: number[];
   assembly?: Point;
   exits: (Point & { name: string; floor: number })[];
+  /** Doors people can walk in through, marked on the plans; not every fire exit opens from outside. */
+  entrances: (Point & { name?: string; floor: number })[];
   stairs: (Point & { name: string; floors: number[] })[];
   elevators: (Point & { name?: string; floors: number[] })[];
   aeds: (Point & { floor: number })[];
