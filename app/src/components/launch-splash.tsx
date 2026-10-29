@@ -10,7 +10,7 @@ const PIN = "M256 70 C 188 70 134 124 134 192 C 134 268 220 334 251 357 C 254 35
 // A map that never reports in, like one without WebGL, still gets the splash out of the way.
 const MAX_WAIT_MS = 4000;
 
-/** The phone app's launch: the pin waits on the brand color, then hops, pings, and fades into the map once `ready`. */
+/** The phone app's launch: the pin waits on the brand color, then is set down and opens the map from its tip once `ready`. */
 export function LaunchSplash({ ready }: { ready?: boolean }) {
   const waits = ready !== undefined;
   const [timedOut, setTimedOut] = useState(false);
@@ -24,7 +24,7 @@ export function LaunchSplash({ ready }: { ready?: boolean }) {
   }, [waits]);
 
   const finish = (event: AnimationEvent<HTMLDivElement>) => {
-    if (event.target !== event.currentTarget || event.animationName !== "launch-exit") return;
+    if (event.target !== event.currentTarget || (event.animationName !== "launch-reveal" && event.animationName !== "launch-exit")) return;
     try {
       sessionStorage.setItem(LAUNCH_KEY, "1");
     } catch {}

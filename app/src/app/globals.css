@@ -70,22 +70,35 @@
   }
 }
 
-/* The phone app's launch-overlay timings: hold 140, dip 140, rise 260, fall 220, then a small squash on landing. */
+/* How far the launch screen has opened from the pin's tip; registered so it can animate, and closed below zero so no pixel shows. */
+@property --launch-hole {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: -2px;
+}
+
+/* The phone app's launch overlay: hold 140, the pin rises 280 and is set down over 220, then the map opens from its tip. */
 .launch-splash {
   --launch-soft: cubic-bezier(0.455, 0.03, 0.515, 0.955);
   --launch-out: cubic-bezier(0.215, 0.61, 0.355, 1);
+  --launch-in: cubic-bezier(0.55, 0.085, 0.68, 0.53);
+  --launch-open: cubic-bezier(0.65, 0, 0.35, 1);
+  /* 933 of 1024 down the 96px pin is its tip, 39.5px below the middle of the screen. */
+  --launch-mask: radial-gradient(circle at 50% calc(50% + 39.5px), transparent var(--launch-hole), #000 calc(var(--launch-hole) + 1px));
   position: fixed;
   inset: 0;
   z-index: 1000;
   display: grid;
   place-items: center;
   background: var(--brand);
+  -webkit-mask: var(--launch-mask);
+  mask: var(--launch-mask);
   animation: launch-giveup 300ms ease 6s forwards;
 }
 
 .launch-splash[data-leaving] {
   pointer-events: none;
-  animation: launch-exit 380ms var(--launch-soft) 880ms forwards;
+  animation: launch-reveal 560ms var(--launch-open) 640ms forwards;
 }
 
 html[data-launched] .launch-splash {
@@ -98,7 +111,7 @@ html[data-launched] .launch-splash {
   height: 96px;
 }
 
-/* 933 of 1024 is the pin's tip, so it presses into the ground instead of shrinking toward its middle. */
+/* Scaling from the tip keeps the pin planted where it landed. */
 .launch-grow,
 .launch-pin {
   display: block;
@@ -117,15 +130,15 @@ html[data-launched] .launch-splash {
 }
 
 .launch-splash[data-leaving] .launch-pin {
-  animation: launch-hop 890ms 140ms;
+  animation: launch-lift 500ms 140ms;
 }
 
 .launch-splash[data-leaving] .launch-ripple {
-  animation: launch-ripple 560ms var(--launch-out) 760ms forwards;
+  animation: launch-ripple 600ms var(--launch-out) 640ms forwards;
 }
 
 .launch-splash[data-leaving] .launch-grow {
-  animation: launch-grow 380ms var(--launch-soft) 880ms forwards;
+  animation: launch-pin-out 220ms var(--launch-in) 640ms forwards;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -138,26 +151,15 @@ html[data-launched] .launch-splash {
   }
 }
 
-@keyframes launch-hop {
+/* Rises easing out, comes down easing in, like something being set down: no squash and no bounce. */
+@keyframes launch-lift {
   0% {
     transform: none;
-    animation-timing-function: cubic-bezier(0.455, 0.03, 0.515, 0.955);
-  }
-  15.73% {
-    transform: translateY(3px) scale(1.05, 0.92);
     animation-timing-function: cubic-bezier(0.215, 0.61, 0.355, 1);
   }
-  44.94% {
-    transform: translateY(-16px) scale(0.97, 1.04);
+  56% {
+    transform: translateY(-10px);
     animation-timing-function: cubic-bezier(0.55, 0.085, 0.68, 0.53);
-  }
-  69.66% {
-    transform: none;
-    animation-timing-function: cubic-bezier(0.215, 0.61, 0.355, 1);
-  }
-  79.78% {
-    transform: scale(1.04, 0.95);
-    animation-timing-function: cubic-bezier(0.455, 0.03, 0.515, 0.955);
   }
   100% {
     transform: none;
@@ -166,18 +168,27 @@ html[data-launched] .launch-splash {
 
 @keyframes launch-ripple {
   from {
-    opacity: 0.55;
-    transform: scale(0.35);
+    opacity: 0.5;
+    transform: scale(0.4);
   }
   to {
     opacity: 0;
-    transform: scale(1.5);
+    transform: scale(1.6);
   }
 }
 
-@keyframes launch-grow {
+@keyframes launch-pin-out {
   to {
-    transform: scale(1.18);
+    opacity: 0;
+    transform: scale(1.08);
+  }
+}
+
+/* Opens just past the farthest corner from the tip, so the whole reveal plays on screen; 150vmax where hypot() is missing. */
+@keyframes launch-reveal {
+  to {
+    --launch-hole: 150vmax;
+    --launch-hole: calc(hypot(50vw, 50vh + 40px) + 2px);
   }
 }
 
@@ -194,10 +205,10 @@ html[data-launched] .launch-splash {
   }
 }
 
-/* About page: the app icon hops in like the launch screen, then a ring keeps pinging where it landed. */
+/* About page: the app icon is set down like the launch screen, then a ring keeps pinging where it landed. */
 .about-mark-icon {
   transform-origin: 50% 100%;
-  animation: launch-hop 890ms 250ms both;
+  animation: launch-lift 500ms 250ms both;
 }
 
 .about-mark-ripple {
