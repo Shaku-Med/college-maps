@@ -87,7 +87,7 @@ const CAMPUS_CENTER: [number, number] = [center.longitude, center.latitude];
 const MAX_BOUNDS: [number, number, number, number] = [bounds.west - 0.3, bounds.south - 0.3, bounds.east + 0.3, bounds.north + 0.3];
 const PLACE_ZOOM = 17;
 // The web app's building view: the same tilt, colours, and heights.
-const BUILDING_PITCH = 52;
+const BUILDING_PITCH = 56;
 // The first label layer in each OpenFreeMap style, so buildings rise under the street and place names.
 const FIRST_LABEL = { light: 'waterway_line_label', dark: 'water_name' } as const;
 // MapLibre keeps the last padding it was given, so every camera move says its own.
@@ -171,13 +171,15 @@ export default function MapScreen() {
   const [ratingDue, setRatingDue] = useState(false);
   const [permission, requestPermission] = Location.useForegroundPermissions();
   // The color made to sit on the accent: the route's casing and chevrons, the same as the web map.
-  const [accent, danger, background, casing, muted, overlay] = useThemeColor([
+  const [accent, danger, background, casing, muted, overlay, surface, edge] = useThemeColor([
     'accent',
     'danger',
     'background',
     'accent-foreground',
     'muted',
     'overlay',
+    'default',
+    'border',
   ]);
   const amenities = useMemo(() => amenityLayers(0.5, { sos: danger, other: muted, halo: overlay }), [danger, muted, overlay]);
 
@@ -498,7 +500,7 @@ export default function MapScreen() {
     setBuildingView(next);
     if (next) {
       const level = (await mapRef.current?.getZoom().catch(() => zoom)) ?? zoom;
-      camera.current?.zoomTo(Math.max(level, 16), { pitch: BUILDING_PITCH, duration: 650, padding: NO_PADDING });
+      camera.current?.zoomTo(Math.max(level, 16.6), { pitch: BUILDING_PITCH, duration: 650, padding: NO_PADDING });
     } else {
       const level = (await mapRef.current?.getZoom().catch(() => zoom)) ?? zoom;
       camera.current?.zoomTo(level, { pitch: 0, bearing: 0, duration: 650, padding: NO_PADDING });
@@ -830,6 +832,8 @@ export default function MapScreen() {
         attribution={false}
         compass={false}
         touchPitch={navigating || buildingView}
+        // Light from one side, so walls and roofs shade differently and the buildings read as solid.
+        light={{ anchor: 'viewport', position: [1.4, 210, 40], intensity: scheme === 'dark' ? 0.55 : 0.4 }}
         onDidFinishLoadingMap={() => markReady('map')}
         onRegionWillChange={(event) => {
           // Our own follow/heading easeTo is often flagged as a finger pan on iOS; that was freezing the trip.
@@ -857,8 +861,9 @@ export default function MapScreen() {
             minzoom={14}
             beforeId={scheme === 'dark' ? FIRST_LABEL.dark : FIRST_LABEL.light}
             paint={{
-              'fill-extrusion-color': scheme === 'dark' ? '#3a3a3a' : '#ddd9d2',
-              'fill-extrusion-opacity': 0.94,
+              // Lighter than the ground in both themes, from the theme itself.
+              'fill-extrusion-color': scheme === 'dark' ? edge : surface,
+              'fill-extrusion-opacity': 1,
               'fill-extrusion-vertical-gradient': true,
               // Rises from flat as the map zooms in, to the building's mapped height, or 14 m when unknown.
               'fill-extrusion-height': [
