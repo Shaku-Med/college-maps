@@ -1,4 +1,5 @@
 import { CAMPUS, PLACES, getPlace, type Place, type PlaceCategory } from "@/data/campus";
+import { roomSpot } from "@/lib/building-safety";
 
 export const MAX_QUERY_LENGTH = 60;
 
@@ -103,13 +104,15 @@ export function floorLabel(floor: number | undefined): string | undefined {
   return `${floor}${suffix} floor`;
 }
 
-/** What to do once inside the building, said on arriving for a room: which floor, and up or down from the ground floor. */
-export function roomDirections(room: string, avoidStairs: boolean): string {
-  const floor = floorForRoom(room);
+/** What to do once inside the building, said on arriving for a room: which floor, up or down, and the stairs it is by when known. */
+export function roomDirections(room: string, avoidStairs: boolean, buildingId?: string): string {
+  const spot = roomSpot(buildingId, room);
+  const floor = spot?.floor ?? floorForRoom(room);
   const label = floorLabel(floor)?.toLowerCase();
   if (floor === undefined || !label) return `Follow the signs to room ${room}.`;
+  const where = `Room ${room} is on the ${label}${spot?.landmark ? `, ${spot.landmark}` : ""}.`;
   const way = avoidStairs || floor >= 4 ? "elevator" : "stairs";
-  if (floor <= 0) return `Room ${room} is on the ${label}. Take the ${way} down.`;
-  if (floor === 1) return `Room ${room} is on the ${label}.`;
-  return `Room ${room} is on the ${label}. Take the ${way} up.`;
+  if (floor <= 0) return `${where} Take the ${way} down.`;
+  if (floor === 1) return where;
+  return `${where} Take the ${way} up.`;
 }

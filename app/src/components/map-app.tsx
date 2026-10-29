@@ -30,7 +30,7 @@ import { useWakeLock } from "@/hooks/use-wake-lock";
 import { campusActivityByPlace, eventsAtPlace } from "@/lib/campus-activity";
 import { MAP_FILTERS, type MapFilter } from "@/lib/categories";
 import { fetchTripRoute } from "@/lib/directions";
-import { safetyBuildingHere, safetyBuildings } from "@/lib/building-safety";
+import { roomSpot, safetyBuildingHere, safetyBuildings } from "@/lib/building-safety";
 import { metersFromBuilding } from "@/lib/buildings";
 import { autoTravelOn } from "@/lib/travel-prefs";
 import { canSwitchTravel, createTravelSwitch, type SwitchableTravel } from "@/lib/travel-switch";
@@ -803,7 +803,7 @@ export function MapApp({ initialPlaceId, initialRoom, initialAccountOpen = false
   // While guiding, the place being walked to now: the next stop, or the destination after the last one.
   const target = mode === "navigate" ? (getPlace(legs[leg]) ?? selected) : selected;
   const nextTarget = mode === "navigate" ? getPlace(legs[leg + 1]) : undefined;
-  const arrivalNote = room && target?.id === selectedId ? roomDirections(room, avoidStairs) : undefined;
+  const arrivalNote = room && target?.id === selectedId ? roomDirections(room, avoidStairs, selectedId) : undefined;
 
   const geo = useGeolocation({ onPosition: handlePosition, onError: handleGeoError });
   useWakeLock(mode === "navigate");
@@ -1458,6 +1458,7 @@ export function MapApp({ initialPlaceId, initialRoom, initialAccountOpen = false
         onLoad={() => setMapLoaded(true)}
         activityByPlace={activityByPlace}
         safetyBuildings={safetyIds}
+        room={roomSpot(selectedId, room)}
         onUserPan={() => {
           if (mode !== "navigate") return;
           clearTimeout(followAgainRef.current);

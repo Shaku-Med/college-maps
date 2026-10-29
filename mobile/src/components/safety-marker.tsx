@@ -13,6 +13,7 @@ const SYMBOLS: Record<SafetyKind, SFSymbol> = {
   aed: 'bolt.heart.fill',
   stairs: 'figure.stairs',
   elevator: 'arrow.up.arrow.down',
+  restroom: 'toilet',
   chair: 'figure.roll',
   assembly: 'person.3.fill',
 };
@@ -23,6 +24,7 @@ const TILES: Record<SafetyKind, string> = {
   aed: 'bg-danger',
   stairs: 'bg-default',
   elevator: 'bg-default',
+  restroom: 'bg-default',
   chair: 'bg-default',
   assembly: 'bg-success/15',
 };
@@ -44,6 +46,7 @@ export const SafetyMarker = memo(function SafetyMarker({ spot, band }: { spot: S
     aed: dangerInk,
     stairs: defaultInk,
     elevator: defaultInk,
+    restroom: defaultInk,
     chair: defaultInk,
     assembly: success,
   };

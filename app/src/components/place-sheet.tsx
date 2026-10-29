@@ -7,6 +7,7 @@ import { useState, type FormEvent } from "react";
 
 import { CollapseButton, SheetGrabber } from "@/components/sheet-chrome";
 import { CATEGORY_LABELS, type Place } from "@/data/campus";
+import { roomSpot } from "@/lib/building-safety";
 import { CATEGORY_ICONS } from "@/lib/categories";
 import type { Meetup } from "@/lib/social-api";
 import { placeUrl } from "@/lib/share-url";
@@ -41,6 +42,7 @@ export function PlaceSheet({
 }: PlaceSheetProps) {
   const Icon = CATEGORY_ICONS[place.category];
   const floor = room ? floorLabel(floorForRoom(room)) : undefined;
+  const landmark = roomSpot(place.id, room)?.landmark;
   const askRoom = place.isBuilding && !room;
   const [roomText, setRoomText] = useState("");
   const [roomError, setRoomError] = useState<string | null>(null);
@@ -104,7 +106,7 @@ export function PlaceSheet({
           </p>
           <p className="mt-0.5 text-xs leading-relaxed text-muted">
             {floor
-              ? `Enter ${place.name}, then head to the ${floor.toLowerCase()}.`
+              ? `Enter ${place.name}, then head to the ${floor.toLowerCase()}${landmark ? `, ${landmark}` : ""}.`
               : `Enter ${place.name} and follow the room signs.`}
           </p>
         </div>

@@ -1,10 +1,12 @@
-// Pins the evacuation maps in campus/indoor-plans.json onto building corners and writes src/data/indoor.json; rerun after editing plans.
+// Pins the evacuation maps in campus/indoor-plans.json and the room models in campus/indoor-rooms.json onto their buildings
+// and writes src/data/indoor.json; rerun after editing either.
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { APP_DIR, readCampus } from "./lib/campus.mjs";
 
 const SOURCE = join(APP_DIR, "campus", "indoor-plans.json");
+const ROOMS_SOURCE = join(APP_DIR, "campus", "indoor-rooms.json");
 const OUT = join(APP_DIR, "src", "data", "indoor.json");
 const PLAN_WIDTH = 1600;
 const PLAN_HEIGHT = 1200;
@@ -14,6 +16,9 @@ const MAX_ANCHOR_METERS = 1.5;
 const STACK_METERS = 2.5;
 const KINDS = new Set(["exit", "entrance", "stair", "elevator", "aed", "chair", "assembly"]);
 const NAME = /^[A-Za-z0-9][A-Za-z0-9 .'-]{0,39}$/;
+const ROOM = /^\d{3,4}[A-Z]?$/;
+// Restrooms on different floors this close are one stack, shown once where the ground floor has it.
+const SAME_RESTROOM_METERS = 6;
 
 const fail = (message) => {
   console.error(`indoor-plans.json: ${message}`);
@@ -171,6 +176,101 @@ for (const building of [...new Set(plans.map((p) => p.building))].sort()) {
   };
 }
 
+function readRooms(buildings) {
+  let source;
+  try {
+    source = JSON.parse(readFileSync(ROOMS_SOURCE, "utf8"));
+  } catch (error) {
+    if (error.code === "ENOENT") return {};
+    throw error;
+  }
+  const failRooms = (message) => {
+    console.error(`indoor-rooms.json: ${message}`);
+    process.exit(1);
+  };
+  const isNumber = (value) => Number.isFinite(value) && Math.abs(value) < 10_000;
+  const isFloor = (value) => Number.isInteger(value) && value >= -3 && value <= 20;
+  for (const [id, model] of Object.entries(source?.buildings ?? {})) {
+    if (!buildings.has(id)) failRooms(`${id} is not a building in campus.json`);
+    const anchorSets = [["anchors", model.anchors], ...Object.entries(model.floorAnchors ?? {}).map(([floor, set]) => [`floorAnchors ${floor}`, set])];
+    for (const [label, set] of anchorSets) {
+      if (!Array.isArray(set) || set.length < 3) failRooms(`${id} ${label} needs at least 3 anchors`);
+      for (const a of set) {
+        if (!Array.isArray(a) || a.length !== 4 || !a.every(isNumber)) failRooms(`${id} ${label} must be [x, z, latitude, longitude]`);
+      }
+    }
+    for (const floor of Object.keys(model.floorAnchors ?? {})) {
+      if (!isFloor(Number(floor)) || String(Number(floor)) !== floor) failRooms(`${id} floorAnchors keys must be floor numbers`);
+    }
+    const names = new Set();
+    for (const r of model.rooms ?? []) {
+      const ok = Array.isArray(r) && r.length === 4 && typeof r[0] === "string" && ROOM.test(r[0]) && isFloor(r[1]) && isNumber(r[2]) && isNumber(r[3]);
+      if (!ok) failRooms(`${id} rooms must be [number, floor, x, z], like ["101", 1, 0.2, -1.3]`);
+      if (names.has(r[0])) failRooms(`${id} room ${r[0]} is listed twice`);
+      names.add(r[0]);
+    }
+    for (const r of model.restrooms ?? []) {
+      if (!Array.isArray(r) || r.length !== 3 || !isFloor(r[0]) || !isNumber(r[1]) || !isNumber(r[2])) failRooms(`${id} restrooms must be [floor, x, z]`);
+    }
+  }
+  return source?.buildings ?? {};
+}
+
+// Models are drawn to scale, only turned and stretched, so a least squares affine fit maps model x, z onto meters.
+function fitAffine(pairs) {
+  const normal = Array.from({ length: 3 }, () => [0, 0, 0]);
+  const rhsX = [0, 0, 0];
+  const rhsY = [0, 0, 0];
+  for (const { model: [x, z], m: [X, Y] } of pairs) {
+    const row = [x, z, 1];
+    for (let i = 0; i < 3; i++) {
+      for (let j = 0; j < 3; j++) normal[i][j] += row[i] * row[j];
+      rhsX[i] += row[i] * X;
+      rhsY[i] += row[i] * Y;
+    }
+  }
+  const a = solve(normal, rhsX);
+  const b = solve(normal, rhsY);
+  if (!a || !b) return null;
+  return ([x, z]) => [a[0] * x + a[1] * z + a[2], b[0] * x + b[1] * z + b[2]];
+}
+
+function modelPlacer(building, anchors) {
+  const frame = frameFor(anchors);
+  const toM = fitAffine(anchors.map(([x, z, lat, lng]) => ({ model: [x, z], m: frame.toM(lat, lng) })));
+  if (!toM) fail(`${building} room anchors do not pin the model down; spread them over the building`);
+  for (const [j, [x, z, lat, lng]] of anchors.entries()) {
+    const [X, Y] = toM([x, z]);
+    const [ax, ay] = frame.toM(lat, lng);
+    const off = Math.hypot(X - ax, Y - ay);
+    if (off > MAX_ANCHOR_METERS) fail(`${building} room anchor ${j} lands ${off.toFixed(1)} m off; check it`);
+  }
+  return (x, z) => round(frame.toLL(toM([x, z])));
+}
+
+for (const [building, model] of Object.entries(readRooms(new Set(campus.places.filter((p) => p.isBuilding).map((p) => p.id))))) {
+  const placers = new Map(Object.entries(model.floorAnchors ?? {}).map(([floor, set]) => [Number(floor), modelPlacer(building, set)]));
+  const anyFloor = modelPlacer(building, model.anchors);
+  const at = (floor, x, z) => (placers.get(floor) ?? anyFloor)(x, z);
+  const restrooms = [];
+  for (const [floor, x, z] of [...(model.restrooms ?? [])].sort((p, q) => p[0] - q[0])) {
+    const point = at(floor, x, z);
+    const stack = restrooms.find((r) => meters(r, point) < SAME_RESTROOM_METERS);
+    if (stack) stack.floors = [...new Set([...stack.floors, floor])].sort((p, q) => p - q);
+    else restrooms.push({ floors: [floor], ...point });
+  }
+  const rooms = (model.rooms ?? [])
+    .map(([name, floor, x, z]) => ({ name, floor, ...at(floor, x, z) }))
+    .sort((p, q) => p.name.localeCompare(q.name));
+  indoor[building] ??= { floors: [], exits: [], entrances: [], stairs: [], elevators: [], aeds: [], evacuationChairs: [] };
+  indoor[building].floors = [...new Set([...indoor[building].floors, ...rooms.map((r) => r.floor)])].sort((p, q) => p - q);
+  Object.assign(indoor[building], { rooms, restrooms, ...(model.credit ? { roomCredit: String(model.credit).slice(0, 200) } : {}) });
+}
+for (const building of Object.values(indoor)) {
+  building.rooms ??= [];
+  building.restrooms ??= [];
+}
+
 const previous = (() => {
   try {
     return readFileSync(OUT, "utf8");
@@ -181,7 +281,7 @@ const previous = (() => {
 const next = `${JSON.stringify(indoor, null, 2)}\n`;
 writeFileSync(OUT, next);
 for (const [id, b] of Object.entries(indoor)) {
-  console.log(`${id}: floors ${b.floors.join(", ")}; ${b.exits.length} exits, ${b.stairs.length} stairs, ${b.elevators.length} elevators, ${b.aeds.length} AEDs, ${b.evacuationChairs.length} evacuation chairs`);
+  console.log(`${id}: floors ${b.floors.join(", ")}; ${b.exits.length} exits, ${b.stairs.length} stairs, ${b.elevators.length} elevators, ${b.aeds.length} AEDs, ${b.evacuationChairs.length} evacuation chairs, ${b.rooms.length} rooms, ${b.restrooms.length} restrooms`);
 }
 for (const w of warnings) console.log(`warning: ${w}`);
 console.log(`indoor.json: ${Object.keys(indoor).length} buildings, ${Math.round(next.length / 1024)} KB${previous === next ? " (unchanged)" : ""}`);

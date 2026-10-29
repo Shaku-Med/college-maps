@@ -1,6 +1,7 @@
 {
   "1N": {
     "floors": [
+      0,
       1,
       2
     ],
@@ -81,7 +82,382 @@
         "latitude": 40.600691,
         "longitude": -74.147677
       }
-    ]
+    ],
+    "rooms": [
+      {
+        "name": "002",
+        "floor": 0,
+        "latitude": 40.60084,
+        "longitude": -74.147446
+      },
+      {
+        "name": "003",
+        "floor": 0,
+        "latitude": 40.600771,
+        "longitude": -74.147444
+      },
+      {
+        "name": "004",
+        "floor": 0,
+        "latitude": 40.600769,
+        "longitude": -74.147999
+      },
+      {
+        "name": "005",
+        "floor": 0,
+        "latitude": 40.600856,
+        "longitude": -74.147968
+      },
+      {
+        "name": "101",
+        "floor": 1,
+        "latitude": 40.600877,
+        "longitude": -74.147418
+      },
+      {
+        "name": "102",
+        "floor": 1,
+        "latitude": 40.600841,
+        "longitude": -74.147446
+      },
+      {
+        "name": "103",
+        "floor": 1,
+        "latitude": 40.600814,
+        "longitude": -74.147444
+      },
+      {
+        "name": "104",
+        "floor": 1,
+        "latitude": 40.600785,
+        "longitude": -74.147444
+      },
+      {
+        "name": "105",
+        "floor": 1,
+        "latitude": 40.600758,
+        "longitude": -74.147444
+      },
+      {
+        "name": "106",
+        "floor": 1,
+        "latitude": 40.600731,
+        "longitude": -74.147444
+      },
+      {
+        "name": "107",
+        "floor": 1,
+        "latitude": 40.600659,
+        "longitude": -74.147474
+      },
+      {
+        "name": "108",
+        "floor": 1,
+        "latitude": 40.600693,
+        "longitude": -74.147583
+      },
+      {
+        "name": "109",
+        "floor": 1,
+        "latitude": 40.600693,
+        "longitude": -74.147654
+      },
+      {
+        "name": "111",
+        "floor": 1,
+        "latitude": 40.600693,
+        "longitude": -74.147818
+      },
+      {
+        "name": "112",
+        "floor": 1,
+        "latitude": 40.600693,
+        "longitude": -74.147898
+      },
+      {
+        "name": "113",
+        "floor": 1,
+        "latitude": 40.600659,
+        "longitude": -74.147968
+      },
+      {
+        "name": "114",
+        "floor": 1,
+        "latitude": 40.600749,
+        "longitude": -74.147999
+      },
+      {
+        "name": "115",
+        "floor": 1,
+        "latitude": 40.600815,
+        "longitude": -74.147999
+      },
+      {
+        "name": "116",
+        "floor": 1,
+        "latitude": 40.60087,
+        "longitude": -74.148032
+      },
+      {
+        "name": "201",
+        "floor": 2,
+        "latitude": 40.600879,
+        "longitude": -74.147393
+      },
+      {
+        "name": "202",
+        "floor": 2,
+        "latitude": 40.600879,
+        "longitude": -74.147443
+      },
+      {
+        "name": "203",
+        "floor": 2,
+        "latitude": 40.600856,
+        "longitude": -74.147393
+      },
+      {
+        "name": "204",
+        "floor": 2,
+        "latitude": 40.600856,
+        "longitude": -74.147443
+      },
+      {
+        "name": "205",
+        "floor": 2,
+        "latitude": 40.600829,
+        "longitude": -74.147393
+      },
+      {
+        "name": "206",
+        "floor": 2,
+        "latitude": 40.600829,
+        "longitude": -74.147443
+      },
+      {
+        "name": "207",
+        "floor": 2,
+        "latitude": 40.600808,
+        "longitude": -74.147393
+      },
+      {
+        "name": "208",
+        "floor": 2,
+        "latitude": 40.600808,
+        "longitude": -74.147443
+      },
+      {
+        "name": "209",
+        "floor": 2,
+        "latitude": 40.600779,
+        "longitude": -74.147393
+      },
+      {
+        "name": "210",
+        "floor": 2,
+        "latitude": 40.600779,
+        "longitude": -74.147443
+      },
+      {
+        "name": "211",
+        "floor": 2,
+        "latitude": 40.600757,
+        "longitude": -74.147393
+      },
+      {
+        "name": "212",
+        "floor": 2,
+        "latitude": 40.600757,
+        "longitude": -74.147443
+      },
+      {
+        "name": "213",
+        "floor": 2,
+        "latitude": 40.60073,
+        "longitude": -74.147393
+      },
+      {
+        "name": "214",
+        "floor": 2,
+        "latitude": 40.60073,
+        "longitude": -74.147443
+      },
+      {
+        "name": "215",
+        "floor": 2,
+        "latitude": 40.600648,
+        "longitude": -74.14739
+      },
+      {
+        "name": "216",
+        "floor": 2,
+        "latitude": 40.600687,
+        "longitude": -74.147456
+      },
+      {
+        "name": "217",
+        "floor": 2,
+        "latitude": 40.600687,
+        "longitude": -74.147522
+      },
+      {
+        "name": "218",
+        "floor": 2,
+        "latitude": 40.600687,
+        "longitude": -74.147586
+      },
+      {
+        "name": "219",
+        "floor": 2,
+        "latitude": 40.600687,
+        "longitude": -74.147645
+      },
+      {
+        "name": "220",
+        "floor": 2,
+        "latitude": 40.600639,
+        "longitude": -74.147711
+      },
+      {
+        "name": "221",
+        "floor": 2,
+        "latitude": 40.600687,
+        "longitude": -74.147784
+      },
+      {
+        "name": "222",
+        "floor": 2,
+        "latitude": 40.600687,
+        "longitude": -74.147839
+      },
+      {
+        "name": "223",
+        "floor": 2,
+        "latitude": 40.600687,
+        "longitude": -74.147889
+      },
+      {
+        "name": "224",
+        "floor": 2,
+        "latitude": 40.600687,
+        "longitude": -74.147938
+      },
+      {
+        "name": "225",
+        "floor": 2,
+        "latitude": 40.600687,
+        "longitude": -74.147986
+      },
+      {
+        "name": "226",
+        "floor": 2,
+        "latitude": 40.600648,
+        "longitude": -74.148021
+      },
+      {
+        "name": "227",
+        "floor": 2,
+        "latitude": 40.60073,
+        "longitude": -74.148043
+      },
+      {
+        "name": "228",
+        "floor": 2,
+        "latitude": 40.60073,
+        "longitude": -74.14799
+      },
+      {
+        "name": "229",
+        "floor": 2,
+        "latitude": 40.600757,
+        "longitude": -74.148043
+      },
+      {
+        "name": "230",
+        "floor": 2,
+        "latitude": 40.600757,
+        "longitude": -74.14799
+      },
+      {
+        "name": "231",
+        "floor": 2,
+        "latitude": 40.600779,
+        "longitude": -74.148043
+      },
+      {
+        "name": "232",
+        "floor": 2,
+        "latitude": 40.600779,
+        "longitude": -74.14799
+      },
+      {
+        "name": "233",
+        "floor": 2,
+        "latitude": 40.600808,
+        "longitude": -74.148043
+      },
+      {
+        "name": "234",
+        "floor": 2,
+        "latitude": 40.600808,
+        "longitude": -74.14799
+      },
+      {
+        "name": "235",
+        "floor": 2,
+        "latitude": 40.600829,
+        "longitude": -74.148043
+      },
+      {
+        "name": "236",
+        "floor": 2,
+        "latitude": 40.600829,
+        "longitude": -74.14799
+      },
+      {
+        "name": "237",
+        "floor": 2,
+        "latitude": 40.600856,
+        "longitude": -74.148043
+      },
+      {
+        "name": "238",
+        "floor": 2,
+        "latitude": 40.600856,
+        "longitude": -74.14799
+      },
+      {
+        "name": "239",
+        "floor": 2,
+        "latitude": 40.600879,
+        "longitude": -74.148043
+      },
+      {
+        "name": "240",
+        "floor": 2,
+        "latitude": 40.600879,
+        "longitude": -74.14799
+      }
+    ],
+    "restrooms": [
+      {
+        "floors": [
+          1,
+          2
+        ],
+        "latitude": 40.600693,
+        "longitude": -74.14744
+      },
+      {
+        "floors": [
+          1,
+          2
+        ],
+        "latitude": 40.600693,
+        "longitude": -74.148004
+      }
+    ],
+    "roomCredit": "Room layout from Krystian Gawecki's 3D model of 1N, schoolmapapp.onrender.com"
   },
   "1S": {
     "floors": [
@@ -165,7 +541,9 @@
         "latitude": 40.59864,
         "longitude": -74.147742
       }
-    ]
+    ],
+    "rooms": [],
+    "restrooms": []
   },
   "2N": {
     "floors": [
@@ -249,7 +627,9 @@
         "latitude": 40.600687,
         "longitude": -74.149283
       }
-    ]
+    ],
+    "rooms": [],
+    "restrooms": []
   },
   "2S": {
     "floors": [
@@ -333,7 +713,9 @@
         "latitude": 40.598645,
         "longitude": -74.14934
       }
-    ]
+    ],
+    "rooms": [],
+    "restrooms": []
   },
   "3N": {
     "floors": [
@@ -417,7 +799,9 @@
         "latitude": 40.601822,
         "longitude": -74.150608
       }
-    ]
+    ],
+    "rooms": [],
+    "restrooms": []
   },
   "3S": {
     "floors": [
@@ -501,6 +885,8 @@
         "latitude": 40.597472,
         "longitude": -74.150609
       }
-    ]
+    ],
+    "rooms": [],
+    "restrooms": []
   }
 }

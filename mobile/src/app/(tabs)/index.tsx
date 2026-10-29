@@ -29,6 +29,7 @@ import { MapButton } from '@/components/map-button';
 import { NavigationBanner, NavigationFooter, ParkingCard } from '@/components/navigation-hud';
 import { PlaceDetails } from '@/components/place-details';
 import { PlaceMarker } from '@/components/place-marker';
+import { RoomMarker } from '@/components/room-marker';
 import { SafetyMarker } from '@/components/safety-marker';
 import { EdgeScrim, TopScrim } from '@/components/top-scrim';
 import { UserPin } from '@/components/user-pin';
@@ -54,7 +55,7 @@ import { endTrip, showTrip } from '@/lib/live-activity';
 import { currentCompass, currentFix, subscribeCompass, useLocation } from '@/lib/location';
 import { parkingSpoken } from '@/lib/parking';
 import { watchSteps } from '@/lib/steps';
-import { safetyBuildingHere, safetyBuildings, safetyFor, type SafetySpot } from '@/lib/building-safety';
+import { roomSpot, safetyBuildingHere, safetyBuildings, safetyFor, type SafetySpot } from '@/lib/building-safety';
 import { buildingPolygon } from '@/lib/buildings';
 import { withAlpha } from '@/lib/color-alpha';
 import { BUILDING_PITCH, BUILDING_ZOOM, amenityLayers, buildingColor, buildingLight, heatColors } from '@/lib/map-paint';
@@ -255,7 +256,9 @@ export default function MapScreen() {
   // While guiding, the place being walked to now: the next stop, or the destination after the last one.
   const target = navigating ? (getPlace(trip.legs[trip.leg]) ?? trip.destination) : trip.destination;
   const nextTarget = navigating ? getPlace(trip.legs[trip.leg + 1]) : undefined;
-  const arrivalNote = trip.room && target?.id === trip.destination?.id ? roomDirections(trip.room, trip.avoidStairs) : undefined;
+  const arrivalNote =
+    trip.room && target?.id === trip.destination?.id ? roomDirections(trip.room, trip.avoidStairs, trip.destination?.id) : undefined;
+  const room = roomSpot(trip.destination?.id, trip.room);
 
   const navigation = useNavigation({
     destination: target,
@@ -1030,6 +1033,7 @@ export default function MapScreen() {
         {safety.spots.map((spot) => (
           <SafetyMarker key={spot.id} spot={spot} band={band} />
         ))}
+        {room ? <RoomMarker spot={room} band={band} /> : null}
 
         {places.map((place) => (
           <PlaceMarker

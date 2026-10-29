@@ -19,6 +19,7 @@ import {
 import { createPortal } from "react-dom";
 
 import { PlaceChip, type ChipState } from "@/components/place-chip";
+import { RoomChip } from "@/components/room-chip";
 import { SafetyChip } from "@/components/safety-chip";
 import { AMENITY_POINTS, type AmenityKind } from "@/data/amenities";
 import {
@@ -28,7 +29,7 @@ import {
   type Coordinate,
   type Place,
 } from "@/data/campus";
-import { safetyFor, type SafetySpot } from "@/lib/building-safety";
+import { safetyFor, type RoomSpot, type SafetySpot } from "@/lib/building-safety";
 import { buildingPolygon } from "@/lib/buildings";
 import { cn } from "@/lib/cn";
 import { withAlpha } from "@/lib/color-alpha";
@@ -125,6 +126,8 @@ type CampusMapProps = {
   activityByPlace?: Readonly<Record<string, number>>;
   /** Buildings whose exits, stairs, and other safety points are shown: where someone is heading, or is. */
   safetyBuildings?: readonly string[];
+  /** The room being looked for, shown inside its building. */
+  room?: RoomSpot | null;
 };
 
 type Outlined = { id: string; kind: "selected" | "hover" };
@@ -746,6 +749,7 @@ export function CampusMap({
   headingUp = false,
   activityByPlace,
   safetyBuildings,
+  room,
 }: CampusMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
@@ -753,6 +757,8 @@ export function CampusMap({
   const [hosts, setHosts] = useState<ReadonlyMap<string, HTMLElement>>(() => new Map());
   const safetyMarkersRef = useRef(new Map<string, { marker: Marker; host: HTMLElement }>());
   const [safetyHosts, setSafetyHosts] = useState<ReadonlyMap<string, HTMLElement>>(() => new Map());
+  const roomMarkerRef = useRef<{ marker: Marker; host: HTMLElement } | null>(null);
+  const [roomHost, setRoomHost] = useState<HTMLElement | null>(null);
   const [hovered, setHovered] = useState<string | null>(null);
   const outlinedRef = useRef<Outlined[]>([]);
   const revealFrameRef = useRef<number | null>(null);
@@ -1056,6 +1062,8 @@ export function CampusMap({
       markers.clear();
       safetyMarkers.forEach(({ marker }) => marker.remove());
       safetyMarkers.clear();
+      roomMarkerRef.current?.marker.remove();
+      roomMarkerRef.current = null;
       userGlideRef.current?.stop();
       userGlideRef.current = null;
       userMarkerRef.current?.remove();
@@ -1187,6 +1195,29 @@ export function CampusMap({
     setSafetyHosts(new Map([...markers].map(([id, { host }]) => [id, host])));
   }, [isReady, safety]);
 
+  const roomAt = room ? `${room.coordinate.latitude},${room.coordinate.longitude}` : "";
+  useEffect(() => {
+    const lib = libRef.current;
+    const map = mapRef.current;
+    if (!isReady || !lib || !map) return;
+    if (!roomAt) {
+      roomMarkerRef.current?.marker.remove();
+      roomMarkerRef.current = null;
+    } else {
+      const [latitude, longitude] = roomAt.split(",").map(Number);
+      if (roomMarkerRef.current) {
+        roomMarkerRef.current.marker.setLngLat([longitude, latitude]);
+      } else {
+        const host = document.createElement("div");
+        const marker = new lib.Marker({ element: host, anchor: "center" }).setLngLat([longitude, latitude]).addTo(map);
+        // Over the safety chips and place chips, under the person's own dot.
+        marker.getElement().style.zIndex = "2";
+        roomMarkerRef.current = { marker, host };
+      }
+    }
+    setRoomHost(roomMarkerRef.current?.host ?? null);
+  }, [isReady, roomAt]);
+
   const chipState = (id: string): ChipState =>
     id === selectedId ? "selected" : stopNumbers?.[id] !== undefined ? "stop" : id === originId ? "origin" : "idle";
   const placesById = new Map(places.map((place) => [place.id, place]));
@@ -1307,6 +1338,7 @@ export function CampusMap({
         const spot = spotsById.get(id);
         return spot ? createPortal(<SafetyChip spot={spot} />, host, id) : null;
       })}
+      {roomHost && room ? createPortal(<RoomChip spot={room} />, roomHost) : null}
     </div>
   );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { Accessibility, ArrowUpDown, DoorOpen, DoorStairwell, HeartPulse, UsersRound, type LucideIcon } from "lucide-react";
+import { Accessibility, ArrowUpDown, DoorOpen, DoorStairwell, HeartPulse, Toilet, UsersRound, type LucideIcon } from "lucide-react";
 import { useState } from "react";
 
 import type { SafetyKind, SafetySpot } from "@/lib/building-safety";
@@ -11,6 +11,7 @@ const ICONS: Record<SafetyKind, LucideIcon> = {
   aed: HeartPulse,
   stairs: DoorStairwell,
   elevator: ArrowUpDown,
+  restroom: Toilet,
   chair: Accessibility,
   assembly: UsersRound,
 };
@@ -21,6 +22,7 @@ const TILES: Record<SafetyKind, string> = {
   aed: "bg-danger text-danger-foreground",
   stairs: "bg-default text-default-foreground",
   elevator: "bg-default text-default-foreground",
+  restroom: "bg-default text-default-foreground",
   chair: "bg-default text-default-foreground",
   assembly: "bg-success-soft text-success-soft-foreground",
 };

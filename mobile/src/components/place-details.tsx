@@ -13,6 +13,7 @@ import { CATEGORY_SYMBOLS, categoryLabel } from '@/lib/categories';
 import { focusPlace } from '@/lib/focus';
 import { openWeb, sharePlace } from '@/lib/links';
 import { rememberPlace } from '@/lib/recent-places';
+import { roomSpot } from '@/lib/building-safety';
 import { EXAMPLE_ROOM, MAX_ROOM_INPUT, floorForRoom, floorLabel, roomInBuilding } from '@/lib/search';
 import { useSocial } from '@/lib/social';
 import { planTrip } from '@/lib/trip';
@@ -36,6 +37,7 @@ export function PlaceDetails({ place, room, onDone }: { place: Place; room?: str
   const [roomError, setRoomError] = useState<string | null>(null);
   const typedRoom = askRoom ? roomInBuilding(roomText, place) : undefined;
   const typedFloor = typedRoom ? floorLabel(floorForRoom(typedRoom)) : undefined;
+  const typedLandmark = roomSpot(place.id, typedRoom)?.landmark;
 
   function startDirections() {
     if (askRoom && roomText.trim() && !typedRoom) {
@@ -94,7 +96,7 @@ export function PlaceDetails({ place, room, onDone }: { place: Place; room?: str
             <Description>
               {typedRoom
                 ? typedFloor
-                  ? `Room ${typedRoom} is on the ${typedFloor.toLowerCase()}.`
+                  ? `Room ${typedRoom} is on the ${typedFloor.toLowerCase()}${typedLandmark ? `, ${typedLandmark}` : ''}.`
                   : `Room ${typedRoom} in ${place.name}.`
                 : 'Optional. Leave it empty to go to the building.'}
             </Description>

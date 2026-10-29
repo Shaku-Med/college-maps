@@ -12,6 +12,11 @@ export type IndoorBuilding = {
   elevators: (Point & { name?: string; floors: number[] })[];
   aeds: (Point & { floor: number })[];
   evacuationChairs: (Point & { floor: number })[];
+  /** Where each room is, from a 3D model of the building lined up with its plans. */
+  rooms: (Point & { name: string; floor: number })[];
+  restrooms: (Point & { floors: number[] })[];
+  /** Who made the room layout, to credit them. */
+  roomCredit?: string;
 };
 
 /** Exits, stairs, and the other safety points of each building, read off its evacuation maps by `npm run campus:indoor`. */

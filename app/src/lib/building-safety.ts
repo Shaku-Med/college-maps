@@ -4,7 +4,7 @@ import { INDOOR } from "@/data/indoor";
 import { metersFromBuilding } from "@/lib/buildings";
 import { distanceMeters } from "@/lib/geo";
 
-export type SafetyKind = "exit" | "aed" | "stairs" | "elevator" | "chair" | "assembly";
+export type SafetyKind = "exit" | "aed" | "stairs" | "elevator" | "restroom" | "chair" | "assembly";
 
 export type SafetySpot = {
   id: string;
@@ -17,7 +17,7 @@ export type SafetySpot = {
 };
 
 // The order a chip lists what is at a spot in, so an exit or an AED is the one icon shown when zoomed out.
-const ORDER: SafetyKind[] = ["exit", "aed", "stairs", "elevator", "chair", "assembly"];
+const ORDER: SafetyKind[] = ["exit", "aed", "stairs", "elevator", "restroom", "chair", "assembly"];
 // An exit this close to the building's own pin is the door the pin already marks, so it becomes a badge on that pin.
 const PIN_EXIT_METERS = 10;
 // The elevator, AED, and evacuation chair join the stairs beside them instead of crowding the map with chips.
@@ -51,6 +51,34 @@ export function safetyBuildings(goingTo: string | undefined, here: string | null
 type Group = { members: Coordinate[]; kinds: Set<SafetyKind>; label: string; notes: string[] };
 
 const floorNote = (thing: string, floor: number) => `${thing} on floor ${floor}`;
+const floorsNote = (floors: number[]) => (floors.length === 1 ? `floor ${floors[0]}` : `floors ${floors.join(" and ")}`);
+
+/** A room in its building, with the stairs it is by as a phrase like "near Stair A", since the stairs are signed on every floor. */
+export type RoomSpot = { name: string; floor: number; coordinate: Coordinate; landmark?: string };
+
+// A stair this close counts as being right by the room; two stairs this close to the same distance put the room between them.
+const NEAR_STAIR_METERS = 15;
+const BETWEEN_STAIRS_SHARE = 1.25;
+
+/** Where a room is in its building and the stairs it is by, or null when the building has no room layout yet. */
+export function roomSpot(buildingId: string | undefined, room: string | undefined): RoomSpot | null {
+  if (!room || !hasSafety(buildingId)) return null;
+  const building = INDOOR[buildingId];
+  const found = building.rooms.find((r) => r.name === room.toUpperCase());
+  if (!found) return null;
+  const coordinate = { latitude: found.latitude, longitude: found.longitude };
+  const [first, second] = building.stairs
+    .map((stair) => ({ name: `Stair ${stair.name}`, away: distanceMeters(stair, coordinate) }))
+    .sort((a, b) => a.away - b.away);
+  const landmark = !first
+    ? undefined
+    : first.away <= NEAR_STAIR_METERS
+      ? `near ${first.name}`
+      : second && second.away <= first.away * BETWEEN_STAIRS_SHARE
+        ? `between ${[first.name, second.name].sort().join(" and ")}`
+        : `closest to ${first.name}`;
+  return { name: found.name, floor: found.floor, coordinate, landmark };
+}
 
 /** A building's safety points as chips, and whether its own pin is also an exit; null when it has no evacuation map yet. */
 export function safetyFor(buildingId: string, pin: Coordinate): { spots: SafetySpot[]; exitAtPin: boolean } | null {
@@ -88,6 +116,9 @@ export function safetyFor(buildingId: string, pin: Coordinate): { spots: SafetyS
   for (const elevator of building.elevators) join(elevator, "elevator", elevator.name ? `${elevator.name} elevator` : "elevator", "Elevator");
   for (const aed of building.aeds) join(aed, "aed", floorNote("AED", aed.floor), "AED");
   for (const chair of building.evacuationChairs) join(chair, "chair", floorNote("evacuation chair", chair.floor), "Evacuation chair");
+  for (const restroom of building.restrooms) {
+    join(restroom, "restroom", `restrooms on ${floorsNote(restroom.floors)}`, "Restrooms");
+  }
   if (building.assembly) {
     groups.push({ members: [building.assembly], kinds: new Set(["assembly"]), label: "Assembly area", notes: ["Assembly area outside"] });
   }
