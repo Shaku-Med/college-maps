@@ -80,7 +80,6 @@
 /* The phone app's launch overlay: hold 140, the pin rises 280 and is set down over 220, then the map opens from its tip. */
 .launch-splash {
   --launch-soft: cubic-bezier(0.455, 0.03, 0.515, 0.955);
-  --launch-out: cubic-bezier(0.215, 0.61, 0.355, 1);
   --launch-in: cubic-bezier(0.55, 0.085, 0.68, 0.53);
   --launch-open: cubic-bezier(0.65, 0, 0.35, 1);
   /* 933 of 1024 down the 96px pin is its tip, 39.5px below the middle of the screen. */
@@ -118,23 +117,8 @@ html[data-launched] .launch-splash {
   transform-origin: 50% 91.11%;
 }
 
-.launch-ripple {
-  position: absolute;
-  left: 16px;
-  top: 77.5px;
-  width: 64px;
-  height: 20px;
-  border: 2px solid var(--brand-foreground);
-  border-radius: 20px;
-  opacity: 0;
-}
-
 .launch-splash[data-leaving] .launch-pin {
   animation: launch-lift 500ms 140ms;
-}
-
-.launch-splash[data-leaving] .launch-ripple {
-  animation: launch-ripple 600ms var(--launch-out) 640ms forwards;
 }
 
 .launch-splash[data-leaving] .launch-grow {
@@ -146,7 +130,7 @@ html[data-launched] .launch-splash {
     animation: launch-exit 260ms var(--launch-soft) forwards;
   }
 
-  .launch-splash[data-leaving] :is(.launch-pin, .launch-ripple, .launch-grow) {
+  .launch-splash[data-leaving] :is(.launch-pin, .launch-grow) {
     animation: none;
   }
 }
@@ -163,17 +147,6 @@ html[data-launched] .launch-splash {
   }
   100% {
     transform: none;
-  }
-}
-
-@keyframes launch-ripple {
-  from {
-    opacity: 0.5;
-    transform: scale(0.4);
-  }
-  to {
-    opacity: 0;
-    transform: scale(1.6);
   }
 }
 

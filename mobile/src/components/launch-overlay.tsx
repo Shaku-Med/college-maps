@@ -22,7 +22,7 @@ const SPLASH_IMAGE_WIDTH = 96;
 // The icon's pin as splash-icon.png draws it: scaled 2.9 times in a 1024 square, roads cut through.
 const PIN = 'M256 70 C 188 70 134 124 134 192 C 134 268 220 334 251 357 C 254 359.3 258 359.3 261 357 C 292 334 378 268 378 192 C 378 124 324 70 256 70 Z';
 const PIN_PLACEMENT = 'translate(512 512) scale(2.9) translate(-256 -214)';
-// Where the pin's tip sits, as a share of the image: it lands there, the ring starts there, and the map opens from there.
+// Where the pin's tip sits, as a share of the image: it lands there and the map opens from there.
 const TIP = 933 / 1024;
 
 const HOLD_MS = 140;
@@ -30,7 +30,6 @@ const LIFT_MS = 280;
 const DROP_MS = 220;
 const LANDED_MS = HOLD_MS + LIFT_MS + DROP_MS;
 const LIFT = -10;
-const RIPPLE_MS = 600;
 const PIN_OUT_MS = 220;
 const REVEAL_MS = 560;
 const DONE_MS = LANDED_MS + REVEAL_MS + 40;
@@ -72,7 +71,6 @@ export function LaunchOverlay() {
   const [done, setDone] = useState(false);
 
   const lift = useSharedValue(0);
-  const ripple = useSharedValue(0);
   const pinOut = useSharedValue(0);
   const hole = useSharedValue(0);
   const fade = useSharedValue(0);
@@ -95,12 +93,11 @@ export function LaunchOverlay() {
       HOLD_MS,
       withSequence(withTiming(LIFT, { duration: LIFT_MS, easing: out }), withTiming(0, { duration: DROP_MS, easing: into })),
     );
-    ripple.value = withDelay(LANDED_MS, withTiming(1, { duration: RIPPLE_MS, easing: out }));
     pinOut.value = withDelay(LANDED_MS, withTiming(1, { duration: PIN_OUT_MS, easing: into }));
     hole.value = withDelay(LANDED_MS, withTiming(1, { duration: REVEAL_MS, easing: reveal }));
     const timer = setTimeout(() => setDone(true), DONE_MS);
     return () => clearTimeout(timer);
-  }, [splashHidden, reduceMotion, lift, ripple, pinOut, hole, fade]);
+  }, [splashHidden, reduceMotion, lift, pinOut, hole, fade]);
 
   const overlayStyle = useAnimatedStyle(() => ({ opacity: 1 - fade.value }));
   // Solid until the opening starts, so the hand off from the system splash is exact.
@@ -109,10 +106,6 @@ export function LaunchOverlay() {
   const pinStyle = useAnimatedStyle(() => ({
     opacity: 1 - pinOut.value,
     transform: [{ translateY: lift.value }, { scale: 1 + pinOut.value * 0.08 }],
-  }));
-  const rippleStyle = useAnimatedStyle(() => ({
-    opacity: ripple.value === 0 ? 0 : 0.5 * (1 - ripple.value),
-    transform: [{ scale: 0.4 + ripple.value * 1.2 }],
   }));
 
   if (done) return null;
@@ -125,7 +118,6 @@ export function LaunchOverlay() {
       </Svg>
       <Animated.View style={[StyleSheet.absoluteFill, styles.backdrop, backdropStyle]} />
       <View style={styles.stage}>
-        <Animated.View style={[styles.ripple, rippleStyle]} />
         <Animated.View style={[styles.pin, pinStyle]}>
           <Pin />
         </Animated.View>
@@ -134,23 +126,10 @@ export function LaunchOverlay() {
   );
 }
 
-const RIPPLE_WIDTH = 64;
-const RIPPLE_HEIGHT = 20;
-
 const styles = StyleSheet.create({
   overlay: { alignItems: 'center', justifyContent: 'center', zIndex: 1000 },
   backdrop: { backgroundColor: SPLASH_BACKGROUND },
   stage: { width: SPLASH_IMAGE_WIDTH, height: SPLASH_IMAGE_WIDTH },
   // Scaling from the tip keeps the pin planted where it landed.
   pin: { transformOrigin: ['50%', `${TIP * 100}%`, 0] },
-  ripple: {
-    position: 'absolute',
-    left: (SPLASH_IMAGE_WIDTH - RIPPLE_WIDTH) / 2,
-    top: SPLASH_IMAGE_WIDTH * TIP - RIPPLE_HEIGHT / 2,
-    width: RIPPLE_WIDTH,
-    height: RIPPLE_HEIGHT,
-    borderRadius: RIPPLE_HEIGHT,
-    borderWidth: 2,
-    borderColor: '#FFFFFF',
-  },
 });

@@ -36,7 +36,6 @@ export function LaunchSplash({ ready }: { ready?: boolean }) {
   return (
     <div className="launch-splash" data-leaving={waits && (ready || timedOut) ? "" : undefined} onAnimationEnd={finish} aria-hidden>
       <div className="launch-stage">
-        <div className="launch-ripple" />
         <div className="launch-grow">
           <svg className="launch-pin" width="96" height="96" viewBox="0 0 1024 1024">
             <defs>
