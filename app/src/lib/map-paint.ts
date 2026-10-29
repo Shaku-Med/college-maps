@@ -52,10 +52,15 @@ export const BUILDING_ZOOM = 16.6;
 
 /** Light from one side for the 3D buildings, so walls and roofs shade differently and look solid. */
 export function buildingLight(dark: boolean) {
-  return { anchor: "viewport" as const, position: [1.4, 210, 40] as [number, number, number], intensity: dark ? 0.55 : 0.4 };
+  // On the dark ground the light comes in lower and from the viewer's side, so the walls facing you catch it instead of going black.
+  const position: [number, number, number] = dark ? [1.4, 195, 68] : [1.4, 210, 40];
+  return { anchor: "viewport" as const, position, intensity: 0.4 };
 }
 
-/** The 3D buildings' color: a step lighter than the ground in the dark theme and a step deeper in the light one, so roofs show. */
-export function buildingColor(dark: boolean, { surface, edge, muted }: { surface: string; edge: string; muted: string }) {
-  return dark ? edge : mixColor(surface, muted, 0.25);
+// Walls darken toward the ground in the light theme for depth; on the dark ground that turns them black, so it stays off there.
+export const buildingWallShade = (dark: boolean) => !dark;
+
+/** The 3D buildings' color: a step deeper than the light ground, or a cool slate tinted with the accent above the dark one. */
+export function buildingColor(dark: boolean, { surface, edge, muted, accent }: { surface: string; edge: string; muted: string; accent: string }) {
+  return dark ? mixColor(mixColor(edge, muted, 0.35), accent, 0.12) : mixColor(surface, muted, 0.25);
 }

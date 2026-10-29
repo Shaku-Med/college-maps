@@ -54,6 +54,26 @@ export function metersFromBuilding(position: Coordinate, placeId: string): numbe
   return inside ? 0 : nearest;
 }
 
+/** Whether walking straight from a to b would go through the building's walls. */
+export function crossesBuilding(placeId: string, a: Coordinate, b: Coordinate): boolean {
+  const ring = ringFor(placeId);
+  if (!ring) return false;
+  const metersPerLng = 111_320 * Math.cos((a.latitude * Math.PI) / 180);
+  const xy = (p: Coordinate) => [(p.longitude - a.longitude) * metersPerLng, (p.latitude - a.latitude) * 110_540];
+  const [bx, by] = xy(b);
+  const points = ring.map(xy);
+  for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
+    const [cx, cy] = points[j];
+    const [dx, dy] = points[i];
+    const denom = bx * (dy - cy) - by * (dx - cx);
+    if (denom === 0) continue;
+    const t = (cx * (dy - cy) - cy * (dx - cx)) / denom;
+    const u = (cx * by - cy * bx) / denom;
+    if (t > 0 && t < 1 && u >= 0 && u <= 1) return true;
+  }
+  return false;
+}
+
 /** The building a route is headed for when its destination is that building's own pin, or null. */
 export function buildingAt(point: Coordinate): string | null {
   for (const id of Object.keys(BUILDING_OUTLINES.outlines)) {

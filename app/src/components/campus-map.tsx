@@ -35,7 +35,7 @@ import { cn } from "@/lib/cn";
 import { withAlpha } from "@/lib/color-alpha";
 import { resolveCssColor } from "@/lib/css-color";
 import { distanceMeters, interpolate } from "@/lib/geo";
-import { BUILDING_PITCH, BUILDING_ZOOM, amenityLayers, buildingColor, buildingLight, heatColors } from "@/lib/map-paint";
+import { BUILDING_PITCH, BUILDING_ZOOM, amenityLayers, buildingColor, buildingLight, buildingWallShade, heatColors } from "@/lib/map-paint";
 import { zoomBand } from "@/lib/place-marker";
 
 const STYLE_LIGHT = CAMPUS.map.styles.light;
@@ -416,9 +416,10 @@ function applyBuildingView(map: MapLibreMap, on: boolean, camera: "ease" | "keep
             surface: resolveCssColor("--default", "#ebebec"),
             edge: resolveCssColor("--border", "#3f3f46"),
             muted: resolveCssColor("--muted", "#71717a"),
+            accent: resolveCssColor("--accent", "#3b82f6"),
           }),
           "fill-extrusion-opacity": 1,
-          "fill-extrusion-vertical-gradient": true,
+          "fill-extrusion-vertical-gradient": buildingWallShade(dark),
           "fill-extrusion-height": ["interpolate", ["linear"], ["zoom"], 14, 0, 15.6, height],
           "fill-extrusion-base": ["to-number", ["get", "render_min_height"]],
         },

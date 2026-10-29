@@ -1,4 +1,9 @@
-import type { ExpressionSpecification, FilterSpecification, SymbolLayerSpecification } from '@maplibre/maplibre-gl-style-spec';
+import type {
+  ExpressionSpecification,
+  FillExtrusionLayerSpecification,
+  FilterSpecification,
+  SymbolLayerSpecification,
+} from '@maplibre/maplibre-gl-style-spec';
 import type * as GeoJSON from 'geojson';
 import {
   Camera,
@@ -58,7 +63,15 @@ import { watchSteps } from '@/lib/steps';
 import { roomSpot, safetyBuildingHere, safetyBuildings, safetyFor, type SafetySpot } from '@/lib/building-safety';
 import { buildingPolygon } from '@/lib/buildings';
 import { withAlpha } from '@/lib/color-alpha';
-import { BUILDING_PITCH, BUILDING_ZOOM, amenityLayers, buildingColor, buildingLight, heatColors } from '@/lib/map-paint';
+import {
+  BUILDING_PITCH,
+  BUILDING_ZOOM,
+  amenityLayers,
+  buildingColor,
+  buildingLight,
+  buildingWallShade,
+  heatColors,
+} from '@/lib/map-paint';
 import { zoomBand, type ZoomBand } from '@/lib/place-marker';
 import { canSwitchTravel } from '@/lib/travel-switch';
 import { TRAVEL_SWITCH_LINES } from '@/lib/voice-lines';
@@ -87,9 +100,6 @@ const { center, zoom, bounds, styles } = CAMPUS.map;
 const CAMPUS_CENTER: [number, number] = [center.longitude, center.latitude];
 const MAX_BOUNDS: [number, number, number, number] = [bounds.west - 0.3, bounds.south - 0.3, bounds.east + 0.3, bounds.north + 0.3];
 const PLACE_ZOOM = 17;
-// The web app's building view: the same tilt, colours, and heights.
-// The first label layer in each OpenFreeMap style, so buildings rise under the street and place names.
-const FIRST_LABEL = { light: 'waterway_line_label', dark: 'water_name' } as const;
 // MapLibre keeps the last padding it was given, so every camera move says its own.
 const NO_PADDING = { top: 0, bottom: 0, left: 0, right: 0 };
 // Facing-up: ignore tiny wobble, and never cut a camera ease short with another.
@@ -108,6 +118,8 @@ const RATING_DELAY_MS = 2_000;
 const toLngLat = ({ latitude, longitude }: Coordinate): [number, number] => [longitude, latitude];
 // Map sizes that grow from the campus overview to close up, the same steps as the web map.
 const zoomed = (low: number, high: number) => ['interpolate', ['linear'], ['zoom'], 14, low, 18, high] as ExpressionSpecification;
+// Made once, since a new light on every render makes the map apply it again each time.
+const BUILDING_LIGHTS = { light: buildingLight(false), dark: buildingLight(true) };
 // Drawn by app/scripts/build-route-chevron.mjs and build-map-icons.mjs, tinted with the theme on the map.
 const MAP_ICONS = {
   'route-chevron': { source: require('@/assets/images/route-chevron.png'), sdf: true },
@@ -182,6 +194,34 @@ export default function MapScreen() {
     'border',
   ]);
   const amenities = useMemo(() => amenityLayers(0.5, { sos: danger, other: muted, halo: overlay }), [danger, muted, overlay]);
+  // Kept between renders, so the map is not handed the 3D paint again on every location fix.
+  const buildingsPaint = useMemo(
+    () =>
+      ({
+        'fill-extrusion-color': buildingColor(scheme === 'dark', { surface, edge, muted, accent }),
+        'fill-extrusion-opacity': 1,
+        'fill-extrusion-vertical-gradient': buildingWallShade(scheme === 'dark'),
+        // Rises from flat as the map zooms in, to the building's mapped height, or 14 m when unknown.
+        'fill-extrusion-height': [
+          'interpolate',
+          ['linear'],
+          ['zoom'],
+          14,
+          0,
+          15.6,
+          [
+            'case',
+            ['>', ['to-number', ['get', 'render_height']], 0],
+            ['to-number', ['get', 'render_height']],
+            ['>', ['to-number', ['get', 'height']], 0],
+            ['to-number', ['get', 'height']],
+            14,
+          ],
+        ],
+        'fill-extrusion-base': ['to-number', ['get', 'render_min_height']],
+      }) as FillExtrusionLayerSpecification['paint'],
+    [scheme, surface, edge, muted, accent],
+  );
 
   const meetup =
     social.meetups.find((m) => m.id === shownMeetupId && m.active && m.yourStatus === 'joined') ?? null;
@@ -258,7 +298,7 @@ export default function MapScreen() {
   const nextTarget = navigating ? getPlace(trip.legs[trip.leg + 1]) : undefined;
   const arrivalNote =
     trip.room && target?.id === trip.destination?.id ? roomDirections(trip.room, trip.avoidStairs, trip.destination?.id) : undefined;
-  const room = roomSpot(trip.destination?.id, trip.room);
+  const room = useMemo(() => roomSpot(trip.destination?.id, trip.room), [trip.destination?.id, trip.room]);
 
   const navigation = useNavigation({
     destination: target,
@@ -834,7 +874,7 @@ export default function MapScreen() {
         attribution={false}
         compass={false}
         touchPitch={navigating || buildingView}
-        light={buildingLight(scheme === 'dark')}
+        light={BUILDING_LIGHTS[scheme === 'dark' ? 'dark' : 'light']}
         onDidFinishLoadingMap={() => markReady('map')}
         onRegionWillChange={(event) => {
           // Our own follow/heading easeTo is often flagged as a finger pan on iOS; that was freezing the trip.
@@ -860,30 +900,9 @@ export default function MapScreen() {
             source="openmaptiles"
             source-layer="building"
             minzoom={14}
-            beforeId={scheme === 'dark' ? FIRST_LABEL.dark : FIRST_LABEL.light}
-            paint={{
-              'fill-extrusion-color': buildingColor(scheme === 'dark', { surface, edge, muted }),
-              'fill-extrusion-opacity': 1,
-              'fill-extrusion-vertical-gradient': true,
-              // Rises from flat as the map zooms in, to the building's mapped height, or 14 m when unknown.
-              'fill-extrusion-height': [
-                'interpolate',
-                ['linear'],
-                ['zoom'],
-                14,
-                0,
-                15.6,
-                [
-                  'case',
-                  ['>', ['to-number', ['get', 'render_height']], 0],
-                  ['to-number', ['get', 'render_height']],
-                  ['>', ['to-number', ['get', 'height']], 0],
-                  ['to-number', ['get', 'height']],
-                  14,
-                ],
-              ],
-              'fill-extrusion-base': ['to-number', ['get', 'render_min_height']],
-            }}
+            // Over the roads and the flat buildings: the light style draws buildings under its labels, the dark one over its first.
+            {...(scheme === 'dark' ? { afterId: 'building' } : { beforeId: 'waterway_line_label' })}
+            paint={buildingsPaint}
           />
         ) : null}
 

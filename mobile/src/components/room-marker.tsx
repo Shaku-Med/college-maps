@@ -1,5 +1,6 @@
 import { Marker } from '@maplibre/maplibre-react-native';
 import { useThemeColor } from 'heroui-native';
+import { memo } from 'react';
 import { Text, View } from 'react-native';
 
 import { Icon } from '@/components/icon';
@@ -8,7 +9,7 @@ import type { ZoomBand } from '@/lib/place-marker';
 import { floorLabel } from '@/lib/search';
 
 /** The web map's room chip: the room being looked for, inside its building, with its floor. */
-export function RoomMarker({ spot, band }: { spot: RoomSpot; band: ZoomBand }) {
+export const RoomMarker = memo(function RoomMarker({ spot, band }: { spot: RoomSpot; band: ZoomBand }) {
   const ink = useThemeColor('accent-foreground');
   if (band === 'far') return null;
   const floor = floorLabel(spot.floor);
@@ -30,4 +31,4 @@ export function RoomMarker({ spot, band }: { spot: RoomSpot; band: ZoomBand }) {
       </View>
     </Marker>
   );
-}
+});
