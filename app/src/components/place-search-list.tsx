@@ -5,10 +5,13 @@ import { DoorOpen } from "lucide-react";
 import { useMemo } from "react";
 
 import { PlaceItem } from "@/components/place-row";
-import { CAMPUS, CATEGORY_LABELS, PLACES, getPlace, type Place } from "@/data/campus";
+import { CAMPUS, CATEGORY_LABELS, PLACES, getPlace, type Coordinate, type Place } from "@/data/campus";
+import { searchAmenities } from "@/lib/amenity-search";
+import { formatDistance } from "@/lib/geo";
 import { PLACE_SECTIONS, floorLabel, parseRoomCode, searchPlaces } from "@/lib/search";
 
 const SAMPLE_BUILDING = PLACES.find((place) => place.isBuilding)?.id;
+const SECTION_HEADER = "px-2.5 pb-1 pt-3 text-[11px] font-semibold uppercase tracking-wider text-muted";
 
 type PlaceSearchListProps = {
   query: string;
@@ -16,18 +19,29 @@ type PlaceSearchListProps = {
   /** With nothing typed, list every place by kind. Off in forms, where that list would bury the rest. */
   browse?: boolean;
   limit?: number;
+  /** Also finds the SOS phones, benches, and the like closest to here or to the place open; the main search only. */
+  nearby?: Nearby;
 };
 
-/** What a query finds: a room code wins outright; otherwise the places that match. */
-export function useCampusSearch(query: string, limit?: number) {
+export type Nearby = { here?: Coordinate; around?: Place };
+
+/** What a query finds: a room code wins outright; otherwise the places that match, and nearby outdoor things when asked. */
+export function useCampusSearch(query: string, limit?: number, nearby?: Nearby) {
   const room = useMemo(() => parseRoomCode(query), [query]);
   const results = useMemo(() => (room ? [] : searchPlaces(query, limit)), [query, room, limit]);
-  return { room, results };
+  const wantsNearby = nearby !== undefined;
+  const here = nearby?.here;
+  const around = nearby?.around;
+  const amenities = useMemo(
+    () => (wantsNearby && !room ? searchAmenities(query, { here, around }) : null),
+    [query, room, wantsNearby, here, around],
+  );
+  return { room, results, amenities: amenities?.matches.length ? amenities : null };
 }
 
 /** The campus search results used everywhere a place is picked: a room code first, then matching places. */
-export function PlaceSearchList({ query, onSelect, browse = true, limit }: PlaceSearchListProps) {
-  const { room, results } = useCampusSearch(query, limit);
+export function PlaceSearchList({ query, onSelect, browse = true, limit, nearby }: PlaceSearchListProps) {
+  const { room, results, amenities } = useCampusSearch(query, limit, nearby);
   const hasQuery = query.trim().length > 0;
 
   function handleAction(key: string | number) {
@@ -57,15 +71,35 @@ export function PlaceSearchList({ query, onSelect, browse = true, limit }: Place
         </Button>
       ) : null}
 
-      {hasQuery && results.length > 0 ? (
-        <ListBox aria-label="Search results" selectionMode="none" onAction={handleAction}>
-          {results.map((place) => (
-            <PlaceItem key={place.id} place={place} />
-          ))}
+      {amenities ? (
+        <ListBox aria-label={amenities.title} selectionMode="none" onAction={handleAction}>
+          <ListBox.Section>
+            <Header className={SECTION_HEADER}>{amenities.title}</Header>
+            {amenities.matches.map(({ place, meters, by }) => (
+              <PlaceItem
+                key={place.id}
+                place={place}
+                note={[by ? `Outside ${by.label ?? by.id}` : "Outdoors", amenities.measured && formatDistance(meters)]
+                  .filter(Boolean)
+                  .join(" · ")}
+              />
+            ))}
+          </ListBox.Section>
         </ListBox>
       ) : null}
 
-      {hasQuery && !room && results.length === 0 ? (
+      {hasQuery && results.length > 0 ? (
+        <ListBox aria-label="Search results" selectionMode="none" onAction={handleAction}>
+          <ListBox.Section>
+            {amenities ? <Header className={SECTION_HEADER}>Places</Header> : null}
+            {results.map((place) => (
+              <PlaceItem key={place.id} place={place} />
+            ))}
+          </ListBox.Section>
+        </ListBox>
+      ) : null}
+
+      {hasQuery && !room && !amenities && results.length === 0 ? (
         <div className="px-4 py-10 text-center">
           <p className="text-sm font-medium">No matches</p>
           <p className="mt-1 text-xs text-muted">
@@ -79,7 +113,7 @@ export function PlaceSearchList({ query, onSelect, browse = true, limit }: Place
         <ListBox aria-label="All campus places" selectionMode="none" onAction={handleAction}>
           {PLACE_SECTIONS.map(({ category, places }) => (
             <ListBox.Section key={category}>
-              <Header className="px-2.5 pb-1 pt-3 text-[11px] font-semibold uppercase tracking-wider text-muted">
+              <Header className={SECTION_HEADER}>
                 {CATEGORY_LABELS[category]}
               </Header>
               {places.map((place) => (

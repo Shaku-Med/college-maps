@@ -1,6 +1,6 @@
 import * as Haptics from 'expo-haptics';
 import { Stack } from 'expo-router';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { ScrollView } from 'react-native';
 
 import { PlaceResults } from '@/components/place-results';
@@ -8,6 +8,7 @@ import { CAMPUS, getPlace, type Place } from '@/data/campus';
 import { useLinkedParam } from '@/hooks/use-linked-row-opacity';
 import { useReadableStyle } from '@/hooks/use-layout';
 import { showPlace } from '@/lib/links';
+import { useLocation } from '@/lib/location';
 import { MAX_QUERY_LENGTH } from '@/lib/search';
 import { useRecentPlaces } from '@/lib/recent-places';
 import { HEADER_ICONS } from '@/lib/header-icons';
@@ -23,6 +24,9 @@ export default function SearchScreen() {
   const activePlaceId = useLinkedParam(/\/place\/([^/?]+)/);
   const recentIds = useRecentPlaces();
   const recent = recentIds.map((id) => getPlace(id)).filter((place): place is Place => place !== undefined);
+  const here = useLocation().fix?.position;
+  const openPlace = activePlaceId ? getPlace(activePlaceId) : undefined;
+  const nearby = useMemo(() => ({ here, around: openPlace?.isBuilding ? openPlace : undefined }), [here, openPlace]);
 
   return (
     <>
@@ -49,7 +53,7 @@ export default function SearchScreen() {
         keyboardDismissMode="on-drag"
         contentContainerClassName="gap-6 px-4 pb-12 pt-2"
         contentContainerStyle={readable}>
-        <PlaceResults query={query} onPick={open} linkedId={activePlaceId} />
+        <PlaceResults query={query} onPick={open} linkedId={activePlaceId} nearby={nearby} />
       </ScrollView>
     </>
   );

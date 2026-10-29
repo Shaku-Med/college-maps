@@ -5,10 +5,12 @@ import { CalendarClock, MessageSquareWarning, Navigation, Share2 } from "lucide-
 import Link from "next/link";
 import { useState, type FormEvent } from "react";
 
+import { PlaceIcon } from "@/components/place-icon";
 import { CollapseButton, SheetGrabber } from "@/components/sheet-chrome";
+import { isAmenity } from "@/data/amenities";
 import { CATEGORY_LABELS, type Place } from "@/data/campus";
+import { amenityWhere, reportPlaceId } from "@/lib/amenity-search";
 import { roomSpot } from "@/lib/building-safety";
-import { CATEGORY_ICONS } from "@/lib/categories";
 import type { Meetup } from "@/lib/social-api";
 import { placeUrl } from "@/lib/share-url";
 import { EXAMPLE_ROOM, MAX_ROOM_INPUT, floorForRoom, floorLabel, roomInBuilding } from "@/lib/search";
@@ -40,10 +42,10 @@ export function PlaceSheet({
   onCollapse,
   onClose,
 }: PlaceSheetProps) {
-  const Icon = CATEGORY_ICONS[place.category];
   const floor = room ? floorLabel(floorForRoom(room)) : undefined;
   const landmark = roomSpot(place.id, room)?.landmark;
   const askRoom = place.isBuilding && !room;
+  const reportAbout = reportPlaceId(place);
   const [roomText, setRoomText] = useState("");
   const [roomError, setRoomError] = useState<string | null>(null);
   const typedRoom = askRoom ? roomInBuilding(roomText, place) : undefined;
@@ -83,13 +85,14 @@ export function PlaceSheet({
 
       <div className="flex items-start gap-3 pt-3 md:pt-0">
         <span className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-accent-soft text-accent-soft-foreground">
-          <Icon className="size-5" aria-hidden />
+          <PlaceIcon place={place} className="size-5" />
         </span>
         <div className="min-w-0 flex-1 pt-0.5">
           <h2 className="text-lg font-semibold leading-snug tracking-tight">{place.name}</h2>
           <p className="text-sm text-muted">
-            {place.isBuilding ? `Building ${place.id} · ` : ""}
-            {CATEGORY_LABELS[place.category]}
+            {isAmenity(place)
+              ? amenityWhere(place)
+              : `${place.isBuilding ? `Building ${place.id} · ` : ""}${CATEGORY_LABELS[place.category]}`}
           </p>
         </div>
         <CollapseButton onCollapse={onCollapse} />
@@ -180,7 +183,7 @@ export function PlaceSheet({
       </form>
 
       <Link
-        href={`/report-problem?place=${encodeURIComponent(place.id)}&kind=map`}
+        href={`/report-problem?${reportAbout ? `place=${encodeURIComponent(reportAbout)}&` : ""}kind=map`}
         className="mx-auto mt-3 flex w-fit items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium text-muted outline-none transition-colors hover:bg-surface-secondary focus-visible:ring-2 focus-visible:ring-accent">
         <MessageSquareWarning className="size-3.5" aria-hidden />
         Report a problem with this place

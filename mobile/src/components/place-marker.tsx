@@ -4,8 +4,10 @@ import { memo } from 'react';
 import { Text, View } from 'react-native';
 
 import { Icon } from '@/components/icon';
+import { isAmenity } from '@/data/amenities';
 import type { Place } from '@/data/campus';
-import { CATEGORY_SYMBOLS } from '@/lib/categories';
+import { amenityWhere } from '@/lib/amenity-search';
+import { placeSymbol } from '@/lib/categories';
 import { lotNumber, markerKind, markerLabel, type ZoomBand } from '@/lib/place-marker';
 
 type PlaceMarkerProps = {
@@ -66,6 +68,8 @@ export const PlaceMarker = memo(function PlaceMarker({
     'success-foreground',
   ]);
   const kind = markerKind(place);
+  // An SOS phone or bench says what it is with its icon at any zoom, and opens to where it is rather than its name again.
+  const amenity = isAmenity(place);
   const state: State = selected ? 'selected' : stop !== undefined ? 'stop' : origin ? 'origin' : 'idle';
   const ink = { idle: overlayInk, selected: accentInk, origin: background, stop: softInk }[state];
   const far = band === 'far';
@@ -101,9 +105,9 @@ export const PlaceMarker = memo(function PlaceMarker({
             <View className={cn('size-5 items-center justify-center rounded-full', TILE[state])}>
               <Icon name="bus.fill" size={11} tintColor={ink} />
             </View>
-          ) : band === 'near' ? (
+          ) : band === 'near' || amenity ? (
             <View className="mr-1">
-              <Icon name={CATEGORY_SYMBOLS[place.category]} size={13} tintColor={state === 'idle' ? muted : ink} />
+              <Icon name={placeSymbol(place)} size={13} tintColor={state === 'idle' ? muted : ink} />
             </View>
           ) : null}
           {kind === 'building' || !far ? (
@@ -114,7 +118,7 @@ export const PlaceMarker = memo(function PlaceMarker({
           {selected ? (
             <View className="ml-1.5 border-l border-accent-foreground/30 pl-1.5">
               <Text numberOfLines={1} className={cn(textSize, 'max-w-[170px] font-medium', TEXT[state])}>
-                {place.name}
+                {amenity ? amenityWhere(place) : place.name}
               </Text>
             </View>
           ) : null}

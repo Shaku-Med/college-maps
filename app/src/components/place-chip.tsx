@@ -3,8 +3,10 @@
 import { Bus, DoorOpen } from "lucide-react";
 import type { PointerEvent } from "react";
 
+import { PlaceIcon } from "@/components/place-icon";
+import { isAmenity } from "@/data/amenities";
 import type { Place } from "@/data/campus";
-import { CATEGORY_ICONS } from "@/lib/categories";
+import { amenityWhere } from "@/lib/amenity-search";
 import { cn } from "@/lib/cn";
 import { lotNumber, markerKind, markerLabel } from "@/lib/place-marker";
 
@@ -52,7 +54,8 @@ const TILE: Record<ChipState, string> = {
 export function PlaceChip({ place, state, stop, activity, exit = false, onPress, onHover }: PlaceChipProps) {
   const kind = markerKind(place);
   const picked = state === "selected";
-  const Glyph = CATEGORY_ICONS[place.category];
+  // An SOS phone or bench says what it is with its icon at any zoom, and opens to where it is rather than its name again.
+  const amenity = isAmenity(place);
   // Campus events here: the heat on the map shows where, the badge says how many.
   const busy = activity > 0 && state === "idle";
   const hover = (id: string | null) => (event: PointerEvent) => {
@@ -86,9 +89,11 @@ export function PlaceChip({ place, state, stop, activity, exit = false, onPress,
             <Bus className="size-3" strokeWidth={2.5} aria-hidden />
           </span>
         ) : (
-          <Glyph
+          <PlaceIcon
+            place={place}
             className={cn(
-              "mr-1 hidden size-3.5 shrink-0 group-data-[zoom=near]/map:block",
+              "mr-1 size-3.5 shrink-0",
+              !amenity && "hidden group-data-[zoom=near]/map:block",
               state === "idle" ? "text-muted" : "opacity-80",
             )}
             aria-hidden
@@ -109,7 +114,9 @@ export function PlaceChip({ place, state, stop, activity, exit = false, onPress,
               : "grid-cols-[0fr] opacity-0 group-hover/chip:grid-cols-[1fr] group-hover/chip:opacity-100 group-focus-visible/chip:grid-cols-[1fr] group-focus-visible/chip:opacity-100",
           )}>
           <span className="min-w-0 overflow-hidden">
-            <span className="ml-1.5 block max-w-44 truncate border-l border-current/25 pl-1.5 font-medium">{place.name}</span>
+            <span className="ml-1.5 block max-w-44 truncate border-l border-current/25 pl-1.5 font-medium">
+              {amenity ? amenityWhere(place) : place.name}
+            </span>
           </span>
         </span>
         {state === "stop" && stop !== undefined ? (

@@ -6,10 +6,12 @@ import { Text, View } from 'react-native';
 
 import { GlassInput } from '@/components/glass-field';
 import { Icon } from '@/components/icon';
+import { isAmenity } from '@/data/amenities';
 import type { Place } from '@/data/campus';
 import { useProfile } from '@/lib/account';
 import { eventsAtPlace } from '@/lib/campus-activity';
-import { CATEGORY_SYMBOLS, categoryLabel } from '@/lib/categories';
+import { amenityWhere, reportPlaceId } from '@/lib/amenity-search';
+import { categoryLabel, placeSymbol } from '@/lib/categories';
 import { focusPlace } from '@/lib/focus';
 import { openWeb, sharePlace } from '@/lib/links';
 import { rememberPlace } from '@/lib/recent-places';
@@ -59,16 +61,24 @@ export function PlaceDetails({ place, room, onDone }: { place: Place; room?: str
     <View className="gap-5">
       <View className="flex-row items-start gap-3.5">
         <View className="size-12 items-center justify-center rounded-2xl bg-accent">
-          <Text className="text-base font-bold text-accent-foreground">{place.label ?? place.id}</Text>
+          {isAmenity(place) ? (
+            <Icon name={placeSymbol(place)} size={22} tintColor={accentForeground} />
+          ) : (
+            <Text className="text-base font-bold text-accent-foreground">{place.label ?? place.id}</Text>
+          )}
         </View>
         <View className="min-w-0 flex-1 gap-1">
           <Text className="text-2xl font-bold text-foreground" numberOfLines={2}>
             {room ? `Room ${room}` : place.name}
           </Text>
           <View className="flex-row items-center gap-1.5">
-            <Icon name={CATEGORY_SYMBOLS[place.category]} size={13} tintColor={muted} />
+            <Icon name={placeSymbol(place)} size={13} tintColor={muted} />
             <Text className="text-sm text-muted" numberOfLines={1}>
-              {room ? [place.name, floor].filter(Boolean).join(' · ') : categoryLabel(place.category)}
+              {room
+                ? [place.name, floor].filter(Boolean).join(' · ')
+                : isAmenity(place)
+                  ? amenityWhere(place)
+                  : categoryLabel(place.category)}
             </Text>
           </View>
         </View>
@@ -163,7 +173,10 @@ export function PlaceDetails({ place, room, onDone }: { place: Place; room?: str
         </ListGroup.Item>
         <Separator className="mx-4" />
         <ListGroup.Item
-          onPress={() => router.push({ pathname: '/report-problem', params: { place: place.id, kind: 'map' } })}>
+          onPress={() => {
+            const about = reportPlaceId(place);
+            router.push({ pathname: '/report-problem', params: about ? { place: about, kind: 'map' } : { kind: 'map' } });
+          }}>
           <ListGroup.ItemPrefix>
             <Icon name="exclamationmark.bubble" size={20} tintColor={muted} />
           </ListGroup.ItemPrefix>
@@ -173,7 +186,7 @@ export function PlaceDetails({ place, room, onDone }: { place: Place; room?: str
           </ListGroup.ItemContent>
           <ListGroup.ItemSuffix />
         </ListGroup.Item>
-        {room ? null : (
+        {room || isAmenity(place) ? null : (
           <>
             <Separator className="mx-4" />
             <ListGroup.Item disabled>

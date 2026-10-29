@@ -4,8 +4,11 @@ import { Button, SearchField, Surface } from "@heroui/react";
 import { ArrowLeft } from "lucide-react";
 import { useRef, type KeyboardEvent, type RefObject } from "react";
 
-import { PlaceSearchList, useCampusSearch } from "@/components/place-search-list";
+import { PlaceSearchList, useCampusSearch, type Nearby } from "@/components/place-search-list";
+import { AMENITY_KINDS } from "@/data/amenities";
 import { CAMPUS, type Place } from "@/data/campus";
+import { AMENITY_SHORTCUTS } from "@/lib/amenity-search";
+import { AMENITY_ICONS } from "@/lib/categories";
 import { MAX_QUERY_LENGTH } from "@/lib/search";
 
 type SearchPanelProps = {
@@ -16,12 +19,22 @@ type SearchPanelProps = {
   onSelect: (place: Place, room?: string) => void;
   /** Lets the Search tab put the cursor in the field straight from the tap, so the keyboard opens. */
   inputRef?: RefObject<HTMLInputElement | null>;
+  /** Where "near" means for SOS phones, benches, and the like: you, else the place open. */
+  nearby: Nearby;
 };
 
-export function SearchPanel({ query, isOpen, onQueryChange, onOpenChange, onSelect, inputRef: givenRef }: SearchPanelProps) {
+export function SearchPanel({
+  query,
+  isOpen,
+  onQueryChange,
+  onOpenChange,
+  onSelect,
+  inputRef: givenRef,
+  nearby,
+}: SearchPanelProps) {
   const ownRef = useRef<HTMLInputElement>(null);
   const inputRef = givenRef ?? ownRef;
-  const { room: roomMatch, results } = useCampusSearch(query);
+  const { room: roomMatch, results, amenities } = useCampusSearch(query, undefined, nearby);
   const hasQuery = query.trim().length > 0;
 
   function close() {
@@ -36,6 +49,7 @@ export function SearchPanel({ query, isOpen, onQueryChange, onOpenChange, onSele
 
   function handleSubmit() {
     if (roomMatch) select(roomMatch.place, roomMatch.room);
+    else if (amenities) select(amenities.matches[0].place);
     else if (results[0]) select(results[0]);
   }
 
@@ -85,13 +99,35 @@ export function SearchPanel({ query, isOpen, onQueryChange, onOpenChange, onSele
 
       {isOpen ? (
         <div className="animate-fade-in overflow-y-auto overscroll-contain px-1.5 pb-2">
+          {hasQuery ? null : (
+            <div className="-mx-1.5 mb-2 flex gap-2 overflow-x-auto px-3 [scrollbar-width:none]">
+              {AMENITY_SHORTCUTS.map((kind) => {
+                const Icon = AMENITY_ICONS[kind];
+                return (
+                  <Button
+                    key={kind}
+                    size="sm"
+                    variant="secondary"
+                    onPress={() => {
+                      onQueryChange(AMENITY_KINDS[kind].plural);
+                      inputRef.current?.focus();
+                    }}
+                    className="shrink-0 gap-1.5 rounded-full">
+                    <Icon className="size-3.5" aria-hidden />
+                    {AMENITY_KINDS[kind].plural}
+                  </Button>
+                );
+              })}
+            </div>
+          )}
+
           {!hasQuery && CAMPUS.rooms.help ? (
             <p className="mx-1.5 mb-2 rounded-2xl bg-surface-secondary px-3.5 py-3 text-xs leading-relaxed text-muted">
               <span className="font-medium text-foreground">Reading a room code:</span> {CAMPUS.rooms.help}
             </p>
           ) : null}
 
-          <PlaceSearchList query={query} onSelect={select} />
+          <PlaceSearchList query={query} onSelect={select} nearby={nearby} />
 
           {!hasQuery && CAMPUS.app.disclaimer ? (
             <p className="px-3 pb-1 pt-4 text-center text-[11px] leading-relaxed text-muted">

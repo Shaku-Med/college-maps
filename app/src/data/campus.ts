@@ -1,5 +1,7 @@
 import rawConfig from "@campus/campus.json";
 
+import { getAmenityPlace } from "./amenities";
+
 export type Coordinate = { latitude: number; longitude: number };
 
 export type Bounds = { south: number; west: number; north: number; east: number };
@@ -373,5 +375,6 @@ const PLACE_BY_ID = new Map(PLACES.map((place) => [place.id, place]));
 
 export function getPlace(id: unknown): Place | undefined {
   if (typeof id !== "string" || id.length > 16) return undefined;
-  return PLACE_BY_ID.get(id.toUpperCase());
+  const key = id.toUpperCase();
+  return PLACE_BY_ID.get(key) ?? getAmenityPlace(key);
 }

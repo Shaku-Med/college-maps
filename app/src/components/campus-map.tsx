@@ -198,7 +198,8 @@ function applyAmenityLayers(map: MapLibreMap) {
       amenityImages.set(id, loading);
     }
     void loading.then((image) => {
-      if (image && !map.hasImage(id)) map.addImage(id, image, { sdf: true, pixelRatio: 2 });
+      // The images are shared, so one can arrive after this map was removed and has no style left.
+      if (image && map.style && !map.hasImage(id)) map.addImage(id, image, { sdf: true, pixelRatio: 2 });
     });
   }
   map.addSource(AMENITY_SOURCE, { type: "geojson", data: AMENITY_POINTS });
@@ -282,7 +283,7 @@ function addChevron(map: MapLibreMap) {
       return null;
     });
   void chevron.then((image) => {
-    if (!image || map.hasImage(ROUTE_CHEVRON)) return;
+    if (!image || !map.style || map.hasImage(ROUTE_CHEVRON)) return;
     map.addImage(ROUTE_CHEVRON, image, { sdf: true, pixelRatio: 2 });
   });
 }

@@ -28,6 +28,7 @@ import { useVoiceChoice } from "@/hooks/use-voice-choice";
 import { useVoiceGuidance } from "@/hooks/use-voice-guidance";
 import { useWakeLock } from "@/hooks/use-wake-lock";
 import { campusActivityByPlace, eventsAtPlace } from "@/lib/campus-activity";
+import { isAmenity } from "@/data/amenities";
 import { MAP_FILTERS, type MapFilter } from "@/lib/categories";
 import { fetchTripRoute } from "@/lib/directions";
 import { roomSpot, safetyBuildingHere, safetyBuildings } from "@/lib/building-safety";
@@ -1386,9 +1387,18 @@ export function MapApp({ initialPlaceId, initialRoom, initialAccountOpen = false
   const safetyIds = useMemo(() => safetyBuildings(goingTo, safetyHere), [goingTo, safetyHere]);
 
   const visiblePlaces = useMemo(() => {
-    if (mode !== "browse" || filter === "all") return PLACES;
-    return PLACES.filter((place) => place.category === filter || place.id === selectedId);
-  }, [mode, filter, selectedId]);
+    const shown =
+      mode !== "browse" || filter === "all"
+        ? PLACES
+        : PLACES.filter((place) => place.category === filter || place.id === selectedId);
+    // An SOS phone or bench is not a map place of its own, so it shows only while it is the one picked.
+    return selected && isAmenity(selected) ? [...shown, selected] : shown;
+  }, [mode, filter, selectedId, selected]);
+
+  const nearby = useMemo(
+    () => ({ here: geo.position, around: selected?.isBuilding ? selected : undefined }),
+    [geo.position, selected],
+  );
 
   // While navigating, the walks between the stops still ahead stay on the map, not only the one being walked now.
   const legsAhead = useMemo(() => {
@@ -1656,6 +1666,7 @@ export function MapApp({ initialPlaceId, initialRoom, initialAccountOpen = false
                   onOpenChange={setIsSearchOpen}
                   onSelect={selectPlace}
                   inputRef={searchInputRef}
+                  nearby={nearby}
                 />
               </div>
               {isSearchOpen ? null : (

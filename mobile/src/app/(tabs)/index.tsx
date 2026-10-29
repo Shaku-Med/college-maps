@@ -38,7 +38,7 @@ import { RoomMarker } from '@/components/room-marker';
 import { SafetyMarker } from '@/components/safety-marker';
 import { EdgeScrim, TopScrim } from '@/components/top-scrim';
 import { UserPin } from '@/components/user-pin';
-import { AMENITY_POINTS } from '@/data/amenities';
+import { AMENITY_POINTS, isAmenity } from '@/data/amenities';
 import { CAMPUS, PLACES, contains, getPlace, type Coordinate, type Place } from '@/data/campus';
 import { walkGraph } from '@/data/walk-graph';
 import { useMeetupLive } from '@/hooks/use-meetup-live';
@@ -526,9 +526,11 @@ export default function MapScreen() {
   }, [previewRoute, insets, wide]);
 
   const places = useMemo(() => {
-    if (trip.phase !== 'idle' || filter === 'all') return PLACES;
-    return PLACES.filter((place) => place.category === filter);
-  }, [filter, trip.phase]);
+    const shown = trip.phase !== 'idle' || filter === 'all' ? PLACES : PLACES.filter((place) => place.category === filter);
+    const picked = trip.phase !== 'idle' ? trip.destination : focused;
+    // An SOS phone or bench is not a map place of its own, so it shows only while it is the one picked.
+    return picked && isAmenity(picked) ? [...shown, picked] : shown;
+  }, [filter, trip.phase, trip.destination, focused]);
 
   const openPlace = useCallback(
     (place: Place) => {
