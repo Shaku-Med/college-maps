@@ -537,7 +537,14 @@ export function MapApp({ initialPlaceId, initialRoom, initialAccountOpen = false
       latestFixRef.current = position;
 
       const nav = navRef.current;
-      if (nav.mode !== "navigate" || !nav.navRoute || !nav.destination || nav.hasArrived) return;
+      if (nav.mode !== "navigate" || !nav.navRoute || !nav.destination) return;
+      // Past the door the dot stays live and the map keeps up, so people can walk on inside to the room.
+      if (nav.hasArrived) {
+        setWalkwayPoint(undefined);
+        const travel = nav.navRoute.travel;
+        if (nav.isFollowing) mapRef.current?.follow(position, navigationPadding(), travel ? FOLLOW_ZOOM[travel] : undefined);
+        return;
+      }
       if (manualRef.current) {
         const probe = trackProgress(nav.navRoute, position, progressHintRef.current);
         if (accuracy > UNTRUSTED_ACCURACY_METERS || probe.distanceFromRoute > TAKEOVER_METERS) return;
@@ -1432,7 +1439,8 @@ export function MapApp({ initialPlaceId, initialRoom, initialAccountOpen = false
   }, [mode, legs, leg, plan, selectedId]);
   const stopCount = mode === "navigate" ? legs.length - 1 : 0;
   const mapRoute = mode === "navigate" ? navPath : mode === "directions" ? previewPath : undefined;
-  const snappedToRoute = mode === "navigate" && progress && progress.distanceFromRoute <= SNAP_TO_ROUTE_METERS;
+  const snappedToRoute =
+    mode === "navigate" && !hasArrived && progress && progress.distanceFromRoute <= SNAP_TO_ROUTE_METERS;
   const shownLocation = snappedToRoute
     ? progress.point
     : mode === "navigate" && walkwayPoint

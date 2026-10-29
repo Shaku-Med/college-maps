@@ -341,7 +341,13 @@ export function useNavigation({ destination, avoidStairs, follow, facingUp }: Op
       lastPoint.current = position;
 
       const current = nav.current;
-      if (!current.active || !current.route || !current.destination || current.arrived) return;
+      if (!current.active || !current.route || !current.destination) return;
+      // Past the door the dot stays live and the map keeps up, so people can walk on inside to the room.
+      if (current.arrived) {
+        setShownAt(null);
+        if (current.following) follow(followTarget(position, current.route.travel));
+        return;
+      }
       if (current.manual) {
         const probe = trackProgress(current.route, position, hint.current);
         if (accuracy > UNTRUSTED_ACCURACY_METERS || probe.distanceFromRoute > TAKEOVER_METERS) return;
