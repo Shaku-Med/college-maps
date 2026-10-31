@@ -28,6 +28,7 @@ import { CategoryBar, type MapFilter } from '@/components/category-bar';
 import { Glass } from '@/components/glass';
 import { DirectionsPanel } from '@/components/directions-panel';
 import { MeetupBar } from '@/components/meetup-bar';
+import { RouteLine } from '@/components/route-line';
 import { PersonCard, PersonPin } from '@/components/person-pin';
 import { MapControls, type MapControl } from '@/components/map-controls';
 import { MapButton } from '@/components/map-button';
@@ -57,12 +58,11 @@ import { formatRouteTime } from '@/lib/directions';
 import { distanceMeters, formatDistance } from '@/lib/geo';
 import { stepText } from '@/lib/instructions';
 import { endTrip, showTrip } from '@/lib/live-activity';
-import { currentCompass, currentFix, subscribeCompass, useLocation } from '@/lib/location';
+import { currentCompass, currentFix, glideMs, subscribeCompass, useLocation } from '@/lib/location';
 import { parkingSpoken } from '@/lib/parking';
 import { watchSteps } from '@/lib/steps';
 import { roomSpot, safetyBuildingHere, safetyBuildings, safetyFor, type SafetySpot } from '@/lib/building-safety';
 import { buildingPolygon } from '@/lib/buildings';
-import { withAlpha } from '@/lib/color-alpha';
 import {
   BUILDING_PITCH,
   BUILDING_ZOOM,
@@ -108,7 +108,6 @@ const HEADING_UP_MIN_DEGREES = 2;
 // Short gaps so a GPS follow every second cannot glue the map's turn in place.
 const HEADING_UP_GAP_MS = 90;
 const HEADING_UP_MS = 260;
-const FOLLOW_MS = 650;
 // MapLibre on iOS often marks our own easeTo as a user pan; ignore those until the move is done.
 const PROGRAMMATIC_GRACE_MS = 180;
 // Drawing a new route line also fires fake pans; hold longer so a reroute cannot freeze the compass.
@@ -278,16 +277,19 @@ export default function MapScreen() {
               ? (bearing as number)
               : cameraMemory.bearing();
         if (Number.isFinite(bearing)) smoothHeading.set(bearing as number);
+        // An even pace over the time until the next fix, so the map never moves and then stops between fixes.
+        const duration = glideMs();
         // Mark as a follow so compass turns can still run; a long busy lock was freezing the heading at speed.
-        cameraMemory.moving(nextBearing, FOLLOW_MS, 'follow');
-        noteProgrammatic(FOLLOW_MS);
+        cameraMemory.moving(nextBearing, duration, 'follow');
+        noteProgrammatic(duration);
         lastFollow.current = { point, zoom: level };
         camera.current?.easeTo({
           center: toLngLat(point),
           zoom: level,
           bearing: nextBearing,
           pitch: 40,
-          duration: FOLLOW_MS,
+          duration,
+          easing: 'linear',
           padding: mapCameraPadding(wide, 'follow', insets),
         });
       } catch {
@@ -365,8 +367,10 @@ export default function MapScreen() {
       if (delta < HEADING_UP_MIN_DEGREES) return;
       const at = lastFollow.current;
       if (!at) return;
-      cameraMemory.moving(shown, HEADING_UP_MS, 'heading');
-      noteProgrammatic(HEADING_UP_MS);
+      const following = cameraMemory.followLeft();
+      const duration = Math.max(HEADING_UP_MS, following);
+      cameraMemory.moving(shown, duration, 'heading');
+      noteProgrammatic(duration);
       try {
         // The same center, zoom, and padding as following, or each turn would shift the view.
         camera.current?.easeTo({
@@ -374,7 +378,8 @@ export default function MapScreen() {
           zoom: at.zoom,
           bearing: shown,
           pitch: 40,
-          duration: HEADING_UP_MS,
+          duration,
+          easing: following > 0 ? 'linear' : undefined,
           padding: mapCameraPadding(wide, 'follow', insets),
         });
       } catch {
@@ -759,8 +764,15 @@ export default function MapScreen() {
     : previewRoute
       ? [...previewRoute.path, ...preview.later.flatMap((leg) => leg.path)]
       : undefined;
-  const routeLine = line(routePath);
-  const routeEnd = routeLine ? routeLine.geometry.coordinates[routeLine.geometry.coordinates.length - 1] : null;
+  const routeEnd = routePath && routePath.length >= 2 ? toLngLat(routePath[routePath.length - 1]) : null;
+  // On the route, the dot and the line glide along it together between fixes instead of jumping at each one.
+  const routeTrack = useMemo(
+    () =>
+      navigating && navigation.route && navigation.shownAlong !== null
+        ? { route: navigation.route, along: navigation.shownAlong, after: legsAhead.flatMap((leg) => leg.path) }
+        : null,
+    [navigating, navigation.route, navigation.shownAlong, legsAhead],
+  );
   const routeColor = navigation.isWrongWay && navigating ? danger : accent;
   const previousLine = navigating ? line(navigation.previousPath) : null;
   const originPlace = planning && trip.origin !== MY_LOCATION ? getPlace(trip.origin) : undefined;
@@ -1043,44 +1055,8 @@ export default function MapScreen() {
           </GeoJSONSource>
         ) : null}
 
-        {routeLine ? (
-          <GeoJSONSource id="route" data={routeLine}>
-            {/* The same route as the web map: a soft glow, the casing, the line, and chevrons pointing the way. */}
-            <Layer
-              id="route-glow"
-              type="line"
-              layout={{ 'line-cap': 'round', 'line-join': 'round' }}
-              paint={{ 'line-color': withAlpha(routeColor, 0.3), 'line-width': zoomed(12, 30), 'line-blur': zoomed(6, 14) }}
-            />
-            <Layer
-              id="route-casing"
-              type="line"
-              layout={{ 'line-cap': 'round', 'line-join': 'round' }}
-              paint={{ 'line-color': casing, 'line-width': zoomed(6, 15) }}
-            />
-            <Layer
-              id="route-line"
-              type="line"
-              layout={{ 'line-cap': 'round', 'line-join': 'round' }}
-              paint={{ 'line-color': routeColor, 'line-width': zoomed(3.5, 9) }}
-            />
-            <Layer
-              id="route-chevrons"
-              type="symbol"
-              minzoom={16}
-              layout={{
-                'symbol-placement': 'line',
-                'symbol-spacing': ['interpolate', ['linear'], ['zoom'], 16, 44, 19, 72] as ExpressionSpecification,
-                'icon-image': 'route-chevron',
-                // Only close up, sized to sit inside the line like the web map (the image is 64 px, twice the web's 32).
-                'icon-size': ['interpolate', ['linear'], ['zoom'], 16, 0.16, 19, 0.26] as ExpressionSpecification,
-                'icon-rotation-alignment': 'map',
-                'icon-allow-overlap': true,
-                'icon-ignore-placement': true,
-              }}
-              paint={{ 'icon-color': casing, 'icon-opacity': 0.9 }}
-            />
-          </GeoJSONSource>
+        {routePath && routePath.length >= 2 ? (
+          <RouteLine path={routePath} track={routeTrack} color={routeColor} casing={casing} />
         ) : null}
 
         {routeEnd ? (
@@ -1098,7 +1074,7 @@ export default function MapScreen() {
           </GeoJSONSource>
         ) : null}
 
-        {location.fix ? <UserPin fix={location.fix} at={navigating ? navigation.shownAt : null} /> : null}
+        {location.fix ? <UserPin fix={location.fix} at={navigating ? navigation.shownAt : null} track={routeTrack} /> : null}
 
         {/* Before the place chips, so the building's own pin stays on top. */}
         {safety.spots.map((spot) => (

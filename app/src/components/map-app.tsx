@@ -1476,6 +1476,7 @@ export function MapApp({ initialPlaceId, initialRoom, initialAccountOpen = false
         onLoad={() => setMapLoaded(true)}
         activityByPlace={activityByPlace}
         safetyBuildings={safetyIds}
+        routeFromDot={Boolean(snappedToRoute)}
         room={roomSpot(selectedId, room)}
         onUserPan={() => {
           if (mode !== "navigate") return;

@@ -1,62 +1,19 @@
 import type * as GeoJSON from 'geojson';
 import { GeoJSONSource, Images, Layer } from '@maplibre/maplibre-react-native';
 import { useThemeColor } from 'heroui-native';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo } from 'react';
 import { useColorScheme } from 'react-native';
 
 import type { Coordinate } from '@/data/campus';
-import { distanceMeters } from '@/lib/geo';
+import { useAlongGlide, useGlide } from '@/hooks/use-glide';
 import { useCompass, type Fix } from '@/lib/location';
+import { progressAtDistance, type Route } from '@/lib/routing';
 
 // Drawn by `npm run user-beam` from the campus accent.
 const BEAM_IMAGES = {
   light: { 'user-beam': require('../../assets/images/user-beam-light.png') },
   dark: { 'user-beam': require('../../assets/images/user-beam-dark.png') },
 };
-// Fixes come about once a second; the dot glides between them over about the same time, like the camera.
-const GLIDE_MS = 1000;
-const FRAME_MS = 33;
-// Further than this is a new place, not a step: the dot goes straight there.
-const JUMP_METERS = 120;
-
-/** Moves smoothly from where the dot is shown to each new target, easing out like a walk. */
-function useGlide(target: Coordinate) {
-  const [shown, setShown] = useState(target);
-  const shownRef = useRef(target);
-  const { latitude, longitude } = target;
-
-  useEffect(() => {
-    const start = shownRef.current;
-    const end = { latitude, longitude };
-    const gap = distanceMeters(start, end);
-    if (gap < 0.3 || gap > JUMP_METERS) {
-      shownRef.current = end;
-      setShown(end);
-      return;
-    }
-    let frame = 0;
-    let painted = 0;
-    const began = performance.now();
-    const step = (now: number) => {
-      const t = Math.min(1, (now - began) / GLIDE_MS);
-      const eased = 1 - (1 - t) ** 3;
-      const at = {
-        latitude: start.latitude + (end.latitude - start.latitude) * eased,
-        longitude: start.longitude + (end.longitude - start.longitude) * eased,
-      };
-      shownRef.current = at;
-      if (t === 1 || now - painted >= FRAME_MS) {
-        painted = now;
-        setShown(at);
-      }
-      if (t < 1) frame = requestAnimationFrame(step);
-    };
-    frame = requestAnimationFrame(step);
-    return () => cancelAnimationFrame(frame);
-  }, [latitude, longitude]);
-
-  return shown;
-}
 
 function pointFeature(longitude: number, latitude: number): GeoJSON.Feature<GeoJSON.Point> {
   return {
@@ -67,14 +24,26 @@ function pointFeature(longitude: number, latitude: number): GeoJSON.Feature<GeoJ
 }
 
 /** You on the map: glow, dot, and facing cone, drawn by the map from one source so they move and turn together. */
-export function UserPin({ fix, at }: { fix: Fix; at?: Coordinate | null }) {
+export function UserPin({
+  fix,
+  at,
+  track,
+}: {
+  fix: Fix;
+  at?: Coordinate | null;
+  /** On the route during directions: the dot glides along the road by distance, in step with the route line. */
+  track?: { route: Route; along: number } | null;
+}) {
   const accent = useThemeColor('accent');
   const scheme = useColorScheme() === 'dark' ? 'dark' : 'light';
   const compass = useCompass();
   // The cone shows where the phone points at any speed; GPS course only stands in while there is no compass.
   const heading = compass ?? fix.heading;
   // During directions the dot sits on the route, or the walkway underfoot, instead of raw GPS.
-  const { longitude, latitude } = useGlide(at ?? fix.position);
+  // While the dot rides the route, the plain glide only needs to land, not paint every frame.
+  const free = useGlide(at ?? fix.position, track ? 1000 : 33);
+  const along = useAlongGlide(track?.route ?? null, track?.along ?? null);
+  const { longitude, latitude } = track && along !== null ? progressAtDistance(track.route, along).point : free;
   const point = useMemo(() => pointFeature(longitude, latitude), [longitude, latitude]);
 
   return (

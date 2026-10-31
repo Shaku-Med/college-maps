@@ -37,6 +37,7 @@ import { resolveCssColor } from "@/lib/css-color";
 import { distanceMeters, interpolate } from "@/lib/geo";
 import { BUILDING_PITCH, BUILDING_ZOOM, amenityLayers, buildingColor, buildingLight, buildingWallShade, heatColors } from "@/lib/map-paint";
 import { compactSafetySpots, placeChipSize, roomChipSize, sameIds, type Obstacle } from "@/lib/declutter";
+import { createFixPace } from "@/lib/fix-pace";
 import { markerLabel, zoomBand } from "@/lib/place-marker";
 import { floorLabel } from "@/lib/search";
 
@@ -128,6 +129,8 @@ type CampusMapProps = {
   activityByPlace?: Readonly<Record<string, number>>;
   /** Buildings whose exits, stairs, and other safety points are shown: where someone is heading, or is. */
   safetyBuildings?: readonly string[];
+  /** The route starts where the dot is shown, so while the dot glides the line is drawn from it. */
+  routeFromDot?: boolean;
   /** The room being looked for, shown inside its building. */
   room?: RoomSpot | null;
 };
@@ -221,6 +224,12 @@ function applyAmenityLayers(map: MapLibreMap) {
 
 function toLngLat({ latitude, longitude }: Coordinate): [number, number] {
   return [longitude, latitude];
+}
+
+// While the dot glides toward the start of the route ahead, the line is drawn from the dot, so it never floats ahead of it.
+function drawRouteFromDot(map: MapLibreMap, active: Coordinate[] | undefined, at: Coordinate) {
+  if (!active || active.length < 2) return;
+  map.getSource<GeoJSONSource>(ROUTE_SOURCE)?.setData(routeFeature([at, ...active]));
 }
 
 function routeFeature(
@@ -575,17 +584,20 @@ function applyHeading(marker: Marker | null, degrees: number | undefined) {
   cone.style.transform = `rotate(${degrees}deg)`;
 }
 
-// Matches the camera's follow ease, so the dot and the map arrive together.
-const USER_GLIDE_MS = 600;
+// The dot and the camera following it glide at the same even pace, learned from how often fixes arrive.
+const fixPace = createFixPace();
+// Redrawing the route from the gliding dot about ten times a second keeps the line under it without much work.
+const ROUTE_FROM_DOT_MS = 100;
 // Friends report every few seconds, so their pins take longer to cover the gap.
 const PERSON_GLIDE_MS = 1000;
 // Anything farther is a first fix or a corrected signal, where sliding across campus would be wrong.
 const GLIDE_MAX_METERS = 120;
 
 type Glide = { to: (coordinate: Coordinate) => void; stop: () => void };
+type GlideOptions = { linear?: boolean; onFrame?: (at: Coordinate) => void };
 
-// Slides a marker to each new position instead of jumping, easing out so it settles gently.
-function createGlide(marker: Marker, duration: number): Glide {
+// Slides a marker to each new position instead of jumping: at an even pace for the dot, easing out for friends' pins.
+function createGlide(marker: Marker, glideMs: () => number, { linear = false, onFrame }: GlideOptions = {}): Glide {
   let frame = 0;
   let landing: ReturnType<typeof setTimeout> | undefined;
   const halt = () => {
@@ -604,10 +616,13 @@ function createGlide(marker: Marker, duration: number): Glide {
         marker.setLngLat(toLngLat(coordinate));
         return;
       }
+      const duration = glideMs();
       const began = performance.now();
       const step = (now: number) => {
         const t = Math.min(1, (now - began) / duration);
-        marker.setLngLat(toLngLat(interpolate(from, coordinate, 1 - (1 - t) ** 3)));
+        const at = interpolate(from, coordinate, linear ? t : 1 - (1 - t) ** 3);
+        marker.setLngLat(toLngLat(at));
+        onFrame?.(at);
         if (t < 1) frame = requestAnimationFrame(step);
         else halt();
       };
@@ -754,6 +769,7 @@ export function CampusMap({
   activityByPlace,
   safetyBuildings,
   room,
+  routeFromDot = false,
 }: CampusMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
@@ -790,6 +806,7 @@ export function CampusMap({
   // The heading the map is being turned to. Null while the map is not following anyone's heading.
   const facingRef = useRef<number | null>(null);
   const turnedAtRef = useRef(0);
+  const routeFromDotRef = useRef(routeFromDot);
   const routesRef = useRef<RouteLines>({
     active: route,
     previous: previousRoute,
@@ -869,7 +886,9 @@ export function CampusMap({
         ...(goal === null ? {} : { bearing: goal }),
         zoom: zoom ?? Math.max(mapRef.current.getZoom(), 17.5),
         padding: { ...NO_PADDING, ...padding },
-        duration: 600,
+        // An even pace over the time until the next fix, so the map never moves and then stops between fixes.
+        duration: fixPace.glideMs(),
+        easing: (t: number) => t,
         essential: true,
       });
     },
@@ -1083,15 +1102,18 @@ export function CampusMap({
 
   useEffect(() => {
     routesRef.current = { active: route, previous: previousRoute };
+    routeFromDotRef.current = routeFromDot;
     const map = mapRef.current;
     if (!isReady || !map) return;
     applyRouteLayers(map, routesRef.current);
+    const dot = userMarkerRef.current?.getLngLat();
+    if (dot && routeFromDot) drawRouteFromDot(map, route, { latitude: dot.lat, longitude: dot.lng });
     // A new route, or one to somewhere else, draws itself in; walking along it or a reroute does not.
     const end = route && route.length > 1 ? route[route.length - 1] : undefined;
     const drawn = end ? `${end.latitude.toFixed(5)},${end.longitude.toFixed(5)}` : null;
     if (drawn && drawn !== drawnEndRef.current) revealRoute(map, revealFrameRef);
     drawnEndRef.current = drawn;
-  }, [isReady, route, previousRoute]);
+  }, [isReady, route, previousRoute, routeFromDot]);
 
   useEffect(() => {
     const frame = revealFrameRef;
@@ -1276,10 +1298,20 @@ export function CampusMap({
         .setLngLat(toLngLat(userLocation))
         .addTo(map);
       userMarkerRef.current.getElement().style.zIndex = "3";
-      userGlideRef.current = createGlide(userMarkerRef.current, USER_GLIDE_MS);
+      let drawnAt = 0;
+      userGlideRef.current = createGlide(userMarkerRef.current, fixPace.glideMs, {
+        linear: true,
+        onFrame: (at) => {
+          const now = performance.now();
+          if (!routeFromDotRef.current || now - drawnAt < ROUTE_FROM_DOT_MS) return;
+          drawnAt = now;
+          drawRouteFromDot(map, routesRef.current.active, at);
+        },
+      });
       applyHeading(userMarkerRef.current, headingRef.current?.current());
       return;
     }
+    fixPace.note(performance.now());
     userGlideRef.current?.to(userLocation);
   }, [isReady, userLocation]);
 
@@ -1313,7 +1345,7 @@ export function CampusMap({
         })
           .setLngLat(toLngLat(person.coordinate))
           .addTo(map);
-        entry = { marker, el, glide: createGlide(marker, PERSON_GLIDE_MS) };
+        entry = { marker, el, glide: createGlide(marker, () => PERSON_GLIDE_MS) };
         markers.set(person.id, entry);
       } else {
         entry.glide.to(person.coordinate);

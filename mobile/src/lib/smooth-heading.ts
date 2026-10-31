@@ -93,6 +93,8 @@ export function createCameraMemory() {
       kind = next;
     },
     busy: () => Date.now() < busyUntil,
+    /** How much longer the follow glide in flight has to run, or 0. */
+    followLeft: () => (kind === 'follow' ? Math.max(0, busyUntil - Date.now()) : 0),
     /** Only a heading ease blocks the next heading ease; following the blue dot does not. */
     blocksHeading: () => kind === 'heading' && Date.now() < busyUntil,
     sinceMove: () => Date.now() - movedAt,

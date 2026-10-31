@@ -110,6 +110,8 @@ export function useNavigation({ destination, avoidStairs, follow, facingUp }: Op
   const [manualStep, setManualStep] = useState<number | null>(null);
   /** Where the traveller is shown: on the route when close to it, else on the walkway underfoot. */
   const [shownAt, setShownAt] = useState<Coordinate | null>(null);
+  // How far along the route the dot is shown, while it sits on the route, so the dot and the line glide together.
+  const [shownAlong, setShownAlong] = useState<number | null>(null);
   /** A parking choice shown on the map while driving. */
   const [parking, setParking] = useState<ParkingPrompt | null>(null);
   /** The trip just switched between driving and walking on its own. */
@@ -345,6 +347,7 @@ export function useNavigation({ destination, avoidStairs, follow, facingUp }: Op
       // Past the door the dot stays live and the map keeps up, so people can walk on inside to the room.
       if (current.arrived) {
         setShownAt(null);
+        setShownAlong(null);
         if (current.following) follow(followTarget(position, current.route.travel));
         return;
       }
@@ -564,6 +567,7 @@ export function useNavigation({ destination, avoidStairs, follow, facingUp }: Op
       const onRoute = next.distanceFromRoute <= SNAP_TO_ROUTE_METERS;
       const shown = onRoute ? next.point : (walkway?.point ?? position);
       setShownAt(shown);
+      setShownAlong(onRoute ? next.distanceAlong : null);
       if (nav.current.following) follow(followTarget(shown, travel));
     },
     [commit, facing, follow, followTarget, offerParkingHere, rerouteStreet, showNotice, showParking, switchTravel],
@@ -593,6 +597,7 @@ export function useNavigation({ destination, avoidStairs, follow, facingUp }: Op
     lastGood.current = null;
     lastPoint.current = null;
     setShownAt(null);
+    setShownAlong(null);
     setIsRiding(false);
     setPreviousPath(null);
     setIsWrongWay(false);
@@ -769,6 +774,7 @@ export function useNavigation({ destination, avoidStairs, follow, facingUp }: Op
     route,
     progress,
     shownAt,
+    shownAlong,
     previousPath,
     isWrongWay,
     hasArrived,

@@ -4,6 +4,7 @@ import { useEffect, useSyncExternalStore } from 'react';
 import { Platform } from 'react-native';
 
 import type { Coordinate } from '@/data/campus';
+import { createFixPace } from '@/lib/fix-pace';
 
 export type Fix = {
   position: Coordinate;
@@ -227,9 +228,15 @@ async function startNavigationUpdates(mayShowUserSettingsDialog: boolean) {
 const validNumber = (value: number | null | undefined) =>
   typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : undefined;
 
+const pace = createFixPace();
+
+/** How long to glide to a new fix: the usual time between fixes on this phone right now. */
+export const glideMs = () => pace.glideMs();
+
 function publish(location: Location.LocationObject) {
   const { latitude, longitude, accuracy, heading, speed } = location.coords;
   if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return;
+  pace.note(Date.now());
   const fix: Fix = {
     position: { latitude, longitude },
     accuracy: validNumber(accuracy) ?? 50,
