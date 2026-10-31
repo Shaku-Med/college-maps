@@ -3,6 +3,7 @@ import { Stack } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { ScrollView } from 'react-native';
 
+import { Greeting } from '@/components/greeting';
 import { PlaceResults } from '@/components/place-results';
 import { CAMPUS, getPlace, type Place } from '@/data/campus';
 import { useLinkedParam } from '@/hooks/use-linked-row-opacity';
@@ -53,6 +54,7 @@ export default function SearchScreen() {
         keyboardDismissMode="on-drag"
         contentContainerClassName="gap-6 px-4 pb-12 pt-2"
         contentContainerStyle={readable}>
+        {query ? null : <Greeting onOpenClass={open} />}
         <PlaceResults query={query} onPick={open} linkedId={activePlaceId} nearby={nearby} />
       </ScrollView>
     </>

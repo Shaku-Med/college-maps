@@ -12,9 +12,11 @@ import { StackLinkedItem } from '@/components/stack-linked-item';
 import { UpdatesSection } from '@/components/updates-section';
 import { CAMPUS } from '@/data/campus';
 import { useLinkedSuffix } from '@/hooks/use-linked-row-opacity';
+import { useNow } from '@/hooks/use-now';
 import { useReadableStyle } from '@/hooks/use-layout';
 import { signOut, useAccount } from '@/lib/account';
 import { setDevicePref, useDevicePrefs } from '@/lib/device-prefs';
+import { timeOfDay } from '@/lib/greeting';
 import { openWeb } from '@/lib/links';
 import { HEADER_ICONS } from '@/lib/header-icons';
 import { openStorePage, useCanRate } from '@/lib/rating';
@@ -95,6 +97,7 @@ function initials(name: string) {
 export default function AccountScreen() {
   const readable = useReadableStyle();
   const account = useAccount();
+  const now = useNow(60_000);
   const { toast } = useToast();
   const device = useDevicePrefs();
   const canRate = useCanRate();
@@ -163,6 +166,7 @@ export default function AccountScreen() {
                 <Text className="text-xl font-bold text-accent-foreground">{initials(account.user.displayName)}</Text>
               </View>
               <View className="min-w-0 flex-1">
+                <Text className="text-sm text-muted">{timeOfDay(new Date(now))},</Text>
                 <Text className="text-xl font-bold text-foreground" numberOfLines={1}>
                   {account.user.displayName}
                 </Text>

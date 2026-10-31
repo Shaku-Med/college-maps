@@ -1676,6 +1676,7 @@ export function MapApp({ initialPlaceId, initialRoom, initialAccountOpen = false
                   onSelect={selectPlace}
                   inputRef={searchInputRef}
                   nearby={nearby}
+                  greetName={account.state.status === "signed-in" && !account.state.user.needsProfile ? account.state.user.displayName : undefined}
                 />
               </div>
               {isSearchOpen ? null : (

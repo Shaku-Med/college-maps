@@ -10,6 +10,7 @@ import { CollapseButton, SheetGrabber } from "@/components/sheet-chrome";
 import { VoicePicker } from "@/components/voice-picker";
 import type { AccountState } from "@/hooks/use-account";
 import { useLiquidGlass } from "@/hooks/use-liquid-glass";
+import { useNow } from "@/hooks/use-now";
 import { setAutoTravel, useAutoTravel } from "@/lib/travel-prefs";
 import {
   CODE_LENGTH,
@@ -25,6 +26,7 @@ import {
   type AccountUser,
 } from "@/lib/api";
 import { saveExport, type AccountExport, type ExportFormat } from "@/lib/account-export";
+import { timeOfDay } from "@/lib/greeting";
 import { canOfferNotifications, currentPushSubscription, disablePush, enablePush } from "@/lib/push";
 import { clearSchedule } from "@/lib/schedule";
 import type { VoiceId } from "@/lib/voice";
@@ -476,6 +478,7 @@ function Profile({
   settingRows: ReactNode;
 }) {
   const [isEditing, setIsEditing] = useState(false);
+  const now = useNow(60_000);
   const [pending, setPending] = useState<"one" | "all">();
   const busyRef = useRef(false);
 
@@ -520,6 +523,7 @@ function Profile({
           {initials(user)}
         </span>
         <div className="min-w-0 flex-1">
+          <p className="text-xs text-muted">{timeOfDay(new Date(now))},</p>
           <p className="truncate font-semibold">{user.displayName}</p>
           <p className="flex items-center gap-0.5 truncate text-sm text-muted">
             <AtSign className="size-3.5 shrink-0" aria-hidden />
