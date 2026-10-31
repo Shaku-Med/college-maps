@@ -40,6 +40,35 @@ export type RouteStep = {
   alert?: string;
   /** Said at the maneuver. */
   spoken?: string;
+  /** What a street maneuver is, so spoken directions can name the road, the exit, and the side. */
+  street?: StreetManeuver;
+};
+
+export type StreetManeuver = {
+  type:
+    | "depart"
+    | "arrive"
+    | "turn"
+    | "uturn"
+    | "continue"
+    | "becomes"
+    | "ramp"
+    | "exit"
+    | "keep"
+    | "merge"
+    | "roundabout"
+    | "leaveRoundabout"
+    | "other";
+  side?: "left" | "right";
+  /** The road taken, like "Victory Boulevard" or "NY 440 North". */
+  onto?: string;
+  exitNumber?: string;
+  /** The road an exit or ramp leads to, from the sign. */
+  branch?: string;
+  /** Where the sign says the road goes, at most two. */
+  toward?: string[];
+  roundaboutExit?: number;
+  highway?: boolean;
 };
 
 export type TravelMode = "walk" | "drive" | "bike";

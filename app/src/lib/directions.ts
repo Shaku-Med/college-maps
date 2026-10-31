@@ -6,6 +6,7 @@ import {
   matchWalkway,
   type Route,
   type RouteStep,
+  type StreetManeuver,
   type TravelMode,
   type TurnDirection,
   type WalkGraph,
@@ -57,6 +58,41 @@ const TURNS: Record<number, TurnDirection> = {
 const DEPART = new Set([1, 2, 3]);
 const ARRIVE = new Set([4, 5, 6]);
 const STAIRS = 40;
+
+// What each Valhalla maneuver type means for spoken directions, and which side it is on.
+const MANEUVERS: Record<number, Pick<StreetManeuver, "type" | "side">> = {
+  1: { type: "depart" },
+  2: { type: "depart" },
+  3: { type: "depart" },
+  4: { type: "arrive" },
+  5: { type: "arrive", side: "right" },
+  6: { type: "arrive", side: "left" },
+  7: { type: "becomes" },
+  8: { type: "continue" },
+  9: { type: "turn" },
+  10: { type: "turn" },
+  11: { type: "turn" },
+  12: { type: "uturn" },
+  13: { type: "uturn" },
+  14: { type: "turn" },
+  15: { type: "turn" },
+  16: { type: "turn" },
+  17: { type: "ramp" },
+  18: { type: "ramp", side: "right" },
+  19: { type: "ramp", side: "left" },
+  20: { type: "exit", side: "right" },
+  21: { type: "exit", side: "left" },
+  22: { type: "keep" },
+  23: { type: "keep", side: "right" },
+  24: { type: "keep", side: "left" },
+  25: { type: "merge" },
+  26: { type: "roundabout" },
+  27: { type: "leaveRoundabout" },
+  37: { type: "merge", side: "right" },
+  38: { type: "merge", side: "left" },
+};
+const MAX_TOWARD = 2;
+const MAX_ROUNDABOUT_EXIT = 20;
 
 export class StreetRoutingError extends Error {}
 
@@ -248,6 +284,33 @@ async function fetchDriveTimes(from: Coordinate, targets: Coordinate[], signal?:
 
 const text = (value: unknown) => (typeof value === "string" ? value.slice(0, MAX_TEXT) : undefined);
 
+const firstText = (value: unknown) => (Array.isArray(value) ? text(value[0]) : undefined);
+
+// A sign's parts come as a list of { text } objects, such as the places an exit leads toward.
+const signTexts = (value: unknown, limit: number) =>
+  Array.isArray(value)
+    ? value
+        .slice(0, limit)
+        .map((element) => text((element as { text?: unknown } | null)?.text))
+        .filter((part): part is string => Boolean(part))
+    : [];
+
+function streetManeuver(raw: Record<string, unknown>, type: number): StreetManeuver {
+  const sign = (raw.sign ?? {}) as Record<string, unknown>;
+  const toward = signTexts(sign.exit_toward_elements, MAX_TOWARD);
+  const count = raw.roundabout_exit_count;
+  return {
+    ...(MANEUVERS[type] ?? { type: "other" }),
+    onto: firstText(raw.street_names),
+    exitNumber: signTexts(sign.exit_number_elements, 1)[0],
+    branch: signTexts(sign.exit_branch_elements, 1)[0],
+    toward: toward.length ? toward : undefined,
+    roundaboutExit:
+      typeof count === "number" && Number.isInteger(count) && count > 0 && count <= MAX_ROUNDABOUT_EXIT ? count : undefined,
+    highway: raw.highway === true,
+  };
+}
+
 // The answer comes from a server we do not run, so every field is checked before it is trusted.
 function toRoute(data: unknown, travel: TravelMode): Route | null {
   const trip = (data as { trip?: { legs?: unknown; summary?: { time?: unknown } } } | null)?.trip;
@@ -277,9 +340,10 @@ function toRoute(data: unknown, travel: TravelMode): Route | null {
       text: instruction,
       alert: text(raw.verbal_transition_alert_instruction) ?? text(raw.verbal_pre_transition_instruction) ?? instruction,
       spoken: text(raw.verbal_pre_transition_instruction) ?? instruction,
+      street: streetManeuver(raw, type),
     });
   }
-  if (steps[steps.length - 1].kind !== "arrive") steps.push({ kind: "arrive", startDistance: distance, length: 0 });
+  if (steps[steps.length - 1].kind !== "arrive") steps.push({ kind: "arrive", startDistance: distance, length: 0, street: { type: "arrive" } });
   for (let i = 0; i < steps.length - 1; i++) steps[i].length = Math.max(0, steps[i + 1].startDistance - steps[i].startDistance);
 
   const time = trip?.summary?.time;

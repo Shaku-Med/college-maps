@@ -295,8 +295,11 @@ export function saveVoicePreference(on: boolean) {
 
 let last = { text: '', at: 0 };
 
-/** Says a line. A fallback is a plainer line already made in the natural voice, said when this one is late. */
-export async function speak(line: string, { urgent = false, fallback }: { urgent?: boolean; fallback?: string } = {}) {
+/** Says a line; when its clip is late a fallback plainer line plays instead, and an optional line is skipped. */
+export async function speak(
+  line: string,
+  { urgent = false, fallback, optional = false }: { urgent?: boolean; fallback?: string; optional?: boolean } = {},
+) {
   const text = clean(line);
   if (!text) return;
   const now = Date.now();
@@ -321,7 +324,7 @@ export async function speak(line: string, { urgent = false, fallback }: { urgent
     const clip = fallback ? await storedClip(voice, clean(fallback)) : null;
     if (asked !== epoch) return;
     if (clip) await play(clip);
-    else await speakWithDevice(text);
+    else if (!optional) await speakWithDevice(text);
   };
 
   // A ready made line is a quick download, worth a short wait even at the turn.

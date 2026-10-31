@@ -477,10 +477,13 @@ function sayWithDevice(text: string) {
 
 // ---- Speaking ---------------------------------------------------------------------------------------
 
-/** Says a line. */
 let lastSpoken = { text: "", at: 0 };
 
-export function speak(line: string, { urgent = false, fallback }: { urgent?: boolean; fallback?: string } = {}) {
+/** Says a line. An optional line only adds detail, so it is skipped rather than said in a second voice when its clip is late. */
+export function speak(
+  line: string,
+  { urgent = false, fallback, optional = false }: { urgent?: boolean; fallback?: string; optional?: boolean } = {},
+) {
   const text = clean(line);
   if (!text) return;
   const now = Date.now();
@@ -495,12 +498,15 @@ export function speak(line: string, { urgent = false, fallback }: { urgent?: boo
     const clip = fallback ? clips.get(clipId(clean(fallback))) : undefined;
     return clip !== undefined && play(clip);
   };
+  const lastResort = () => {
+    if (!standIn() && !(optional && neuralAllowed())) speakWithDevice(text);
+  };
 
   // A ready made line is a quick download, worth a short wait even at the turn.
   const banked = isBanked(text);
   const coming = banked || modelState === "loading" || modelState === "ready";
   if ((urgent && !banked) || !coming || !neuralAllowed()) {
-    if (!standIn()) speakWithDevice(text);
+    lastResort();
     // Made now, so the same line is ready in the natural voice the next time it comes up.
     if (coming && neuralAllowed()) void synthesize(text, 1);
     return;
@@ -512,7 +518,7 @@ export function speak(line: string, { urgent = false, fallback }: { urgent?: boo
     () => {
       if (spoken || asked !== epoch) return;
       spoken = true;
-      if (!standIn()) speakWithDevice(text);
+      lastResort();
     },
     urgent ? WAIT_FOR_BANK_MS : WAIT_FOR_CLIP_MS,
   );
@@ -520,7 +526,7 @@ export function speak(line: string, { urgent = false, fallback }: { urgent?: boo
     if (spoken || asked !== epoch) return;
     spoken = true;
     clearTimeout(giveUp);
-    if (!(clip && play(clip)) && !standIn()) speakWithDevice(text);
+    if (!(clip && play(clip))) lastResort();
   });
 }
 
