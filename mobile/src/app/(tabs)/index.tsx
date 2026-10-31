@@ -32,17 +32,18 @@ import { RouteLine } from '@/components/route-line';
 import { PersonCard, PersonPin } from '@/components/person-pin';
 import { MapControls, type MapControl } from '@/components/map-controls';
 import { MapButton } from '@/components/map-button';
-import { NavigationBanner, NavigationFooter, ParkingCard } from '@/components/navigation-hud';
+import { BreakCard, NavigationBanner, NavigationFooter, ParkingCard } from '@/components/navigation-hud';
 import { PlaceDetails } from '@/components/place-details';
 import { PlaceMarker } from '@/components/place-marker';
 import { RoomMarker } from '@/components/room-marker';
 import { SafetyMarker } from '@/components/safety-marker';
 import { EdgeScrim, TopScrim } from '@/components/top-scrim';
 import { UserPin } from '@/components/user-pin';
-import { AMENITY_POINTS, isAmenity } from '@/data/amenities';
+import { AMENITY_POINTS, isAmenity, placeCalled, type AmenityKind } from '@/data/amenities';
 import { CAMPUS, PLACES, contains, getPlace, type Coordinate, type Place } from '@/data/campus';
 import { walkGraph } from '@/data/walk-graph';
 import { useMeetupLive } from '@/hooks/use-meetup-live';
+import { useNow } from '@/hooks/use-now';
 import { mapCameraPadding, PANEL_WIDTH, useMapChromeBottom, useShortViewport, useTabRail, useWide } from '@/hooks/use-layout';
 import { useNavigation, type FollowTarget } from '@/hooks/use-navigation';
 import { useRoutePreview } from '@/hooks/use-route-preview';
@@ -58,7 +59,10 @@ import { formatRouteTime } from '@/lib/directions';
 import { distanceMeters, formatDistance } from '@/lib/geo';
 import { stepText } from '@/lib/instructions';
 import { endTrip, showTrip } from '@/lib/live-activity';
-import { currentCompass, currentFix, glideMs, subscribeCompass, useLocation } from '@/lib/location';
+import { currentCompass, currentFix, glideMs, onFix, subscribeCompass, useLocation } from '@/lib/location';
+import { amenityWhere, nearestAmenity } from '@/lib/amenity-search';
+import { arriveChoices, breakArrivalNote, classStartAt, findBreak, type BreakOffer } from '@/lib/breaks';
+import { useClasses } from '@/lib/classes';
 import { parkingSpoken } from '@/lib/parking';
 import { watchSteps } from '@/lib/steps';
 import { roomSpot, safetyBuildingHere, safetyBuildings, safetyFor, type SafetySpot } from '@/lib/building-safety';
@@ -75,7 +79,7 @@ import {
 import { compactSafetySpots, placeChipSize, roomChipSize, sameIds, type Obstacle } from '@/lib/declutter';
 import { markerLabel, zoomBand, type ZoomBand } from '@/lib/place-marker';
 import { canSwitchTravel } from '@/lib/travel-switch';
-import { TRAVEL_SWITCH_LINES } from '@/lib/voice-lines';
+import { TRAVEL_SWITCH_LINES, lowerFirst } from '@/lib/voice-lines';
 import { askForRating, finishedWalk } from '@/lib/rating';
 import { floorLabel, roomDirections } from '@/lib/search';
 import { legSeconds, stopsStart } from '@/lib/stops';
@@ -87,7 +91,10 @@ import { useSocial } from '@/lib/social';
 import {
   MY_LOCATION,
   closeTrip,
+  insertStopNow,
   nextLeg,
+  onStopNow,
+  pickArrive,
   planTrip,
   removeStop,
   setAvoidStairs,
@@ -148,6 +155,10 @@ function initials(name: string, fallback: string) {
 // Place chips farther than this from every safety chip cannot meet one on screen close up.
 const OBSTACLE_METERS = 150;
 
+// The break check runs only while the walker is on the route, and the offer lapses this far past the seat.
+const BREAK_ON_ROUTE_METERS = 12;
+const BREAK_PASSED_METERS = 20;
+
 export default function MapScreen() {
   const scheme = useColorScheme();
   const insets = useSafeAreaInsets();
@@ -181,6 +192,10 @@ export default function MapScreen() {
   const [facingUp, setFacingUp] = useState(true);
   // The turn list at the top and the trip panel at the bottom: one open at a time, so the map stays in view.
   const [hudPanel, setHudPanel] = useState<'steps' | 'trip' | null>(null);
+  // An offer to rest is made at most once a walk, and only when there is a time to be there by.
+  const breakRef = useRef<{ asked: boolean; startedAt: number; arriveBy: number | null }>({ asked: true, startedAt: 0, arriveBy: null });
+  const [breakOffer, setBreakOffer] = useState<BreakOffer | null>(null);
+  const [breakStop, setBreakStop] = useState<{ id: string; leaveBy: number } | null>(null);
   const [isRotated, setIsRotated] = useState(false);
   const [activePerson, setActivePerson] = useState<string | null>(null);
   const [ratingDue, setRatingDue] = useState(false);
@@ -303,7 +318,11 @@ export default function MapScreen() {
   const target = navigating ? (getPlace(trip.legs[trip.leg]) ?? trip.destination) : trip.destination;
   const nextTarget = navigating ? getPlace(trip.legs[trip.leg + 1]) : undefined;
   const arrivalNote =
-    trip.room && target?.id === trip.destination?.id ? roomDirections(trip.room, trip.avoidStairs, trip.destination?.id) : undefined;
+    breakStop && target?.id === breakStop.id
+      ? breakArrivalNote(breakStop.leaveBy)
+      : trip.room && target?.id === trip.destination?.id
+        ? roomDirections(trip.room, trip.avoidStairs, trip.destination?.id)
+        : undefined;
   const room = useMemo(() => roomSpot(trip.destination?.id, trip.room), [trip.destination?.id, trip.room]);
 
   const navigation = useNavigation({
@@ -414,7 +433,7 @@ export default function MapScreen() {
   const voice = useVoiceGuidance({
     route: navigating ? navigation.route : null,
     progress: navigation.progress,
-    destinationName: target?.name,
+    destinationName: target ? placeCalled(target) : undefined,
     arrivalNote,
     isWrongWay: navigation.isWrongWay,
     hasArrived: navigation.hasArrived,
@@ -423,6 +442,61 @@ export default function MapScreen() {
     speed: navigation.speed,
   });
   const sayLine = voice.say;
+  const askLine = voice.ask;
+
+  // Read on each fix without redrawing for it: the walk so far and who to greet.
+  const breakInputs = useRef({
+    route: navigation.route,
+    progress: navigation.progress,
+    arrived: navigation.hasArrived,
+    manual: navigation.manualStep !== null,
+    name: profile?.displayName,
+  });
+  useEffect(() => {
+    breakInputs.current = {
+      route: navigation.route,
+      progress: navigation.progress,
+      arrived: navigation.hasArrived,
+      manual: navigation.manualStep !== null,
+      name: profile?.displayName,
+    };
+  }, [navigation.route, navigation.progress, navigation.hasArrived, navigation.manualStep, profile?.displayName]);
+  useEffect(
+    () =>
+      onFix(() => {
+        const walk = breakRef.current;
+        const { route, progress, arrived, manual, name } = breakInputs.current;
+        if (walk.asked || walk.arriveBy === null || !route || !progress || arrived || manual) return;
+        if (progress.distanceFromRoute > BREAK_ON_ROUTE_METERS) return;
+        const now = Date.now();
+        const offer = findBreak({ route, progress, arriveBy: walk.arriveBy, now, walkedSeconds: (now - walk.startedAt) / 1000, displayName: name });
+        if (!offer) return;
+        walk.asked = true;
+        setBreakOffer(offer);
+        askLine(offer.line);
+      }),
+    [askLine],
+  );
+  // The offer lapses once the seat is behind them: walking on is a no, and it is not asked again.
+  const shownBreak =
+    breakOffer && navigating && !navigation.hasArrived && navigation.progress && navigation.progress.distanceAlong <= breakOffer.along + BREAK_PASSED_METERS
+      ? breakOffer
+      : null;
+
+  const classes = useClasses();
+  const nowTick = useNow(60_000);
+  const classStart = useMemo(
+    () => (trip.destination ? classStartAt(trip.destination.id, classes, nowTick) : undefined),
+    [trip.destination, classes, nowTick],
+  );
+  const arriveOptions = useMemo(() => arriveChoices(nowTick, classStart), [nowTick, classStart]);
+  // Walking to a class picks its start time; anything picked by hand holds until another place is chosen.
+  const arrive =
+    trip.arrivePick && trip.arrivePick.placeId === trip.destination?.id
+      ? trip.arrivePick
+      : classStart
+        ? { id: 'class', at: classStart.at }
+        : { id: 'none', at: null };
   // Each parking card is read out once, as it appears.
   useEffect(() => {
     if (navigation.parking) sayLine(parkingSpoken(navigation.parking));
@@ -605,6 +679,10 @@ export default function MapScreen() {
     } catch {
       // Guidance still shows the turns.
     }
+    const walking = !route.travel || route.travel === 'walk';
+    breakRef.current = { asked: false, startedAt: Date.now(), arriveBy: walking ? arrive.at : null };
+    setBreakOffer(null);
+    setBreakStop(null);
     try {
       navigation.start(route, from);
       startNavigating(preview.plan?.targets.map((place) => place.id) ?? (trip.destination ? [trip.destination.id] : []));
@@ -645,6 +723,60 @@ export default function MapScreen() {
     navigation.start(route, here ?? null);
   }
 
+  // A stop added mid walk is the very next place, walked to from here; the rest of the trip carries on after it.
+  function addStopNow(place: Place) {
+    if (!navigating || !target) return;
+    const here = location.fix?.position;
+    const from = here ?? navigation.progress?.point ?? target.coordinate;
+    const route = findRoute(walkGraph(), from, place.coordinate, { avoidStairs: trip.avoidStairs });
+    if (!route) {
+      toast.show({ variant: 'danger', label: `Could not find a way to ${placeCalled(place)}` });
+      return;
+    }
+    insertStopNow(place.id, navigation.hasArrived);
+    setHudPanel(null);
+    setBreakOffer(null);
+    try {
+      voice.begin(route, navigation.facing());
+    } catch {
+      // Guidance still shows the turns.
+    }
+    navigation.start(route, here ?? null);
+    toast.show({
+      variant: 'success',
+      label: 'Stop added',
+      description: isAmenity(place) ? `${place.name}, ${lowerFirst(amenityWhere(place))}` : place.name,
+    });
+  }
+
+  function addStopKind(kind: AmenityKind) {
+    const from = location.fix?.position ?? navigation.progress?.point ?? target?.coordinate;
+    const match = from ? nearestAmenity(kind, from) : undefined;
+    if (match) addStopNow(match.place);
+  }
+
+  function takeBreak() {
+    const offer = breakOffer;
+    setBreakOffer(null);
+    if (!offer) return;
+    setBreakStop({ id: offer.spot.id, leaveBy: Date.now() + offer.toSeat * 1000 + offer.minutes * 60_000 });
+    addStopNow(offer.spot);
+  }
+
+  // A place picked on the search sheet mid walk comes back here to be walked to.
+  const addStopNowRef = useRef(addStopNow);
+  useEffect(() => {
+    addStopNowRef.current = addStopNow;
+  });
+  useEffect(
+    () =>
+      onStopNow((id) => {
+        const place = getPlace(id);
+        if (place) addStopNowRef.current(place);
+      }),
+    [],
+  );
+
   // Changing stairs mid walk finds the way again from here; if there is no step free way, the walk stays as is.
   function changeAvoidStairs(avoid: boolean) {
     if (!navigation.changeAvoidStairs(avoid)) {
@@ -655,6 +787,9 @@ export default function MapScreen() {
   }
 
   function end() {
+    breakRef.current.asked = true;
+    setBreakOffer(null);
+    setBreakStop(null);
     const destination = trip.destination;
     const reachedDestination = navigation.hasArrived && !nextTarget;
     // A compass turn landing after End would otherwise swing the camera back to the last followed spot.
@@ -1240,6 +1375,18 @@ export default function MapScreen() {
           <View className="px-3" style={wide && !columnChrome ? { alignItems: 'center' } : undefined}>
             <View style={{ width: '100%', maxWidth: PANEL_WIDTH }}>
               <DirectionsPanel
+                arrive={
+                  !preview.isOffCampus || trip.travelMode === 'walk'
+                    ? {
+                        choices: arriveOptions,
+                        selected: arrive.id,
+                        onChange: (id) => {
+                          const choice = arriveOptions.find((option) => option.id === id);
+                          if (choice && trip.destination) pickArrive(trip.destination.id, id, choice.at);
+                        },
+                      }
+                    : undefined
+                }
                 trip={trip}
                 route={preview.route}
                 issue={preview.issue}
@@ -1271,6 +1418,9 @@ export default function MapScreen() {
             }}
           />
         ) : null}
+        {shownBreak && !navigation.parking ? (
+          <BreakCard offer={shownBreak} onTake={takeBreak} onSkip={() => setBreakOffer(null)} />
+        ) : null}
         {navigating && navigation.route ? (
           <NavigationFooter
             route={navigation.route}
@@ -1293,6 +1443,9 @@ export default function MapScreen() {
             onContinue={continueTrip}
             onStep={step}
             onEnd={end}
+            canAddStop={!navigation.route.travel && navigation.manualStep === null}
+            onAddStopKind={addStopKind}
+            onAnotherStop={() => router.push({ pathname: '/stop', params: { now: '1' } })}
           />
         ) : null}
       </View>

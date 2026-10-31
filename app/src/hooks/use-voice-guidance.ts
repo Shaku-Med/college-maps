@@ -128,6 +128,11 @@ export function useVoiceGuidance({
     speak(line, { urgent: true });
   }, []);
 
+  /** Asks something that can wait its turn, like offering a break, without cutting off a direction being said. */
+  const ask = useCallback((line: string) => {
+    if (enabledRef.current) speak(line);
+  }, []);
+
   const toggle = useCallback(() => {
     const next = !enabledRef.current;
     enabledRef.current = next;
@@ -185,5 +190,5 @@ export function useVoiceGuidance({
     if (hasArrived && enabledRef.current) speak(arrivalLine(nameRef.current ?? DEFAULT_DESTINATION, noteRef.current), { urgent: true });
   }, [hasArrived]);
 
-  return { enabled, toggle, begin, prime, announceStep, say };
+  return { enabled, toggle, begin, prime, announceStep, say, ask };
 }

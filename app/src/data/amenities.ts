@@ -50,3 +50,11 @@ const AMENITY_BY_ID = new Map(AMENITY_PLACES.map((place) => [place.id, place]));
 
 export const getAmenityPlace = (id: string): AmenityPlace | undefined => AMENITY_BY_ID.get(id);
 export const isAmenity = (place: Place): place is AmenityPlace => "amenity" in place;
+
+/** How a place is named in a sentence: "the bench" or "the SOS emergency phone" for these, a building by its name. */
+export function placeCalled(place: Place) {
+  if (!isAmenity(place)) return place.name;
+  const { name } = place;
+  // Acronyms like SOS keep their capitals.
+  return `the ${name[1] === name[1]?.toUpperCase() ? name : name.charAt(0).toLowerCase() + name.slice(1)}`;
+}

@@ -24,6 +24,7 @@ import { formatRouteTime } from "@/lib/directions";
 import { formatDistance, formatSeconds } from "@/lib/geo";
 import { stepText } from "@/lib/instructions";
 import { PLACE_SECTIONS } from "@/lib/search";
+import type { ArriveChoice } from "@/lib/breaks";
 import { MAX_STOPS, MY_LOCATION, stopQuestionText, tripTotals, type StopQuestion, type TripPlan } from "@/lib/stops";
 import type { Meetup } from "@/lib/social-api";
 import type { Route, TravelMode } from "@/lib/routing";
@@ -48,6 +49,8 @@ const TRAVEL_MODES: Array<{ id: TravelMode; label: string; verb: string; noun: s
 ];
 
 type DirectionsPanelProps = {
+  /** When to be there, which lets a walk offer a break when there is time to spare. Walks only. */
+  arrive?: { choices: ArriveChoice[]; selected: string; onChange: (id: string) => void };
   destination: Place;
   room?: string;
   origin: string;
@@ -124,6 +127,7 @@ function StopItem({
 }
 
 export function DirectionsPanel({
+  arrive,
   destination,
   room,
   origin,
@@ -258,6 +262,31 @@ export function DirectionsPanel({
             </ListBox>
           </Select.Popover>
         </Select>
+
+        {arrive ? (
+          <Select
+            value={arrive.selected}
+            onChange={(key) => key !== null && arrive.onChange(String(key))}
+            fullWidth
+            aria-label="Be there by">
+            <Label className="text-xs text-muted">Be there by</Label>
+            <Select.Trigger>
+              <CalendarClock className="size-4 shrink-0 text-accent" aria-hidden />
+              <Select.Value />
+              <Select.Indicator />
+            </Select.Trigger>
+            <Select.Popover containerPadding={48}>
+              <ListBox>
+                {arrive.choices.map((choice) => (
+                  <ListBox.Item key={choice.id} id={choice.id} textValue={choice.label}>
+                    {choice.label}
+                    <ListBox.ItemIndicator />
+                  </ListBox.Item>
+                ))}
+              </ListBox>
+            </Select.Popover>
+          </Select>
+        ) : null}
 
         {stops.length > 0 ? (
           <ol aria-label="Stops on the way" className="flex flex-col gap-1.5">

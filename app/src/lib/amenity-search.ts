@@ -57,6 +57,17 @@ function closest(kind: AmenityKind, origin: Coordinate, limit: number): AmenityM
     .map((match) => ({ ...match, by: nearestBuilding(match.place.coordinate) }));
 }
 
+/** The stops someone mid walk most often wants, a tap each. */
+export const QUICK_STOPS: { kind: AmenityKind; label: string }[] = [
+  { kind: "trash", label: "Trash can" },
+  { kind: "bikes", label: "Bike rack" },
+  { kind: "bench", label: "Bench" },
+  { kind: "sos", label: "SOS phone" },
+];
+
+/** The one of a kind nearest a point, such as the trash can closest to someone mid walk. */
+export const nearestAmenity = (kind: AmenityKind, at: Coordinate): AmenityMatch | undefined => closest(kind, at, 1)[0];
+
 /** The one closest to you of each kind, for a list that is a tap away from directions. */
 export const closestOfEach = (here: Coordinate): AmenityMatch[] => AMENITY_SHORTCUTS.flatMap((kind) => closest(kind, here, 1));
 

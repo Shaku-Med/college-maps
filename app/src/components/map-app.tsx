@@ -28,14 +28,17 @@ import { useVoiceChoice } from "@/hooks/use-voice-choice";
 import { useVoiceGuidance } from "@/hooks/use-voice-guidance";
 import { useWakeLock } from "@/hooks/use-wake-lock";
 import { campusActivityByPlace, eventsAtPlace } from "@/lib/campus-activity";
-import { isAmenity } from "@/data/amenities";
+import { isAmenity, placeCalled, type AmenityKind } from "@/data/amenities";
+import { useNow } from "@/hooks/use-now";
+import { amenityWhere, nearestAmenity } from "@/lib/amenity-search";
+import { arriveChoices, breakArrivalNote, classStartAt, findBreak, type BreakOffer } from "@/lib/breaks";
 import { MAP_FILTERS, type MapFilter } from "@/lib/categories";
 import { fetchTripRoute } from "@/lib/directions";
 import { roomSpot, safetyBuildingHere, safetyBuildings } from "@/lib/building-safety";
 import { metersFromBuilding } from "@/lib/buildings";
 import { autoTravelOn } from "@/lib/travel-prefs";
 import { canSwitchTravel, createTravelSwitch, type SwitchableTravel } from "@/lib/travel-switch";
-import { TRAVEL_SWITCH_LINES } from "@/lib/voice-lines";
+import { TRAVEL_SWITCH_LINES, lowerFirst } from "@/lib/voice-lines";
 import { bearingDegrees, distanceMeters, turnAngle } from "@/lib/geo";
 import { ON_FOOT_MAX_MPS, RIDING_MAX_MPS, createMotionTracker, isOnFoot, type MotionState } from "@/lib/motion";
 import {
@@ -234,6 +237,9 @@ function MapViewControls({
   );
 }
 
+// Past the seat by this much, the offer to rest there has lapsed.
+const BREAK_PASSED_METERS = 20;
+
 export function MapApp({ initialPlaceId, initialRoom, initialAccountOpen = false }: MapAppProps) {
   const mapRef = useRef<CampusMapHandle>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -277,6 +283,12 @@ export function MapApp({ initialPlaceId, initialRoom, initialAccountOpen = false
   const [leg, setLeg] = useState(0);
   // Following the steps by hand, a fix only takes over once it is on the route.
   const manualRef = useRef(false);
+  // An offer to rest is made at most once a walk, and only when there is a time to be there by.
+  const breakRef = useRef<{ asked: boolean; startedAt: number; arriveBy: number | null }>({ asked: true, startedAt: 0, arriveBy: null });
+  const [breakOffer, setBreakOffer] = useState<BreakOffer | null>(null);
+  const [breakStop, setBreakStop] = useState<{ id: string; leaveBy: number } | null>(null);
+  const displayNameRef = useRef<string | undefined>(undefined);
+  const [arrivePick, setArrivePick] = useState<{ placeId: string; id: string; at: number | null } | null>(null);
   const [avoidStairs, setAvoidStairs] = useState(false);
 
   const [navRoute, setNavRoute] = useState<Route | null>(null);
@@ -503,6 +515,28 @@ export function MapApp({ initialPlaceId, initialRoom, initialAccountOpen = false
     },
     [showParking],
   );
+
+  useEffect(() => {
+    displayNameRef.current =
+      account.state.status === "signed-in" && !account.state.user.needsProfile ? account.state.user.displayName : undefined;
+  }, [account.state]);
+
+  const offerBreak = useCallback((route: Route, at: RouteProgress) => {
+    const walk = breakRef.current;
+    if (walk.asked || walk.arriveBy === null || manualRef.current) return;
+    const now = Date.now();
+    const offer = findBreak({
+      route,
+      progress: at,
+      arriveBy: walk.arriveBy,
+      now,
+      walkedSeconds: (now - walk.startedAt) / 1000,
+      displayName: displayNameRef.current,
+    });
+    if (!offer) return;
+    walk.asked = true;
+    setBreakOffer(offer);
+  }, []);
 
   const handlePosition = useCallback(
     ({ position, accuracy, heading, speed }: GeoFix) => {
@@ -783,6 +817,7 @@ export function MapApp({ initialPlaceId, initialRoom, initialAccountOpen = false
       }
       // On the route the dot sits on the route; off it, on the walkway they are actually walking.
       const onRoute = next.distanceFromRoute <= SNAP_TO_ROUTE_METERS;
+      if (onRoute && !arrived) offerBreak(route, next);
       const offRoutePoint = onRoute || arrived ? undefined : walkway?.point;
       setWalkwayPoint(offRoutePoint);
       const shown = onRoute ? next.point : (offRoutePoint ?? position);
@@ -791,7 +826,7 @@ export function MapApp({ initialPlaceId, initialRoom, initialAccountOpen = false
         mapRef.current?.follow(shown, navigationPadding(), zoom);
       }
     },
-    [setCourse, rerouteStreet, facing, commitRoute, showParking, offerParkingHere, switchTravel],
+    [setCourse, rerouteStreet, facing, commitRoute, showParking, offerParkingHere, switchTravel, offerBreak],
   );
 
   const handleGeoError = useCallback((status: "denied" | "unavailable" | "error") => {
@@ -811,14 +846,35 @@ export function MapApp({ initialPlaceId, initialRoom, initialAccountOpen = false
   // While guiding, the place being walked to now: the next stop, or the destination after the last one.
   const target = mode === "navigate" ? (getPlace(legs[leg]) ?? selected) : selected;
   const nextTarget = mode === "navigate" ? getPlace(legs[leg + 1]) : undefined;
-  const arrivalNote = room && target?.id === selectedId ? roomDirections(room, avoidStairs, selectedId) : undefined;
+  const arrivalNote =
+    breakStop && target?.id === breakStop.id
+      ? breakArrivalNote(breakStop.leaveBy)
+      : room && target?.id === selectedId
+        ? roomDirections(room, avoidStairs, selectedId)
+        : undefined;
+  // The offer lapses once the seat is behind them: walking on is a no, and it is not asked again.
+  const shownBreak =
+    breakOffer && mode === "navigate" && !hasArrived && progress && progress.distanceAlong <= breakOffer.along + BREAK_PASSED_METERS
+      ? breakOffer
+      : null;
+
+  const nowTick = useNow(60_000);
+  const classStart = useMemo(() => (selected ? classStartAt(selected.id, loadSchedule(), nowTick) : undefined), [selected, nowTick]);
+  const arriveOptions = useMemo(() => arriveChoices(nowTick, classStart), [nowTick, classStart]);
+  // Walking to a class picks its start time; anything picked by hand holds until another place is chosen.
+  const arrive =
+    arrivePick && arrivePick.placeId === selectedId
+      ? arrivePick
+      : classStart
+        ? { id: "class", at: classStart.at }
+        : { id: "none", at: null };
 
   const geo = useGeolocation({ onPosition: handlePosition, onError: handleGeoError });
   useWakeLock(mode === "navigate");
   const voice = useVoiceGuidance({
     route: mode === "navigate" ? navRoute : null,
     progress,
-    destinationName: target?.name,
+    destinationName: target ? placeCalled(target) : undefined,
     arrivalNote,
     isWrongWay,
     hasArrived,
@@ -827,6 +883,10 @@ export function MapApp({ initialPlaceId, initialRoom, initialAccountOpen = false
     speed: () => motionStateRef.current.speed,
   });
   const primeVoice = voice.prime;
+  const askLine = voice.ask;
+  useEffect(() => {
+    if (breakOffer) askLine(breakOffer.line);
+  }, [breakOffer, askLine]);
   const sayLine = voice.say;
 
   const announcedSwitchRef = useRef(0);
@@ -1281,7 +1341,43 @@ export function MapApp({ initialPlaceId, initialRoom, initialAccountOpen = false
     setLegs(plan.targets.map((place) => place.id));
     setLeg(0);
     setStopQuestion(null);
+    const walking = !previewRoute.travel || previewRoute.travel === "walk";
+    breakRef.current = { asked: false, startedAt: Date.now(), arriveBy: walking ? arrive.at : null };
+    setBreakOffer(null);
+    setBreakStop(null);
     beginRoute(previewRoute, from);
+  }
+
+  // A stop added mid walk is the very next place, walked to from here; the rest of the trip carries on after it.
+  function addStopNow(place: Place) {
+    if (mode !== "navigate" || !graph || !target) return;
+    const from = geo.position ?? progress?.point ?? target.coordinate;
+    const route = findRoute(graph, from, place.coordinate, { avoidStairs });
+    if (!route) {
+      toast.danger(`Could not find a way to ${placeCalled(place)}`);
+      return;
+    }
+    // Standing at a stop already, the new one comes after it rather than sending them back.
+    const at = hasArrived ? leg + 1 : leg;
+    setLegs((current) => [...current.slice(0, at), place.id, ...current.slice(at)]);
+    if (hasArrived) setLeg(at);
+    setBreakOffer(null);
+    beginRoute(route, geo.position);
+    toast.success(isAmenity(place) ? `Stop added: ${place.name}, ${lowerFirst(amenityWhere(place))}` : `Stop added: ${place.name}`);
+  }
+
+  function addStopKind(kind: AmenityKind) {
+    const from = geo.position ?? progress?.point ?? target?.coordinate;
+    const match = from ? nearestAmenity(kind, from) : undefined;
+    if (match) addStopNow(match.place);
+  }
+
+  function takeBreak() {
+    const offer = breakOffer;
+    setBreakOffer(null);
+    if (!offer) return;
+    setBreakStop({ id: offer.spot.id, leaveBy: Date.now() + offer.toSeat * 1000 + offer.minutes * 60_000 });
+    addStopNow(offer.spot);
   }
 
   // Arrived at a stop: on to the next place, from wherever the walker is now.
@@ -1301,6 +1397,9 @@ export function MapApp({ initialPlaceId, initialRoom, initialAccountOpen = false
   function endNavigation() {
     clearTimeout(followAgainRef.current);
     resetParking();
+    breakRef.current.asked = true;
+    setBreakOffer(null);
+    setBreakStop(null);
     manualRef.current = false;
     setLegs([]);
     setLeg(0);
@@ -1810,6 +1909,18 @@ export function MapApp({ initialPlaceId, initialRoom, initialAccountOpen = false
           wrapClassName="absolute inset-x-0 bottom-0 z-20 md:bottom-auto md:left-4 md:right-auto md:top-4 md:w-[420px]"
           onCollapse={() => setIsDirectionsExpanded(false)}>
           <DirectionsPanel
+            arrive={
+              !isOffCampus || travelMode === "walk"
+                ? {
+                    choices: arriveOptions,
+                    selected: arrive.id,
+                    onChange: (id) => {
+                      const choice = arriveOptions.find((option) => option.id === id);
+                      if (choice) setArrivePick({ placeId: selected.id, id, at: choice.at });
+                    },
+                  }
+                : undefined
+            }
             destination={selected}
             room={room}
             origin={origin}
@@ -1910,6 +2021,15 @@ export function MapApp({ initialPlaceId, initialRoom, initialAccountOpen = false
           canAvoidStairs={!navRoute.travel || navRoute.travel === "walk"}
           onAvoidStairsChange={changeAvoidStairs}
           onEnd={endNavigation}
+          breakOffer={shownBreak}
+          onTakeBreak={takeBreak}
+          onSkipBreak={() => setBreakOffer(null)}
+          canAddStop={Boolean(graph) && !navRoute.travel && manualStep === null}
+          onAddStopKind={addStopKind}
+          onAddStopPlace={(id) => {
+            const place = getPlace(id);
+            if (place) addStopNow(place);
+          }}
           parking={parking}
           onParkingPrimary={() => {
             const trip = parkingTripRef.current;

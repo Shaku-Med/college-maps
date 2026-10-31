@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, Surface, Switch } from "@heroui/react";
+import { Button, Header, ListBox, Select, Surface, Switch } from "@heroui/react";
 import {
   Bus,
   ChevronDown,
@@ -11,6 +11,7 @@ import {
   Flag,
   LocateFixed,
   Navigation2,
+  Plus,
   RefreshCw,
   SquareParking,
   Undo2,
@@ -22,12 +23,17 @@ import {
 import { useState } from "react";
 
 import { StepIcon } from "@/components/step-icon";
-import type { Place } from "@/data/campus";
+import { isAmenity, type AmenityKind } from "@/data/amenities";
+import { CATEGORY_LABELS, type Place } from "@/data/campus";
+import { QUICK_STOPS } from "@/lib/amenity-search";
+import type { BreakOffer } from "@/lib/breaks";
+import { AMENITY_ICONS } from "@/lib/categories";
 import { formatRouteTime } from "@/lib/directions";
 import { formatDistance } from "@/lib/geo";
 import { stepText } from "@/lib/instructions";
 import { parkingChoices, parkingDetail, parkingTitle, type ParkingPrompt } from "@/lib/parking";
 import type { Route, RouteProgress } from "@/lib/routing";
+import { PLACE_SECTIONS } from "@/lib/search";
 
 export type RouteNotice = "rerouted" | "faster" | "switched";
 
@@ -71,7 +77,87 @@ type NavigationHudProps = {
   parking?: ParkingPrompt | null;
   onParkingPrimary?: () => void;
   onParkingSecondary?: () => void;
+  /** A rest offered on a walk with time to spare. Not answering is a no. */
+  breakOffer?: BreakOffer | null;
+  onTakeBreak?: () => void;
+  onSkipBreak?: () => void;
+  /** Stops can be added mid walk: the nearest of a kind, or any place. */
+  canAddStop?: boolean;
+  onAddStopKind?: (kind: AmenityKind) => void;
+  onAddStopPlace?: (id: string) => void;
 };
+
+/** A friendly offer to rest at a seat just ahead, above the trip panel like a parking choice. */
+function BreakCard({ offer, onTake, onSkip }: { offer: BreakOffer; onTake?: () => void; onSkip?: () => void }) {
+  const Seat = AMENITY_ICONS[offer.spot.amenity];
+  return (
+    <div role="status" aria-live="polite" className="animate-sheet-in mx-3 mb-3 md:mx-0">
+      <Surface className="glass-chrome rounded-3xl p-4 shadow-xl">
+        <div className="flex items-start gap-3">
+          <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-accent text-accent-foreground">
+            <Seat className="size-5" aria-hidden />
+          </span>
+          <p className="min-w-0 flex-1 pt-0.5 text-sm font-medium leading-snug">{offer.line}</p>
+        </div>
+        <div className="mt-3 flex gap-2">
+          <Button variant="primary" className="flex-1" onPress={onTake}>
+            Take a break
+          </Button>
+          <Button variant="secondary" className="flex-1" onPress={onSkip}>
+            Keep going
+          </Button>
+        </div>
+      </Surface>
+    </div>
+  );
+}
+
+/** Adding a stop mid walk: the nearest trash can, bike rack, bench, or SOS phone in a tap, or any other place. */
+function StopNow({ onKind, onPlace }: { onKind?: (kind: AmenityKind) => void; onPlace?: (id: string) => void }) {
+  return (
+    <div className="pt-2">
+      <p className="pb-1.5 text-xs font-semibold uppercase tracking-wide text-muted">Add a stop</p>
+      <div className="flex flex-wrap gap-1.5">
+        {QUICK_STOPS.map(({ kind, label }) => {
+          const Icon = AMENITY_ICONS[kind];
+          return (
+            <Button key={kind} size="sm" variant="secondary" className="gap-1.5 rounded-full" onPress={() => onKind?.(kind)}>
+              <Icon className="size-3.5" aria-hidden />
+              {label}
+            </Button>
+          );
+        })}
+      </div>
+      <Select
+        value={null}
+        onChange={(key) => key !== null && onPlace?.(String(key))}
+        fullWidth
+        aria-label="Add another place as a stop"
+        placeholder="Another place"
+        className="mt-2">
+        <Select.Trigger>
+          <Plus className="size-4 shrink-0 text-accent" aria-hidden />
+          <Select.Value />
+          <Select.Indicator />
+        </Select.Trigger>
+        <Select.Popover containerPadding={48}>
+          <ListBox>
+            {PLACE_SECTIONS.map(({ category, places }) => (
+              <ListBox.Section key={category}>
+                <Header>{CATEGORY_LABELS[category]}</Header>
+                {places.map((place) => (
+                  <ListBox.Item key={place.id} id={place.id} textValue={place.name}>
+                    {place.name}
+                  </ListBox.Item>
+                ))}
+              </ListBox.Section>
+            ))}
+          </ListBox>
+        </Select.Popover>
+      </Select>
+    </div>
+  );
+}
 
 /** A parking choice above the trip panel, the way Apple Maps offers one. */
 function ParkingCard({ prompt, onPrimary, onSecondary }: { prompt: ParkingPrompt; onPrimary?: () => void; onSecondary?: () => void }) {
@@ -147,6 +233,12 @@ export function NavigationHud({
   parking,
   onParkingPrimary,
   onParkingSecondary,
+  breakOffer,
+  onTakeBreak,
+  onSkipBreak,
+  canAddStop = false,
+  onAddStopKind,
+  onAddStopPlace,
 }: NavigationHudProps) {
   // The turns ahead at the top and the trip settings at the bottom: one open at a time, so the map stays in view.
   const [panel, setPanel] = useState<"steps" | "trip" | null>(null);
@@ -314,7 +406,11 @@ export function NavigationHud({
             ) : null}
           </div>
         ) : null}
-        {parking ? <ParkingCard prompt={parking} onPrimary={onParkingPrimary} onSecondary={onParkingSecondary} /> : null}
+        {parking ? (
+          <ParkingCard prompt={parking} onPrimary={onParkingPrimary} onSecondary={onParkingSecondary} />
+        ) : breakOffer ? (
+          <BreakCard offer={breakOffer} onTake={onTakeBreak} onSkip={onSkipBreak} />
+        ) : null}
         <Surface className="glass-chrome rounded-t-[28px] px-5 pb-[max(1rem,var(--map-safe-bottom))] pt-4 shadow-2xl md:rounded-3xl md:pb-4">
           {tripOpen ? (
             <div className="animate-fade-in mb-3 border-b border-separator pb-2">
@@ -326,6 +422,7 @@ export function NavigationHud({
               ) : null}
               <TripSetting label="Spoken directions" isSelected={voiceOn} onChange={() => onToggleVoice()} />
               <TripSetting label="Turn the map with me" isSelected={facingUp} onChange={() => onToggleFacing()} />
+              {canAddStop ? <StopNow onKind={onAddStopKind} onPlace={onAddStopPlace} /> : null}
             </div>
           ) : null}
           <div className="flex items-center gap-3">
@@ -349,8 +446,8 @@ export function NavigationHud({
             ) : (
               <>
                 <p className="text-lg font-semibold leading-tight">{formatRouteTime(route, remaining)}</p>
-                <p className="text-sm text-muted">
-                  {formatDistance(remaining)} to {destination.id}
+                <p className="truncate text-sm text-muted">
+                  {formatDistance(remaining)} to {isAmenity(destination) ? destination.name : (destination.label ?? destination.id)}
                   {stopLabel ? ` · ${stopLabel}` : ""}
                 </p>
               </>

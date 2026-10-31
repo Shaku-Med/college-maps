@@ -17,6 +17,7 @@ import { ISSUE_TEXT, type RouteIssue } from '@/hooks/use-route-preview';
 import { formatRouteTime } from '@/lib/directions';
 import { formatDistance, formatSeconds } from '@/lib/geo';
 import { stepText } from '@/lib/instructions';
+import type { ArriveChoice } from '@/lib/breaks';
 import type { Route, TravelMode } from '@/lib/routing';
 import type { Meetup } from '@/lib/social-api';
 import { MAX_STOPS, stopCount, stopQuestionText, tripTotals, type TripPlan } from '@/lib/stops';
@@ -36,6 +37,8 @@ function arrivalTime(route: Route, now: number) {
 }
 
 type DirectionsPanelProps = {
+  /** When to be there, which lets a walk offer a break when there is time to spare. Walks only. */
+  arrive?: { choices: ArriveChoice[]; selected: string; onChange: (id: string) => void };
   trip: Trip;
   route: Route | null;
   issue?: RouteIssue;
@@ -55,6 +58,7 @@ type DirectionsPanelProps = {
 };
 
 export function DirectionsPanel({
+  arrive,
   trip,
   route,
   issue,
@@ -119,6 +123,37 @@ export function DirectionsPanel({
           </Text>
           <Icon name="chevron.up.chevron.down" size={12} tintColor={muted} />
         </Pressable>
+
+        {arrive ? (
+          <View className="gap-1.5">
+            <Text className="px-1 text-xs font-semibold uppercase tracking-wide text-muted">Be there by</Text>
+            {/* Scrolls under the panel's padding to its edge, so a chip is never cut off flat. */}
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={{ marginHorizontal: -16 }}
+              contentContainerClassName="gap-2 px-4">
+              {arrive.choices.map((choice) => {
+                const selected = choice.id === arrive.selected;
+                return (
+                  <Pressable
+                    key={choice.id}
+                    accessibilityRole="radio"
+                    accessibilityState={{ selected }}
+                    onPress={() => {
+                      void Haptics.selectionAsync();
+                      arrive.onChange(choice.id);
+                    }}
+                    className={cn('rounded-full px-3.5 py-2', selected ? 'bg-accent' : 'bg-default')}>
+                    <Text className={cn('text-sm font-semibold', selected ? 'text-accent-foreground' : 'text-foreground')}>
+                      {choice.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          </View>
+        ) : null}
 
         {stops.length > 0 ? (
           <View className="gap-2">

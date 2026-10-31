@@ -33,6 +33,8 @@ export type Trip = {
   legs: string[];
   /** While guiding: which of `legs` is being walked to now. */
   leg: number;
+  /** When to be there, picked by hand for one destination; otherwise a class there sets it. */
+  arrivePick: { placeId: string; id: string; at: number | null } | null;
 };
 
 let trip: Trip = {
@@ -47,6 +49,7 @@ let trip: Trip = {
   stopPending: null,
   legs: [],
   leg: 0,
+  arrivePick: null,
 };
 const listeners = new Set<() => void>();
 
@@ -138,6 +141,23 @@ export const startNavigating = (legs: string[]) =>
 /** On to the next place after arriving at a stop. */
 export const nextLeg = () => trip.leg < trip.legs.length - 1 && set({ leg: trip.leg + 1 });
 export const stopNavigating = () => set({ phase: trip.destination ? 'preview' : 'idle', legs: [], leg: 0 });
+export const pickArrive = (placeId: string, id: string, at: number | null) => set({ arrivePick: { placeId, id, at } });
+
+/** Puts a stop in as the very next place mid walk; standing at a stop already, it comes after that one. */
+export function insertStopNow(id: string, atStop: boolean) {
+  const at = atStop ? trip.leg + 1 : trip.leg;
+  set({ legs: [...trip.legs.slice(0, at), id, ...trip.legs.slice(at)], leg: at });
+}
+
+// The map owns the walk, so a stop picked on the search sheet mid walk is handed to it.
+let stopNowHandler: ((id: string) => void) | null = null;
+export function onStopNow(handler: (id: string) => void) {
+  stopNowHandler = handler;
+  return () => {
+    if (stopNowHandler === handler) stopNowHandler = null;
+  };
+}
+export const requestStopNow = (id: string) => stopNowHandler?.(id);
 export function closeTrip() {
   stopToken += 1;
   set({
@@ -151,6 +171,7 @@ export function closeTrip() {
     stopPending: null,
     legs: [],
     leg: 0,
+    arrivePick: null,
   });
 }
 

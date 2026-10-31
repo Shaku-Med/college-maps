@@ -28,6 +28,10 @@ import { formatDistance } from '@/lib/geo';
 import { stepText } from '@/lib/instructions';
 import { parkingChoices, parkingDetail, parkingTitle, type ParkingPrompt } from '@/lib/parking';
 import type { Route, RouteProgress } from '@/lib/routing';
+import type { AmenityKind } from '@/data/amenities';
+import { QUICK_STOPS } from '@/lib/amenity-search';
+import type { BreakOffer } from '@/lib/breaks';
+import { AMENITY_SYMBOLS } from '@/lib/categories';
 
 const NOTICE_TEXT: Record<RouteNotice, string> = {
   rerouted: 'Route updated',
@@ -333,6 +337,10 @@ type BottomProps = {
   onContinue?: () => void;
   onStep: (index: number) => void;
   onEnd: () => void;
+  /** Stops can be added mid walk: the nearest of a kind, or any place from search. */
+  canAddStop?: boolean;
+  onAddStopKind?: (kind: AmenityKind) => void;
+  onAnotherStop?: () => void;
 };
 
 /** A setting in the trip panel, with the platform's own switch. */
@@ -388,8 +396,11 @@ export function NavigationFooter({
   onContinue,
   onStep,
   onEnd,
+  canAddStop = false,
+  onAddStopKind,
+  onAnotherStop,
 }: BottomProps) {
-  const [foreground, muted] = useThemeColor(['foreground', 'muted']);
+  const [foreground, muted, accent] = useThemeColor(['foreground', 'muted', 'accent']);
   const now = useNow();
   const reduceMotion = useReducedMotion();
   const remaining = progress?.remaining ?? route.distance;
@@ -431,7 +442,8 @@ export function NavigationFooter({
                   <Text className="text-2xl font-bold text-foreground">
                     {hasArrived ? 'Arrived' : formatRouteTime(route, remaining)}
                   </Text>
-                  <Text className="text-sm text-muted">
+                  {/* One line beside the buttons: with a stop label it shrinks a little instead of wrapping. */}
+                  <Text className="text-sm text-muted" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
                     {hasArrived ? "You're here" : [formatDistance(remaining), arrive, stopLabel].filter(Boolean).join(' · ')}
                   </Text>
                 </View>
@@ -474,11 +486,69 @@ export function NavigationFooter({
               ) : null}
               <Setting symbol="speaker.wave.2.fill" title="Spoken directions" value={voiceOn} onChange={() => onToggleVoice()} />
               <Setting symbol="location.north.line.fill" title="Turn the map with me" value={facingUp} onChange={onFacingUp} />
+              {canAddStop ? (
+                <View className="gap-2 pb-1 pt-2">
+                  <Text className="text-xs font-semibold uppercase tracking-wide text-muted">Add a stop</Text>
+                  <View className="flex-row flex-wrap gap-2">
+                    {QUICK_STOPS.map(({ kind, label }) => (
+                      <Press
+                        key={kind}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Add the nearest ${/^[A-Z]{2}/.test(label) ? label : label.toLowerCase()} as a stop`}
+                        onPress={() => {
+                          void Haptics.selectionAsync();
+                          onAddStopKind?.(kind);
+                        }}
+                        dim={0.7}
+                        className="flex-row items-center gap-1.5 rounded-full bg-default px-3 py-2">
+                        <Icon name={AMENITY_SYMBOLS[kind]} size={13} tintColor={foreground} />
+                        <Text className="text-sm font-semibold text-foreground">{label}</Text>
+                      </Press>
+                    ))}
+                    <Press
+                      accessibilityRole="button"
+                      onPress={onAnotherStop}
+                      dim={0.7}
+                      className="flex-row items-center gap-1.5 rounded-full bg-default px-3 py-2">
+                      <Icon name="plus.circle.fill" size={13} tintColor={accent} />
+                      <Text className="text-sm font-semibold text-accent">Another place</Text>
+                    </Press>
+                  </View>
+                </View>
+              ) : null}
             </Animated.View>
           ) : null}
         </View>
       </Glass>
     </View>
+  );
+}
+
+/** A friendly offer to rest at a seat just ahead, above the trip panel like a parking choice. */
+export function BreakCard({ offer, onTake, onSkip }: { offer: BreakOffer; onTake: () => void; onSkip: () => void }) {
+  const accentForeground = useThemeColor('accent-foreground');
+  const reduceMotion = useReducedMotion();
+  return (
+    <Animated.View
+      entering={reduceMotion ? undefined : FadeInDown.duration(220)}
+      exiting={reduceMotion ? undefined : FadeOutDown.duration(160)}
+      accessibilityLiveRegion="polite"
+      style={{ marginHorizontal: 12 }}>
+      <Glass radius={24} interactive>
+        <View className="gap-3 p-4">
+          <View className="flex-row items-start gap-3">
+            <View className="size-10 items-center justify-center rounded-full bg-accent">
+              <Icon name={AMENITY_SYMBOLS[offer.spot.amenity]} size={18} weight="semibold" tintColor={accentForeground} />
+            </View>
+            <Text className="min-w-0 flex-1 pt-0.5 text-base font-medium leading-6 text-foreground">{offer.line}</Text>
+          </View>
+          <View className="flex-row gap-2">
+            <MapButton style={{ flex: 1 }} label="Take a break" onPress={onTake} />
+            <MapButton style={{ flex: 1 }} variant="secondary" label="Keep going" onPress={onSkip} />
+          </View>
+        </View>
+      </Glass>
+    </Animated.View>
   );
 }
 
