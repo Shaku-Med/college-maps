@@ -472,6 +472,9 @@ export function makeClip(voice: NaturalVoiceId, text: string, priority: Priority
   return entry.job;
 }
 
+/** Whether a clip for this line is being made right now. */
+export const isMaking = (voice: NaturalVoiceId, text: string) => inflight.has(clipKey(voice, text));
+
 /** Drops route lines still waiting to be made, such as the rest of a route that was just replaced. */
 export function clearQueuedClips() {
   send({ type: 'clear' });

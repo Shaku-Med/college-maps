@@ -504,8 +504,10 @@ export function speak(
 
   // A ready made line is a quick download, worth a short wait even at the turn.
   const banked = isBanked(text);
-  const coming = banked || modelState === "loading" || modelState === "ready";
-  if ((urgent && !banked) || !coming || !neuralAllowed()) {
+  // A turn's own line already being made is worth a short wait; the plain stand in would lose the street name.
+  const making = pending.has(clipId(text));
+  const coming = banked || making || modelState === "loading" || modelState === "ready";
+  if ((urgent && !banked && !making) || !coming || !neuralAllowed()) {
     lastResort();
     // Made now, so the same line is ready in the natural voice the next time it comes up.
     if (coming && neuralAllowed()) void synthesize(text, 1);

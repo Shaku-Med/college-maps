@@ -30,6 +30,7 @@ import {
   freshSpoken,
   markPassed,
   markStart,
+  NOTICE_REPEAT_MS,
   planAhead,
   plannedLines,
   voicePlan,
@@ -73,6 +74,7 @@ export function useVoiceGuidance({
   const nameRef = useRef(destinationName);
   const noteRef = useRef(arrivalNote);
   const spokenRef = useRef<Spoken>(freshSpoken());
+  const noticeAtRef = useRef(0);
   const primedRef = useRef<{ route: Route | null; lines: Map<number, StepLines> }>({ route: null, lines: new Map() });
   const routeRef = useRef(route);
   const speedRef = useRef(currentSpeed);
@@ -152,7 +154,11 @@ export function useVoiceGuidance({
 
   // Declared before the turn cues so "Route updated" is said before the new route's first line.
   useEffect(() => {
-    if (notice && enabledRef.current) speak(NOTICE_LINES[notice]);
+    if (!notice || !enabledRef.current) return;
+    const now = Date.now();
+    if (notice === "rerouted" && now - noticeAtRef.current < NOTICE_REPEAT_MS) return;
+    if (notice === "rerouted") noticeAtRef.current = now;
+    speak(NOTICE_LINES[notice]);
   }, [notice]);
 
   // Said once when guidance holds still, so the silence that follows makes sense.
@@ -177,7 +183,9 @@ export function useVoiceGuidance({
       spokenRef.current = freshSpoken(route);
       markPassed(spokenRef.current, progress.stepIndex);
     }
-    prepareSpeech(planAhead(spokenRef.current, route, progress.stepIndex, progress.distanceAlong, destination, speed));
+    const fresh = planAhead(spokenRef.current, route, progress.stepIndex, progress.distanceAlong, destination, speed);
+    prepareSpeech(fresh.lines);
+    prepareSpeech(fresh.extras, { later: true });
     const due = dueLine(spokenRef.current, route, progress, destination, speed);
     if (due) speak(due.line, { urgent: due.urgent, fallback: due.fallback, optional: due.optional });
   }, [route, progress, hasArrived, isWrongWay, paused]);

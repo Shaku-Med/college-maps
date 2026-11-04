@@ -1,4 +1,5 @@
 import { createAudioPlayer, setAudioModeAsync, type AudioPlayer } from 'expo-audio';
+import * as Haptics from 'expo-haptics';
 import * as SecureStore from 'expo-secure-store';
 import * as Speech from 'expo-speech';
 
@@ -8,12 +9,14 @@ import {
   engineStatus,
   holdEngine,
   isBanked,
+  isMaking,
   loadVoiceBank,
   makeClip,
   resetQueuedClips,
   startEngine,
   storedClip,
 } from '@/lib/voice-engine';
+import { checkSilentSwitch, phoneIsSilent } from '@/lib/silent-switch';
 import { PREVIEW_LINE, isNaturalVoice, isVoiceId, type NaturalVoiceId, type VoiceId } from '@/lib/voice-options';
 
 // Spoken directions use a natural voice made on the phone when one is picked, and the phone's own speech engine otherwise.
@@ -305,6 +308,11 @@ export async function speak(
   const now = Date.now();
   if (!urgent && last.text === text && now - last.at < REPEAT_WINDOW_MS) return;
   last = { text, at: now };
+  // On silent an iPhone chimes and taps at the turn instead of talking, like Apple Maps; nothing else is said until the sound is on.
+  if (phoneIsSilent()) {
+    if (urgent) void playTurnChime();
+    return;
+  }
   if (urgent) silenceAll();
 
   const voice = naturalVoice();
@@ -329,8 +337,10 @@ export async function speak(
 
   // A ready made line is a quick download, worth a short wait even at the turn.
   const banked = isBanked(voice, text);
+  // A turn's own line already being made is worth a short wait; the plain stand in would lose the street name.
+  const making = isMaking(voice, text);
   const state = engineStatus().state;
-  if ((urgent && !banked) || (!banked && state !== 'loading' && state !== 'ready')) {
+  if ((urgent && !banked && !making) || (!banked && !making && state !== 'loading' && state !== 'ready')) {
     await standInOrDevice();
     // Made now, so the same line is ready in the natural voice the next time it comes up.
     if (canMakeClips() || banked) void makeClip(voice, text, 1);
@@ -388,7 +398,18 @@ export function holdVoice() {
 }
 
 // The model only loads for a line the bank does not have, so a walk on campus never waits for it.
+let chime: AudioPlayer | null = null;
+
+async function playTurnChime() {
+  await prepareAudio();
+  chime ??= createAudioPlayer(require('../../assets/sounds/turn-chime.wav'));
+  void chime.seekTo(0);
+  chime.play();
+  void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+}
+
 export async function warmUpVoice() {
+  checkSilentSwitch(true);
   if (naturalVoice()) void loadVoiceBank();
   const [voice] = await Promise.all([pickVoice(), prepareAudio()]);
   if (!canSpeak) return;

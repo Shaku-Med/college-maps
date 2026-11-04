@@ -107,11 +107,15 @@ export function departLine(route: Route, destination: string, facing: number | u
   return `${lead}, then ${lowerFirst(line)}`;
 }
 
+/** Lines to make ahead of time: the heads up and the call at each turn first, the extras like "continue for" after. */
+export type FreshLines = { lines: string[]; extras: string[] };
+
 /** What to make, in order: what is said first, then what could come up. */
-export function voicePlan(route: Route, destination: string, planned: readonly string[], arrivalNote?: string) {
+export function voicePlan(route: Route, destination: string, planned: FreshLines, arrivalNote?: string) {
   return {
-    now: [actLine(route, 0, destination), ...planned, NOTICE_LINES.rerouted, WRONG_WAY_LINE],
+    now: [actLine(route, 0, destination), ...planned.lines, NOTICE_LINES.rerouted, WRONG_WAY_LINE],
     later: [
+      ...planned.extras,
       ...STAND_IN_LINES,
       arrivalLine(destination, arrivalNote),
       NOTICE_LINES.faster,
@@ -185,9 +189,19 @@ function planLines(route: Route, index: number, from: number, destination: strin
   return streetLines(route, index, ahead, destination, speed) ?? campusLines(route, index, ahead, destination, speed);
 }
 
+const linesOf = (lines: StepLines) => [lines.prepare, lines.act].filter((line): line is string => Boolean(line));
+const extrasOf = (lines: StepLines) => [lines.onward, lines.early?.line].filter((line): line is string => Boolean(line));
+
 /** Plans the next few maneuvers and returns the lines that were not planned before, to be made ahead of time. */
-export function planAhead(spoken: Spoken, route: Route, stepIndex: number, along: number, destination: string, speed: number) {
-  const fresh: string[] = [];
+export function planAhead(
+  spoken: Spoken,
+  route: Route,
+  stepIndex: number,
+  along: number,
+  destination: string,
+  speed: number,
+): FreshLines {
+  const fresh: FreshLines = { lines: [], extras: [] };
   const last = Math.min(stepIndex + LOOKAHEAD_STEPS, route.steps.length - 1);
   const first = nextSpokenIndex(route, stepIndex + 1);
   for (let i = first; i <= last; i++) {
@@ -198,16 +212,20 @@ export function planAhead(spoken: Spoken, route: Route, stepIndex: number, along
     const from = i === first ? along : (previousSpoken(route, i)?.startDistance ?? along);
     const lines = planLines(route, i, from, destination, speed);
     spoken.lines.set(i, lines);
-    fresh.push(...[lines.onward, lines.early?.line, lines.prepare, lines.act].filter((line): line is string => Boolean(line)));
+    fresh.lines.push(...linesOf(lines));
+    fresh.extras.push(...extrasOf(lines));
   }
   return fresh;
 }
 
 /** Every line planned so far, for making them ahead of time when a trip starts. */
-export const plannedLines = (spoken: Spoken) =>
-  [...spoken.lines.values()].flatMap((lines) =>
-    [lines.onward, lines.early?.line, lines.prepare, lines.act].filter((line): line is string => Boolean(line)),
-  );
+export const plannedLines = (spoken: Spoken): FreshLines => {
+  const all = [...spoken.lines.values()];
+  return { lines: all.flatMap(linesOf), extras: all.flatMap(extrasOf) };
+};
+
+// GPS drifting between buildings can reroute a walk again and again; saying so every time is noise, so it is said once a minute.
+export const NOTICE_REPEAT_MS = 60_000;
 
 /** The line due at this point of the route, if any, marked as said. */
 export function dueLine(spoken: Spoken, route: Route, progress: RouteProgress, destination: string, speed: number): DueLine | null {
