@@ -21,6 +21,7 @@ export default function OriginModal() {
       </Stack.Toolbar>
       <PlacePicker
         selectedId={trip.origin}
+        hide={trip.destination ? [trip.destination.id] : undefined}
         onPick={(place) => pick(place.id)}
         header={
           <ListGroup.Item onPress={() => pick(MY_LOCATION)}>

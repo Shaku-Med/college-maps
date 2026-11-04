@@ -38,12 +38,17 @@ export function classStartAt(placeId: string, classes: ClassEntry[], now: number
 
 export type ArriveChoice = { id: string; label: string; at: number | null };
 
-/** What "be there by" can be set to before a walk: the class there when there is one, a few times from now, or no rush. */
-export function arriveChoices(now: number, classStart?: { at: number; label: string }): ArriveChoice[] {
+/** What "be there by" can be once the walk's length is known: only times it can be made by, the class there first if reachable. */
+export function arriveChoices(now: number, walkSeconds: number, classStart?: { at: number; label: string }): ArriveChoice[] {
+  const soonest = now + walkSeconds * 1000 + MINUTE;
   return [
-    ...(classStart ? [{ id: "class", label: classStart.label, at: classStart.at }] : []),
+    ...(classStart && classStart.at >= soonest ? [{ id: "class", label: classStart.label, at: classStart.at }] : []),
     { id: "none", label: "No rush", at: null },
-    ...ARRIVE_IN_MINUTES.map((n) => ({ id: `in${n}`, label: n < 60 ? `In ${n} min` : "In 1 hour", at: now + n * MINUTE })),
+    ...ARRIVE_IN_MINUTES.filter((n) => now + n * MINUTE >= soonest).map((n) => ({
+      id: `in${n}`,
+      label: n < 60 ? `In ${n} min` : "In 1 hour",
+      at: now + n * MINUTE,
+    })),
   ];
 }
 

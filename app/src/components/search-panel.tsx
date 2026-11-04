@@ -1,17 +1,12 @@
 "use client";
 
 import { Button, SearchField, Surface } from "@heroui/react";
-import { ArrowLeft, CalendarClock, ChevronRight } from "lucide-react";
-import { useMemo, useRef, type KeyboardEvent, type RefObject } from "react";
+import { ArrowLeft } from "lucide-react";
+import { useRef, type KeyboardEvent, type RefObject } from "react";
 
-import { PlaceSearchList, useCampusSearch, type Nearby } from "@/components/place-search-list";
-import { AMENITY_KINDS } from "@/data/amenities";
+import { useCampusSearch, type Nearby } from "@/components/place-search-list";
+import { SearchBody } from "@/components/search-body";
 import { CAMPUS, type Place } from "@/data/campus";
-import { useNow } from "@/hooks/use-now";
-import { AMENITY_SHORTCUTS } from "@/lib/amenity-search";
-import { AMENITY_ICONS } from "@/lib/categories";
-import { classComingUp, greeting } from "@/lib/greeting";
-import { loadSchedule } from "@/lib/schedule";
 import { MAX_QUERY_LENGTH } from "@/lib/search";
 
 type SearchPanelProps = {
@@ -42,13 +37,6 @@ export function SearchPanel({
   const inputRef = givenRef ?? ownRef;
   const { room: roomMatch, results, amenities } = useCampusSearch(query, undefined, nearby);
   const hasQuery = query.trim().length > 0;
-  const now = useNow(60_000);
-  // Read when the panel opens, so a class added a moment ago in My classes shows up.
-  const hello = useMemo(() => {
-    if (greetName === undefined || !isOpen) return null;
-    const at = new Date(now);
-    return { line: greeting(at, greetName), next: classComingUp(loadSchedule(), at) };
-  }, [greetName, isOpen, now]);
 
   function close() {
     onOpenChange(false);
@@ -112,63 +100,14 @@ export function SearchPanel({
 
       {isOpen ? (
         <div className="animate-fade-in overflow-y-auto overscroll-contain px-1.5 pb-2">
-          {hello && !hasQuery ? (
-            <div className="mb-3 px-1.5">
-              <p className="px-1.5 pb-2 pt-1 text-[15px] font-semibold tracking-tight">{hello.line}</p>
-              {hello.next ? (
-                <Button
-                  variant="secondary"
-                  fullWidth
-                  onPress={() => hello.next && select(hello.next.place, hello.next.entry.room)}
-                  className="h-auto justify-start gap-3 rounded-2xl px-3 py-2.5 text-left">
-                  <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-accent-soft text-accent-soft-foreground">
-                    <CalendarClock className="size-4" aria-hidden />
-                  </span>
-                  <span className="flex min-w-0 flex-1 flex-col">
-                    <span className="truncate text-sm font-semibold">{hello.next.entry.name}</span>
-                    <span className="truncate text-xs font-normal text-muted">{hello.next.detail}</span>
-                  </span>
-                  <ChevronRight className="size-4 shrink-0 text-muted" aria-hidden />
-                </Button>
-              ) : null}
-            </div>
-          ) : null}
-
-          {hasQuery ? null : (
-            <div className="-mx-1.5 mb-2 flex gap-2 overflow-x-auto px-3 [scrollbar-width:none]">
-              {AMENITY_SHORTCUTS.map((kind) => {
-                const Icon = AMENITY_ICONS[kind];
-                return (
-                  <Button
-                    key={kind}
-                    size="sm"
-                    variant="secondary"
-                    onPress={() => {
-                      onQueryChange(AMENITY_KINDS[kind].plural);
-                      inputRef.current?.focus();
-                    }}
-                    className="shrink-0 gap-1.5 rounded-full">
-                    <Icon className="size-3.5" aria-hidden />
-                    {AMENITY_KINDS[kind].plural}
-                  </Button>
-                );
-              })}
-            </div>
-          )}
-
-          {!hasQuery && CAMPUS.rooms.help ? (
-            <p className="mx-1.5 mb-2 rounded-2xl bg-surface-secondary px-3.5 py-3 text-xs leading-relaxed text-muted">
-              <span className="font-medium text-foreground">Reading a room code:</span> {CAMPUS.rooms.help}
-            </p>
-          ) : null}
-
-          <PlaceSearchList query={query} onSelect={select} nearby={nearby} />
-
-          {!hasQuery && CAMPUS.app.disclaimer ? (
-            <p className="px-3 pb-1 pt-4 text-center text-[11px] leading-relaxed text-muted">
-              {CAMPUS.app.disclaimer}
-            </p>
-          ) : null}
+          <SearchBody
+            query={query}
+            onQueryChange={onQueryChange}
+            onSelect={select}
+            nearby={nearby}
+            greetName={greetName}
+            inputRef={inputRef}
+          />
         </div>
       ) : null}
     </Surface>

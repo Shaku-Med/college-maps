@@ -82,7 +82,7 @@ import { canSwitchTravel } from '@/lib/travel-switch';
 import { TRAVEL_SWITCH_LINES, lowerFirst } from '@/lib/voice-lines';
 import { askForRating, finishedWalk } from '@/lib/rating';
 import { floorLabel, roomDirections } from '@/lib/search';
-import { legSeconds, stopsStart } from '@/lib/stops';
+import { legSeconds, stopsStart, tripTotals } from '@/lib/stops';
 import { createCameraMemory, createSmoothHeading, shortestTurn } from '@/lib/smooth-heading';
 import { markReady } from '@/lib/splash';
 import { showMeetupOnMap, useShownMeetup } from '@/lib/meetup-focus';
@@ -103,6 +103,7 @@ import {
   startNavigating,
   useTrip,
 } from '@/lib/trip';
+import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 
 const { center, zoom, bounds, styles } = CAMPUS.map;
 const CAMPUS_CENTER: [number, number] = [center.longitude, center.latitude];
@@ -158,6 +159,10 @@ const OBSTACLE_METERS = 150;
 // The break check runs only while the walker is on the route, and the offer lapses this far past the seat.
 const BREAK_ON_ROUTE_METERS = 12;
 const BREAK_PASSED_METERS = 20;
+
+// Room kept for the filter chips along the top, and the gap between the map buttons and the panel below them.
+const TOP_CHROME_ROOM = 72;
+const CHROME_GAP = 12;
 
 export default function MapScreen() {
   const scheme = useColorScheme();
@@ -489,14 +494,15 @@ export default function MapScreen() {
     () => (trip.destination ? classStartAt(trip.destination.id, classes, nowTick) : undefined),
     [trip.destination, classes, nowTick],
   );
-  const arriveOptions = useMemo(() => arriveChoices(nowTick, classStart), [nowTick, classStart]);
-  // Walking to a class picks its start time; anything picked by hand holds until another place is chosen.
-  const arrive =
-    trip.arrivePick && trip.arrivePick.placeId === trip.destination?.id
-      ? trip.arrivePick
-      : classStart
-        ? { id: 'class', at: classStart.at }
-        : { id: 'none', at: null };
+  const walkSeconds = preview.route ? tripTotals([preview.route, ...preview.later]).seconds : null;
+  // Only once the walk is known can "be there by" offer times it can be made by; a pick that no longer fits falls back.
+  const arriveOptions = useMemo(
+    () => (walkSeconds === null ? null : arriveChoices(nowTick, walkSeconds, classStart)),
+    [nowTick, walkSeconds, classStart],
+  );
+  const picked = trip.arrivePick?.placeId === trip.destination?.id ? trip.arrivePick : null;
+  const kept = picked && arriveOptions?.some((option) => option.id === picked.id) ? picked : null;
+  const arrive = kept ?? arriveOptions?.find((option) => option.id === 'class') ?? { id: 'none', at: null };
   // Each parking card is read out once, as it appears.
   useEffect(() => {
     if (navigation.parking) sayLine(parkingSpoken(navigation.parking));
@@ -984,6 +990,10 @@ export default function MapScreen() {
   const panelPlace = usePlacePanel();
   const tabBarShown = trip.phase === 'idle' && !rail;
   const chromeBottom = useMapChromeBottom(tabBarShown);
+  // The map buttons ride above the bottom panels; when a tall panel leaves no room they fade out instead of going off the top.
+  const [controlsFit, setControlsFit] = useState(true);
+  const [controlsHeight, setControlsHeight] = useState(0);
+  const showControls = !columnChrome && !navigating && controlsFit;
 
   // Frames everyone in the meetup as people appear, but not on every move, so the map can still pan.
   const framed = useRef<{ id: string; count: number } | null>(null);
@@ -1346,15 +1356,27 @@ export default function MapScreen() {
       <View
         pointerEvents="box-none"
         className="absolute gap-3"
+        onLayout={(event) => {
+          // The panels' own height, without the buttons above them, decides whether the buttons still fit on screen.
+          const total = event.nativeEvent.layout.height;
+          const panels = total - (showControls ? controlsHeight + CHROME_GAP : 0);
+          const fits = insets.top + TOP_CHROME_ROOM + panels + controlsHeight + CHROME_GAP + chromeBottom <= height;
+          if (fits !== controlsFit) setControlsFit(fits);
+        }}
         style={{
           bottom: chromeBottom,
           left: 0,
           ...(columnChrome ? { width: PANEL_WIDTH, maxWidth: '100%' } : { right: 0 }),
         }}>
-        {columnChrome ? null : !navigating ? (
-          <View pointerEvents="box-none" className="items-end px-4">
+        {showControls ? (
+          <Animated.View
+            entering={FadeIn.duration(180)}
+            exiting={FadeOut.duration(140)}
+            pointerEvents="box-none"
+            className="items-end px-4"
+            onLayout={(event) => setControlsHeight(event.nativeEvent.layout.height)}>
             <MapControls controls={controls} />
-          </View>
+          </Animated.View>
         ) : null}
         {navControls}
         {panelPlace && trip.phase === 'idle' ? (
@@ -1376,12 +1398,12 @@ export default function MapScreen() {
             <View style={{ width: '100%', maxWidth: PANEL_WIDTH }}>
               <DirectionsPanel
                 arrive={
-                  !preview.isOffCampus || trip.travelMode === 'walk'
+                  arriveOptions && (!preview.isOffCampus || trip.travelMode === 'walk')
                     ? {
                         choices: arriveOptions,
                         selected: arrive.id,
                         onChange: (id) => {
-                          const choice = arriveOptions.find((option) => option.id === id);
+                          const choice = arriveOptions?.find((option) => option.id === id);
                           if (choice && trip.destination) pickArrive(trip.destination.id, id, choice.at);
                         },
                       }

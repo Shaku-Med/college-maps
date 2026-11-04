@@ -27,11 +27,12 @@ const words = (query: string) =>
     .split(/\s+/)
     .filter(Boolean);
 
-// "benc" finds benches and "benches" finds a bench, but "rec" stays the rec center and "binder" is not a bin.
+// "ben" finds benches and "benches" finds a bench, but "binder" is not a bin.
 const matchesWord = (typed: string, keyword: string) =>
   typed === keyword ||
-  (typed.length >= 4 && keyword.startsWith(typed)) ||
+  (typed.length >= 3 && keyword.startsWith(typed)) ||
   (typed.startsWith(keyword) && typed.length - keyword.length <= 2);
+const SHORT_START = 3;
 
 /** The building something outdoors is by, to say where it is. */
 export function nearestBuilding(at: Coordinate): Place | undefined {
@@ -83,6 +84,9 @@ export function searchAmenities(query: string, { here, around }: { here?: Coordi
   for (const word of typed) {
     const found = KINDS.find((k) => AMENITY_KINDS[k].words.some((keyword) => matchesWord(word, keyword)));
     if (!found) continue;
+    // Three letters that also start a place's name are left to the places, so "rec" stays the rec center.
+    const whole = AMENITY_KINDS[found].words.includes(word);
+    if (!whole && word.length <= SHORT_START && searchPlaces(word, 1).length > 0) continue;
     kind ??= found;
     if (found === kind) used.add(word);
   }

@@ -20,7 +20,7 @@ export default function StopSheet() {
           else addStop(place.id);
           router.back();
         }}
-        selectedId={trip.destination?.id}
+        hide={[...(trip.destination ? [trip.destination.id] : []), ...trip.stops, ...trip.after]}
       />
     </>
   );

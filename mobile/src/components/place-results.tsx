@@ -25,6 +25,8 @@ type PlaceResultsProps = {
   header?: ReactNode;
   /** Also finds the SOS phones, benches, and the like closest to here or to the place open; the main search only. */
   nearby?: { here?: Coordinate; around?: Place };
+  /** Places that make no sense to pick here, like where the walk already ends. */
+  hide?: readonly string[];
 };
 
 type RowProps = Pick<PlaceResultsProps, 'onPick' | 'picking' | 'selectedId' | 'linkedId'> & { place: Place; note?: string };
@@ -80,20 +82,30 @@ function PlaceList({ places, ...row }: Omit<RowProps, 'place'> & { places: reado
 }
 
 /** Campus search results: a room match first, then nearby outdoor things and matching places, or every place by kind when empty. */
-export function PlaceResults({ query, header, nearby, ...row }: PlaceResultsProps) {
+export function PlaceResults({ query, header, nearby, hide, ...row }: PlaceResultsProps) {
   const accentForeground = useThemeColor('accent-foreground');
   const trimmed = query.trim();
+  // Keyed by the ids, so a fresh array each render doesn't redo the search.
+  const hideKey = hide?.join(',') ?? '';
+  const shown = useMemo(() => {
+    const hidden = new Set(hideKey ? hideKey.split(',') : []);
+    return (place: Place) => !hidden.has(place.id);
+  }, [hideKey]);
   const room = useMemo(() => parseRoomCode(trimmed), [trimmed]);
-  const results = useMemo(() => searchPlaces(trimmed), [trimmed]);
+  const results = useMemo(() => searchPlaces(trimmed).filter(shown), [trimmed, shown]);
   const wantsNearby = nearby !== undefined;
   const here = nearby?.here;
   const around = nearby?.around;
   const amenities = useMemo(() => {
     const found = wantsNearby && trimmed && !room ? searchAmenities(trimmed, { here, around }) : null;
-    return found?.matches.length ? found : null;
-  }, [trimmed, room, wantsNearby, here, around]);
+    const matches = found?.matches.filter((match) => shown(match.place));
+    return found && matches?.length ? { ...found, matches } : null;
+  }, [trimmed, room, wantsNearby, here, around, shown]);
   // With nothing typed, the closest one of each kind, one tap from directions; only once we know where you are.
-  const closest = useMemo(() => (wantsNearby && here ? closestOfEach(here) : []), [wantsNearby, here]);
+  const closest = useMemo(
+    () => (wantsNearby && here ? closestOfEach(here).filter((match) => shown(match.place)) : []),
+    [wantsNearby, here, shown],
+  );
 
   return (
     <>
@@ -173,7 +185,7 @@ export function PlaceResults({ query, header, nearby, ...row }: PlaceResultsProp
         PLACE_SECTIONS.map(({ category, places }) => (
           <View key={category}>
             <SectionTitle>{categoryLabel(category)}</SectionTitle>
-            <PlaceList places={places} {...row} />
+            <PlaceList places={places.filter(shown)} {...row} />
           </View>
         ))
       )}

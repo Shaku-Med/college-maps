@@ -13,6 +13,7 @@ import { NavigationHud, type RouteNotice } from "@/components/navigation-hud";
 import { MeetupPeek, MeetupSheet } from "@/components/meetup-sheet";
 import { PeoplePanel, initialsFor } from "@/components/people-panel";
 import { PersonCard } from "@/components/person-card";
+import { PlacePickerModal } from "@/components/place-picker-modal";
 import { PlaceSheet } from "@/components/place-sheet";
 import { SchedulePanel } from "@/components/schedule-panel";
 import { SearchPanel } from "@/components/search-panel";
@@ -56,6 +57,7 @@ import {
   MY_LOCATION,
   NO_STOPS,
   legSeconds,
+  tripTotals,
   placeStop,
   stopsStart,
   tripPlan,
@@ -289,6 +291,8 @@ export function MapApp({ initialPlaceId, initialRoom, initialAccountOpen = false
   const [breakStop, setBreakStop] = useState<{ id: string; leaveBy: number } | null>(null);
   const displayNameRef = useRef<string | undefined>(undefined);
   const [arrivePick, setArrivePick] = useState<{ placeId: string; id: string; at: number | null } | null>(null);
+  // Picking a stop or a starting point opens the same search as the main search bar.
+  const [picker, setPicker] = useState<"stop" | "origin" | "stopNow" | null>(null);
   const [avoidStairs, setAvoidStairs] = useState(false);
 
   const [navRoute, setNavRoute] = useState<Route | null>(null);
@@ -860,14 +864,6 @@ export function MapApp({ initialPlaceId, initialRoom, initialAccountOpen = false
 
   const nowTick = useNow(60_000);
   const classStart = useMemo(() => (selected ? classStartAt(selected.id, loadSchedule(), nowTick) : undefined), [selected, nowTick]);
-  const arriveOptions = useMemo(() => arriveChoices(nowTick, classStart), [nowTick, classStart]);
-  // Walking to a class picks its start time; anything picked by hand holds until another place is chosen.
-  const arrive =
-    arrivePick && arrivePick.placeId === selectedId
-      ? arrivePick
-      : classStart
-        ? { id: "class", at: classStart.at }
-        : { id: "none", at: null };
 
   const geo = useGeolocation({ onPosition: handlePosition, onError: handleGeoError });
   useWakeLock(mode === "navigate");
@@ -1021,6 +1017,15 @@ export function MapApp({ initialPlaceId, initialRoom, initialAccountOpen = false
 
   const streetRoute = streetKey && streetResult?.key === streetKey ? streetResult.route : null;
   const previewRoute = isOffCampus ? streetRoute : campusRoute;
+  const walkSeconds = previewRoute ? tripTotals([previewRoute, ...(laterLegs ?? [])]).seconds : null;
+  // Only once the walk is known can "be there by" offer times it can be made by; a pick that no longer fits falls back.
+  const arriveOptions = useMemo(
+    () => (walkSeconds === null ? null : arriveChoices(nowTick, walkSeconds, classStart)),
+    [nowTick, walkSeconds, classStart],
+  );
+  const picked = arrivePick?.placeId === selectedId ? arrivePick : null;
+  const kept = picked && arriveOptions?.some((option) => option.id === picked.id) ? picked : null;
+  const arrive = kept ?? arriveOptions?.find((option) => option.id === "class") ?? { id: "none", at: null };
 
   let routeIssue: RouteIssue | undefined;
   if (laterLegs === null) routeIssue = avoidStairs ? "no-step-free" : "no-route";
@@ -1501,6 +1506,8 @@ export function MapApp({ initialPlaceId, initialRoom, initialAccountOpen = false
     return selected && isAmenity(selected) ? [...shown, selected] : shown;
   }, [mode, filter, selectedId, selected]);
 
+  const greetName =
+    account.state.status === "signed-in" && !account.state.user.needsProfile ? account.state.user.displayName : undefined;
   const nearby = useMemo(
     () => ({ here: geo.position, around: selected?.isBuilding ? selected : undefined }),
     [geo.position, selected],
@@ -1775,7 +1782,7 @@ export function MapApp({ initialPlaceId, initialRoom, initialAccountOpen = false
                   onSelect={selectPlace}
                   inputRef={searchInputRef}
                   nearby={nearby}
-                  greetName={account.state.status === "signed-in" && !account.state.user.needsProfile ? account.state.user.displayName : undefined}
+                  greetName={greetName}
                 />
               </div>
               {isSearchOpen ? null : (
@@ -1910,12 +1917,12 @@ export function MapApp({ initialPlaceId, initialRoom, initialAccountOpen = false
           onCollapse={() => setIsDirectionsExpanded(false)}>
           <DirectionsPanel
             arrive={
-              !isOffCampus || travelMode === "walk"
+              arriveOptions && (!isOffCampus || travelMode === "walk")
                 ? {
                     choices: arriveOptions,
                     selected: arrive.id,
                     onChange: (id) => {
-                      const choice = arriveOptions.find((option) => option.id === id);
+                      const choice = arriveOptions?.find((option) => option.id === id);
                       if (choice) setArrivePick({ placeId: selected.id, id, at: choice.at });
                     },
                   }
@@ -1932,11 +1939,11 @@ export function MapApp({ initialPlaceId, initialRoom, initialAccountOpen = false
             events={placeEvents}
             onOpenEvent={(meetup) => openMeetup(meetup.id)}
             onTravelChange={setTravelMode}
-            onOriginChange={handleOriginChange}
+            onPickOrigin={() => setPicker("origin")}
             plan={plan}
             stopIds={[...stopOrder.stops, ...stopOrder.after]}
             laterLegs={laterLegs ?? []}
-            onAddStop={(id) => addStop(id)}
+            onPickStop={() => setPicker("stop")}
             onRemoveStop={removeStop}
             stopQuestion={stopQuestion}
             pendingStopId={stopPending}
@@ -2026,10 +2033,7 @@ export function MapApp({ initialPlaceId, initialRoom, initialAccountOpen = false
           onSkipBreak={() => setBreakOffer(null)}
           canAddStop={Boolean(graph) && !navRoute.travel && manualStep === null}
           onAddStopKind={addStopKind}
-          onAddStopPlace={(id) => {
-            const place = getPlace(id);
-            if (place) addStopNow(place);
-          }}
+          onAddStopSearch={() => setPicker("stopNow")}
           parking={parking}
           onParkingPrimary={() => {
             const trip = parkingTripRef.current;
@@ -2049,6 +2053,37 @@ export function MapApp({ initialPlaceId, initialRoom, initialAccountOpen = false
           }}
         />
       ) : null}
+      <PlacePickerModal
+        title={picker === "origin" ? "Start from" : picker ? "Add a stop" : null}
+        onClose={() => setPicker(null)}
+        onPick={(place) => {
+          const kind = picker;
+          setPicker(null);
+          if (kind === "origin") handleOriginChange(place.id);
+          else if (kind === "stopNow") addStopNow(place);
+          else addStop(place.id);
+        }}
+        nearby={nearby}
+        greetName={greetName}
+        hide={[...(selectedId ? [selectedId] : []), ...(picker === "origin" ? [] : [...stopOrder.stops, ...stopOrder.after])]}
+        header={
+          picker === "origin" ? (
+            <Button
+              variant="secondary"
+              fullWidth
+              onPress={() => {
+                setPicker(null);
+                handleOriginChange(MY_LOCATION);
+              }}
+              className="h-auto justify-start gap-3 rounded-2xl px-3 py-2.5 text-left">
+              <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-accent-soft text-accent-soft-foreground">
+                <LocateFixed className="size-4" aria-hidden />
+              </span>
+              <span className="text-sm font-semibold">My location</span>
+            </Button>
+          ) : undefined
+        }
+      />
       <LaunchSplash ready={mapLoaded} />
     </main>
   );

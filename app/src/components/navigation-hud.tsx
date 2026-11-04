@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, Header, ListBox, Select, Surface, Switch } from "@heroui/react";
+import { Button, Surface, Switch } from "@heroui/react";
 import {
   Bus,
   ChevronDown,
@@ -10,8 +10,8 @@ import {
   Compass,
   Flag,
   LocateFixed,
+  CirclePlus,
   Navigation2,
-  Plus,
   RefreshCw,
   SquareParking,
   Undo2,
@@ -24,7 +24,7 @@ import { useState } from "react";
 
 import { StepIcon } from "@/components/step-icon";
 import { isAmenity, type AmenityKind } from "@/data/amenities";
-import { CATEGORY_LABELS, type Place } from "@/data/campus";
+import type { Place } from "@/data/campus";
 import { QUICK_STOPS } from "@/lib/amenity-search";
 import type { BreakOffer } from "@/lib/breaks";
 import { AMENITY_ICONS } from "@/lib/categories";
@@ -33,7 +33,6 @@ import { formatDistance } from "@/lib/geo";
 import { stepText } from "@/lib/instructions";
 import { parkingChoices, parkingDetail, parkingTitle, type ParkingPrompt } from "@/lib/parking";
 import type { Route, RouteProgress } from "@/lib/routing";
-import { PLACE_SECTIONS } from "@/lib/search";
 
 export type RouteNotice = "rerouted" | "faster" | "switched";
 
@@ -84,7 +83,8 @@ type NavigationHudProps = {
   /** Stops can be added mid walk: the nearest of a kind, or any place. */
   canAddStop?: boolean;
   onAddStopKind?: (kind: AmenityKind) => void;
-  onAddStopPlace?: (id: string) => void;
+  /** Opens the search to pick any place as the next stop. */
+  onAddStopSearch?: () => void;
 };
 
 /** A friendly offer to rest at a seat just ahead, above the trip panel like a parking choice. */
@@ -112,8 +112,8 @@ function BreakCard({ offer, onTake, onSkip }: { offer: BreakOffer; onTake?: () =
   );
 }
 
-/** Adding a stop mid walk: the nearest trash can, bike rack, bench, or SOS phone in a tap, or any other place. */
-function StopNow({ onKind, onPlace }: { onKind?: (kind: AmenityKind) => void; onPlace?: (id: string) => void }) {
+/** Adding a stop mid walk: the nearest trash can, bike rack, bench, or SOS phone in a tap, or any place from search. */
+function StopNow({ onKind, onAnother }: { onKind?: (kind: AmenityKind) => void; onAnother?: () => void }) {
   return (
     <div className="pt-2">
       <p className="pb-1.5 text-xs font-semibold uppercase tracking-wide text-muted">Add a stop</p>
@@ -127,34 +127,11 @@ function StopNow({ onKind, onPlace }: { onKind?: (kind: AmenityKind) => void; on
             </Button>
           );
         })}
+        <Button size="sm" variant="secondary" className="gap-1.5 rounded-full text-accent" onPress={onAnother}>
+          <CirclePlus className="size-3.5" aria-hidden />
+          Another place
+        </Button>
       </div>
-      <Select
-        value={null}
-        onChange={(key) => key !== null && onPlace?.(String(key))}
-        fullWidth
-        aria-label="Add another place as a stop"
-        placeholder="Another place"
-        className="mt-2">
-        <Select.Trigger>
-          <Plus className="size-4 shrink-0 text-accent" aria-hidden />
-          <Select.Value />
-          <Select.Indicator />
-        </Select.Trigger>
-        <Select.Popover containerPadding={48}>
-          <ListBox>
-            {PLACE_SECTIONS.map(({ category, places }) => (
-              <ListBox.Section key={category}>
-                <Header>{CATEGORY_LABELS[category]}</Header>
-                {places.map((place) => (
-                  <ListBox.Item key={place.id} id={place.id} textValue={place.name}>
-                    {place.name}
-                  </ListBox.Item>
-                ))}
-              </ListBox.Section>
-            ))}
-          </ListBox>
-        </Select.Popover>
-      </Select>
     </div>
   );
 }
@@ -238,7 +215,7 @@ export function NavigationHud({
   onSkipBreak,
   canAddStop = false,
   onAddStopKind,
-  onAddStopPlace,
+  onAddStopSearch,
 }: NavigationHudProps) {
   // The turns ahead at the top and the trip settings at the bottom: one open at a time, so the map stays in view.
   const [panel, setPanel] = useState<"steps" | "trip" | null>(null);
@@ -422,7 +399,7 @@ export function NavigationHud({
               ) : null}
               <TripSetting label="Spoken directions" isSelected={voiceOn} onChange={() => onToggleVoice()} />
               <TripSetting label="Turn the map with me" isSelected={facingUp} onChange={() => onToggleFacing()} />
-              {canAddStop ? <StopNow onKind={onAddStopKind} onPlace={onAddStopPlace} /> : null}
+              {canAddStop ? <StopNow onKind={onAddStopKind} onAnother={onAddStopSearch} /> : null}
             </div>
           ) : null}
           <div className="flex items-center gap-3">

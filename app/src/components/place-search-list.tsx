@@ -21,27 +21,40 @@ type PlaceSearchListProps = {
   limit?: number;
   /** Also finds the SOS phones, benches, and the like closest to here or to the place open; the main search only. */
   nearby?: Nearby;
+  /** Places that make no sense to pick here, like where the walk already ends. */
+  hide?: readonly string[];
 };
 
 export type Nearby = { here?: Coordinate; around?: Place };
 
 /** What a query finds: a room code wins outright; otherwise the places that match, and nearby outdoor things when asked. */
-export function useCampusSearch(query: string, limit?: number, nearby?: Nearby) {
+export function useCampusSearch(query: string, limit?: number, nearby?: Nearby, hide?: readonly string[]) {
+  const hidden = useHidden(hide);
   const room = useMemo(() => parseRoomCode(query), [query]);
-  const results = useMemo(() => (room ? [] : searchPlaces(query, limit)), [query, room, limit]);
+  const results = useMemo(
+    () => (room ? [] : searchPlaces(query, limit && limit + hidden.size).filter((place) => !hidden.has(place.id)).slice(0, limit)),
+    [query, room, limit, hidden],
+  );
   const wantsNearby = nearby !== undefined;
   const here = nearby?.here;
   const around = nearby?.around;
-  const amenities = useMemo(
-    () => (wantsNearby && !room ? searchAmenities(query, { here, around }) : null),
-    [query, room, wantsNearby, here, around],
-  );
-  return { room, results, amenities: amenities?.matches.length ? amenities : null };
+  const amenities = useMemo(() => {
+    if (!wantsNearby || room) return null;
+    const found = searchAmenities(query, { here, around });
+    return found && { ...found, matches: found.matches.filter(({ place }) => !hidden.has(place.id)) };
+  }, [query, room, wantsNearby, here, around, hidden]);
+  return { room, results, amenities: amenities?.matches.length ? amenities : null, hidden };
+}
+
+// Keyed by the ids, so a fresh array each render doesn't redo the search.
+function useHidden(hide?: readonly string[]) {
+  const key = hide?.join(",") ?? "";
+  return useMemo(() => new Set(key ? key.split(",") : []), [key]);
 }
 
 /** The campus search results used everywhere a place is picked: a room code first, then matching places. */
-export function PlaceSearchList({ query, onSelect, browse = true, limit, nearby }: PlaceSearchListProps) {
-  const { room, results, amenities } = useCampusSearch(query, limit, nearby);
+export function PlaceSearchList({ query, onSelect, browse = true, limit, nearby, hide }: PlaceSearchListProps) {
+  const { room, results, amenities, hidden } = useCampusSearch(query, limit, nearby, hide);
   const hasQuery = query.trim().length > 0;
 
   function handleAction(key: string | number) {
@@ -116,9 +129,11 @@ export function PlaceSearchList({ query, onSelect, browse = true, limit, nearby 
               <Header className={SECTION_HEADER}>
                 {CATEGORY_LABELS[category]}
               </Header>
-              {places.map((place) => (
-                <PlaceItem key={place.id} place={place} />
-              ))}
+              {places
+                .filter((place) => !hidden.has(place.id))
+                .map((place) => (
+                  <PlaceItem key={place.id} place={place} />
+                ))}
             </ListBox.Section>
           ))}
         </ListBox>

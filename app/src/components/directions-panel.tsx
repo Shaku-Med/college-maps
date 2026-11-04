@@ -4,7 +4,6 @@ import {
   Button,
   Chip,
   CloseButton,
-  Header,
   Label,
   ListBox,
   Select,
@@ -14,16 +13,28 @@ import {
   ToggleButton,
   ToggleButtonGroup,
 } from "@heroui/react";
-import { ArrowLeft, Bike, CalendarClock, Car, ChevronRight, Flag, Footprints, LocateFixed, Navigation, Plus } from "lucide-react";
+import {
+  ArrowLeft,
+  Bike,
+  Building2,
+  CalendarClock,
+  Car,
+  ChevronRight,
+  ChevronsUpDown,
+  CirclePlus,
+  Flag,
+  Footprints,
+  LocateFixed,
+  Navigation,
+} from "lucide-react";
 import { useState } from "react";
 
 import { CollapseButton, SheetGrabber } from "@/components/sheet-chrome";
 import { StepIcon } from "@/components/step-icon";
-import { CATEGORY_LABELS, getPlace, type Place } from "@/data/campus";
+import { getPlace, type Place } from "@/data/campus";
 import { formatRouteTime } from "@/lib/directions";
 import { formatDistance, formatSeconds } from "@/lib/geo";
 import { stepText } from "@/lib/instructions";
-import { PLACE_SECTIONS } from "@/lib/search";
 import type { ArriveChoice } from "@/lib/breaks";
 import { MAX_STOPS, MY_LOCATION, stopQuestionText, tripTotals, type StopQuestion, type TripPlan } from "@/lib/stops";
 import type { Meetup } from "@/lib/social-api";
@@ -64,7 +75,8 @@ type DirectionsPanelProps = {
   events?: Meetup[];
   onOpenEvent?: (meetup: Meetup) => void;
   onTravelChange: (travel: TravelMode) => void;
-  onOriginChange: (origin: string) => void;
+  /** Opens the search to pick where the walk starts. */
+  onPickOrigin: () => void;
   onAvoidStairsChange: (value: boolean) => void;
   /** Every place the walk visits in order; the last is the destination. */
   plan: TripPlan | null;
@@ -72,7 +84,8 @@ type DirectionsPanelProps = {
   stopIds: readonly string[];
   /** The legs after the first stop. */
   laterLegs: Route[];
-  onAddStop: (id: string) => void;
+  /** Opens the search to pick a stop. */
+  onPickStop: () => void;
   onRemoveStop: (id: string) => void;
   /** Where the newest stop went, until the traveller answers. */
   stopQuestion: StopQuestion | null;
@@ -139,12 +152,12 @@ export function DirectionsPanel({
   events = [],
   onOpenEvent,
   onTravelChange,
-  onOriginChange,
+  onPickOrigin,
   onAvoidStairsChange,
   plan,
   stopIds,
   laterLegs,
-  onAddStop,
+  onPickStop,
   onRemoveStop,
   stopQuestion,
   pendingStopId,
@@ -168,6 +181,7 @@ export function DirectionsPanel({
   const totals = route && laterLegs.length > 0 ? tripTotals([route, ...laterLegs]) : null;
   const question = stopQuestion && stopIds.includes(stopQuestion.id) ? stopQuestionText(stopQuestion, destination.name) : null;
   const pendingStop = pendingStopId ? getPlace(pendingStopId) : undefined;
+  const originName = origin === MY_LOCATION ? "My location" : (getPlace(origin)?.name ?? "My location");
   const stopItem = ({ place, after }: (typeof stops)[number], index: number) => {
     const isStart = place.id === origin && !stopIds.includes(place.id);
     const note = isStart ? "On the way, since you are not there yet" : after ? `After ${destination.name}` : undefined;
@@ -227,41 +241,22 @@ export function DirectionsPanel({
       </div>
 
       <div className="flex flex-col gap-3 px-5 pb-3 pt-2">
-        <Select
-          value={origin}
-          onChange={(key) => key !== null && onOriginChange(String(key))}
-          fullWidth
-          aria-label="Starting point">
-          <Label className="text-xs text-muted">From</Label>
-          <Select.Trigger>
-            <Select.Value />
-            <Select.Indicator />
-          </Select.Trigger>
-          <Select.Popover containerPadding={48}>
-            <ListBox>
-              <ListBox.Item id={MY_LOCATION} textValue="My location">
-                <span className="flex items-center gap-2">
-                  <LocateFixed className="size-4 shrink-0 text-accent" aria-hidden />
-                  My location
-                </span>
-                <ListBox.ItemIndicator />
-              </ListBox.Item>
-              {PLACE_SECTIONS.map(({ category, places }) => (
-                <ListBox.Section key={category}>
-                  <Header>{CATEGORY_LABELS[category]}</Header>
-                  {places
-                    .filter((place) => place.id !== destination.id)
-                    .map((place) => (
-                      <ListBox.Item key={place.id} id={place.id} textValue={place.name}>
-                        {place.name}
-                        <ListBox.ItemIndicator />
-                      </ListBox.Item>
-                    ))}
-                </ListBox.Section>
-              ))}
-            </ListBox>
-          </Select.Popover>
-        </Select>
+        <div className="flex flex-col gap-1">
+          <span className="text-xs text-muted">From</span>
+          <button
+            type="button"
+            onClick={onPickOrigin}
+            aria-label={`Starting from ${originName}. Change`}
+            className="flex w-full items-center gap-2.5 rounded-2xl bg-surface-secondary px-3.5 py-3 text-left outline-none transition-colors hover:bg-surface-tertiary focus-visible:ring-2 focus-visible:ring-focus">
+            {origin === MY_LOCATION ? (
+              <LocateFixed className="size-4 shrink-0 text-accent" aria-hidden />
+            ) : (
+              <Building2 className="size-4 shrink-0 text-accent" aria-hidden />
+            )}
+            <span className="min-w-0 flex-1 truncate text-sm">{originName}</span>
+            <ChevronsUpDown className="size-4 shrink-0 text-muted" aria-hidden />
+          </button>
+        </div>
 
         {arrive ? (
           <Select
@@ -270,10 +265,10 @@ export function DirectionsPanel({
             fullWidth
             aria-label="Be there by">
             <Label className="text-xs text-muted">Be there by</Label>
-            <Select.Trigger>
+            <Select.Trigger className="items-center gap-2.5 rounded-2xl bg-surface-secondary py-3 pl-3.5 pr-10 text-sm shadow-none hover:bg-surface-tertiary">
               <CalendarClock className="size-4 shrink-0 text-accent" aria-hidden />
               <Select.Value />
-              <Select.Indicator />
+              <Select.Indicator className="right-3.5 text-muted" />
             </Select.Trigger>
             <Select.Popover containerPadding={48}>
               <ListBox>
@@ -331,34 +326,13 @@ export function DirectionsPanel({
         ) : null}
 
         {stopIds.length < MAX_STOPS && !pendingStop ? (
-          <Select
-            value={null}
-            onChange={(key) => key !== null && onAddStop(String(key))}
-            fullWidth
-            aria-label="Add a stop"
-            placeholder="Add a stop">
-            <Select.Trigger>
-              <Plus className="size-4 shrink-0 text-accent" aria-hidden />
-              <Select.Value />
-              <Select.Indicator />
-            </Select.Trigger>
-            <Select.Popover containerPadding={48}>
-              <ListBox>
-                {PLACE_SECTIONS.map(({ category, places }) => (
-                  <ListBox.Section key={category}>
-                    <Header>{CATEGORY_LABELS[category]}</Header>
-                    {places
-                      .filter((place) => place.id !== destination.id && !stopIds.includes(place.id))
-                      .map((place) => (
-                        <ListBox.Item key={place.id} id={place.id} textValue={place.name}>
-                          {place.name}
-                        </ListBox.Item>
-                      ))}
-                  </ListBox.Section>
-                ))}
-              </ListBox>
-            </Select.Popover>
-          </Select>
+          <button
+            type="button"
+            onClick={onPickStop}
+            className="-mx-1 flex items-center gap-2 self-start rounded-full px-1 py-1 text-sm font-semibold text-accent outline-none transition-opacity hover:opacity-80 focus-visible:ring-2 focus-visible:ring-focus">
+            <CirclePlus className="size-4 shrink-0" aria-hidden />
+            Add a stop
+          </button>
         ) : null}
 
         {travel ? (
