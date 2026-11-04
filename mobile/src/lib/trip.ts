@@ -140,8 +140,16 @@ export const startNavigating = (legs: string[]) =>
   trip.destination && set({ phase: 'navigate', legs, leg: 0, stopQuestion: null });
 /** On to the next place after arriving at a stop. */
 export const nextLeg = () => trip.leg < trip.legs.length - 1 && set({ leg: trip.leg + 1 });
+/** Read live, for answers that arrive after the screen last drew. */
+export const isNavigating = () => trip.phase === 'navigate';
 export const stopNavigating = () => set({ phase: trip.destination ? 'preview' : 'idle', legs: [], leg: 0 });
 export const pickArrive = (placeId: string, id: string, at: number | null) => set({ arrivePick: { placeId, id, at } });
+
+/** Drops a stop from the trip under way; the destination stays, since End does that. */
+export function dropLeg(index: number) {
+  if (index < 0 || index >= trip.legs.length - 1) return;
+  set({ legs: trip.legs.filter((_, i) => i !== index), leg: index < trip.leg ? trip.leg - 1 : trip.leg });
+}
 
 /** Puts a stop in as the very next place mid walk; standing at a stop already, it comes after that one. */
 export function insertStopNow(id: string, atStop: boolean) {

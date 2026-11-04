@@ -3,7 +3,9 @@ import { useThemeColor } from 'heroui-native';
 import { Pressable, Text, View } from 'react-native';
 
 import { Icon } from '@/components/icon';
+import { isAmenity } from '@/data/amenities';
 import type { Place } from '@/data/campus';
+import { amenityWhere } from '@/lib/amenity-search';
 
 /** How many stops the directions panel lists before sending the rest to their own page. */
 export const STOPS_SHOWN = 2;
@@ -12,13 +14,16 @@ type StopRowProps = {
   stop: Place;
   number: number;
   /** A starting building the traveller is not at yet. It comes first on its own and is changed with From. */
-  isStart: boolean;
+  isStart?: boolean;
   note?: string;
   onRemove: (id: string) => void;
 };
 
-export function StopRow({ stop, number, isStart, note, onRemove }: StopRowProps) {
-  const subtitle = isStart ? 'On the way, since you are not there yet' : note;
+/** One stop on a trip, the same while planning and mid walk. A bench or trash can says where it is. */
+export function StopRow({ stop, number, isStart = false, note, onRemove }: StopRowProps) {
+  const subtitle = isStart
+    ? 'On the way, since you are not there yet'
+    : (note ?? (isAmenity(stop) ? amenityWhere(stop) : undefined));
   const muted = useThemeColor('muted');
   return (
     <View className="flex-row items-center gap-3 rounded-2xl bg-default px-3.5 py-2.5">

@@ -20,7 +20,11 @@ export default function StopSheet() {
           else addStop(place.id);
           router.back();
         }}
-        hide={[...(trip.destination ? [trip.destination.id] : []), ...trip.stops, ...trip.after]}
+        hide={
+          now === '1'
+            ? trip.legs.slice(trip.leg)
+            : [...(trip.destination ? [trip.destination.id] : []), ...trip.stops, ...trip.after]
+        }
       />
     </>
   );

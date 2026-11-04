@@ -31,6 +31,7 @@ import { useState } from "react";
 
 import { CollapseButton, SheetGrabber } from "@/components/sheet-chrome";
 import { StepIcon } from "@/components/step-icon";
+import { StopItem } from "@/components/stop-item";
 import { getPlace, type Place } from "@/data/campus";
 import { formatRouteTime } from "@/lib/directions";
 import { formatDistance, formatSeconds } from "@/lib/geo";
@@ -111,34 +112,6 @@ const ISSUE_TEXT: Record<Exclude<RouteIssue, "loading" | "locating" | "finding">
 // How many stops the panel lists before sending the rest to their own page, the same as the app.
 const STOPS_SHOWN = 2;
 
-function StopItem({
-  stop,
-  number,
-  isStart,
-  note,
-  onRemove,
-}: {
-  stop: Place;
-  number: number;
-  /** A starting building the walker is not at yet comes first, as a stop of its own, and changes with From. */
-  isStart: boolean;
-  note?: string;
-  onRemove: (id: string) => void;
-}) {
-  return (
-    <li className="flex items-center gap-3 rounded-2xl bg-surface-secondary px-3 py-2">
-      <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-accent text-xs font-bold text-accent-foreground">
-        {number}
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-sm">{stop.name}</span>
-        {note ? <span className="block text-xs text-muted">{note}</span> : null}
-      </span>
-      {isStart ? null : <CloseButton aria-label={`Remove the stop at ${stop.name}`} onPress={() => onRemove(stop.id)} />}
-    </li>
-  );
-}
-
 export function DirectionsPanel({
   arrive,
   destination,
@@ -185,7 +158,15 @@ export function DirectionsPanel({
   const stopItem = ({ place, after }: (typeof stops)[number], index: number) => {
     const isStart = place.id === origin && !stopIds.includes(place.id);
     const note = isStart ? "On the way, since you are not there yet" : after ? `After ${destination.name}` : undefined;
-    return <StopItem key={place.id} stop={place} number={index + 1} isStart={isStart} note={note} onRemove={onRemoveStop} />;
+    return (
+      <StopItem
+        key={place.id}
+        stop={place}
+        number={index + 1}
+        note={note}
+        onRemove={isStart ? undefined : () => onRemoveStop(place.id)}
+      />
+    );
   };
   const thenDestination = (
     <li key="destination" className="flex items-center gap-3 px-3 py-2 text-sm text-muted">

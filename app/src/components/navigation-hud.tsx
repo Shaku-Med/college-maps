@@ -23,6 +23,7 @@ import {
 import { useState } from "react";
 
 import { StepIcon } from "@/components/step-icon";
+import { StopItem } from "@/components/stop-item";
 import { isAmenity, type AmenityKind } from "@/data/amenities";
 import type { Place } from "@/data/campus";
 import { QUICK_STOPS } from "@/lib/amenity-search";
@@ -80,12 +81,17 @@ type NavigationHudProps = {
   breakOffer?: BreakOffer | null;
   onTakeBreak?: () => void;
   onSkipBreak?: () => void;
-  /** Stops can be added mid walk: the nearest of a kind, or any place. */
-  canAddStop?: boolean;
+  /** The stops still ahead, each with its place in the trip, so any can be dropped. */
+  stopsAhead?: StopAhead[];
+  onRemoveStop?: (index: number) => void;
+  /** Kinds with one close by, offered in a tap; far from campus there are none and only the search is offered. */
+  quickStops?: AmenityKind[];
   onAddStopKind?: (kind: AmenityKind) => void;
   /** Opens the search to pick any place as the next stop. */
   onAddStopSearch?: () => void;
 };
+
+export type StopAhead = { index: number; place: Place; number: number };
 
 /** A friendly offer to rest at a seat just ahead, above the trip panel like a parking choice. */
 function BreakCard({ offer, onTake, onSkip }: { offer: BreakOffer; onTake?: () => void; onSkip?: () => void }) {
@@ -112,13 +118,33 @@ function BreakCard({ offer, onTake, onSkip }: { offer: BreakOffer; onTake?: () =
   );
 }
 
-/** Adding a stop mid walk: the nearest trash can, bike rack, bench, or SOS phone in a tap, or any place from search. */
-function StopNow({ onKind, onAnother }: { onKind?: (kind: AmenityKind) => void; onAnother?: () => void }) {
+/** Stops at any point in a trip: the ones ahead, each removable, then the nearest trash can, bench, and the like, or any place. */
+function TripStops({
+  ahead,
+  onRemove,
+  kinds,
+  onKind,
+  onAnother,
+}: {
+  ahead: StopAhead[];
+  onRemove?: (index: number) => void;
+  kinds: AmenityKind[];
+  onKind?: (kind: AmenityKind) => void;
+  onAnother?: () => void;
+}) {
+  const quick = QUICK_STOPS.filter(({ kind }) => kinds.includes(kind));
   return (
     <div className="pt-2">
-      <p className="pb-1.5 text-xs font-semibold uppercase tracking-wide text-muted">Add a stop</p>
+      <p className="pb-1.5 text-xs font-semibold uppercase tracking-wide text-muted">{ahead.length > 0 ? "Stops" : "Add a stop"}</p>
+      {ahead.length > 0 ? (
+        <ol aria-label="Stops ahead" className="mb-2 flex flex-col gap-1.5">
+          {ahead.map(({ index, place, number }) => (
+            <StopItem key={`${place.id}-${index}`} stop={place} number={number} onRemove={onRemove && (() => onRemove(index))} />
+          ))}
+        </ol>
+      ) : null}
       <div className="flex flex-wrap gap-1.5">
-        {QUICK_STOPS.map(({ kind, label }) => {
+        {quick.map(({ kind, label }) => {
           const Icon = AMENITY_ICONS[kind];
           return (
             <Button key={kind} size="sm" variant="secondary" className="gap-1.5 rounded-full" onPress={() => onKind?.(kind)}>
@@ -129,7 +155,7 @@ function StopNow({ onKind, onAnother }: { onKind?: (kind: AmenityKind) => void; 
         })}
         <Button size="sm" variant="secondary" className="gap-1.5 rounded-full text-accent" onPress={onAnother}>
           <CirclePlus className="size-3.5" aria-hidden />
-          Another place
+          {quick.length > 0 ? "Another place" : ahead.length > 0 ? "Add another stop" : "Search places"}
         </Button>
       </div>
     </div>
@@ -213,7 +239,9 @@ export function NavigationHud({
   breakOffer,
   onTakeBreak,
   onSkipBreak,
-  canAddStop = false,
+  stopsAhead = [],
+  onRemoveStop,
+  quickStops = [],
   onAddStopKind,
   onAddStopSearch,
 }: NavigationHudProps) {
@@ -231,7 +259,9 @@ export function NavigationHud({
   const ahead = route.steps.slice(shownIndex + 1);
   const canOpenSteps = !hasArrived && !isWrongWay && ahead.length > 0;
   const stepsOpen = panel === "steps" && canOpenSteps;
-  const tripOpen = panel === "trip" && !hasArrived;
+  // At a stop with more to go, the trip panel still opens so stops can be added or dropped.
+  const canOpenTrip = !hasArrived || Boolean(nextStopName);
+  const tripOpen = panel === "trip" && canOpenTrip;
   const along = progress?.distanceAlong ?? 0;
 
   return (
@@ -390,24 +420,32 @@ export function NavigationHud({
         ) : null}
         <Surface className="glass-chrome rounded-t-[28px] px-5 pb-[max(1rem,var(--map-safe-bottom))] pt-4 shadow-2xl md:rounded-3xl md:pb-4">
           {tripOpen ? (
-            <div className="animate-fade-in mb-3 border-b border-separator pb-2">
-              <p className="pb-1 text-xs font-semibold uppercase tracking-wide text-muted">
-                Step {shownIndex + 1} of {route.steps.length}
-              </p>
+            <div className="animate-fade-in -mx-5 mb-3 max-h-[45dvh] overflow-y-auto overscroll-contain border-b border-separator px-5 pb-2">
+              {hasArrived ? null : (
+                <p className="pb-1 text-xs font-semibold uppercase tracking-wide text-muted">
+                  Step {shownIndex + 1} of {route.steps.length}
+                </p>
+              )}
               {canAvoidStairs ? (
                 <TripSetting label="Avoid stairs" isSelected={avoidStairs} onChange={onAvoidStairsChange} />
               ) : null}
               <TripSetting label="Spoken directions" isSelected={voiceOn} onChange={() => onToggleVoice()} />
               <TripSetting label="Turn the map with me" isSelected={facingUp} onChange={() => onToggleFacing()} />
-              {canAddStop ? <StopNow onKind={onAddStopKind} onAnother={onAddStopSearch} /> : null}
+              <TripStops
+                ahead={stopsAhead}
+                onRemove={onRemoveStop}
+                kinds={quickStops}
+                onKind={onAddStopKind}
+                onAnother={onAddStopSearch}
+              />
             </div>
           ) : null}
           <div className="flex items-center gap-3">
           <button
             type="button"
-            aria-expanded={hasArrived ? undefined : tripOpen}
-            aria-label={hasArrived ? undefined : tripOpen ? "Hide trip settings" : "Show trip settings"}
-            disabled={hasArrived}
+            aria-expanded={canOpenTrip ? tripOpen : undefined}
+            aria-label={canOpenTrip ? (tripOpen ? "Hide trip settings" : "Show trip settings") : undefined}
+            disabled={!canOpenTrip}
             onClick={() => setPanel(tripOpen ? null : "trip")}
             className="flex min-w-0 flex-1 items-center gap-2 rounded-2xl text-left transition-transform duration-150 enabled:cursor-pointer enabled:active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-focus">
           <div className="min-w-0 flex-1">
@@ -430,7 +468,7 @@ export function NavigationHud({
               </>
             )}
           </div>
-          {hasArrived ? null : tripOpen ? (
+          {!canOpenTrip ? null : tripOpen ? (
             <ChevronDown className="size-5 shrink-0 text-muted" aria-hidden />
           ) : (
             <ChevronUp className="size-5 shrink-0 text-muted" aria-hidden />

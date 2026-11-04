@@ -158,6 +158,8 @@ export async function fetchStreetRoute(
 
 // A street route point this close to a campus walkway is where the trip can carry on along the paths.
 const CAMPUS_JOIN_METERS = 20;
+// Campus walking directions only work inside the path network, or right beside it.
+const ON_PATHS_METERS = 40;
 
 type TripOptions = {
   avoidStairs: boolean;
@@ -191,6 +193,22 @@ export async function fetchTripRoute(
   if (!campus) return street;
   const pace = street.duration ? street.distance / street.duration : WALK_SPEED_MPS;
   return joinRoutes(street, entry, campus, { campusSpeed: pace });
+}
+
+/** The way from here to a place mid trip: the campus paths when here is on them, otherwise the streets the trip is already on. */
+export async function wayFromHere(
+  g: WalkGraph | null,
+  from: Coordinate,
+  to: Place,
+  travel: TravelMode | undefined,
+  options: TripOptions,
+): Promise<Route | null> {
+  const onPaths =
+    g !== null &&
+    (contains(CAMPUS.map.walkingArea, from) ||
+      (matchWalkway(g, from, { avoidStairs: false })?.distance ?? Infinity) <= ON_PATHS_METERS);
+  if (g && (onPaths || !travel)) return findRoute(g, from, to.coordinate, { avoidStairs: options.avoidStairs });
+  return fetchTripRoute(g, from, to, travel ?? "walk", options);
 }
 
 async function driveAndWalk(g: WalkGraph, from: Coordinate, to: Place, options: TripOptions) {

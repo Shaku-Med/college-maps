@@ -55,12 +55,12 @@ import { useDevicePrefs } from '@/lib/device-prefs';
 import { useFocusedPlace } from '@/lib/focus';
 import { showPlace } from '@/lib/links';
 import { closePlacePanel, usePlacePanel } from '@/lib/place-panel';
-import { formatRouteTime } from '@/lib/directions';
+import { formatRouteTime, wayFromHere } from '@/lib/directions';
 import { distanceMeters, formatDistance } from '@/lib/geo';
 import { stepText } from '@/lib/instructions';
 import { endTrip, showTrip } from '@/lib/live-activity';
 import { currentCompass, currentFix, glideMs, onFix, subscribeCompass, useLocation } from '@/lib/location';
-import { amenityWhere, nearestAmenity } from '@/lib/amenity-search';
+import { QUICK_STOPS, amenityWhere, nearestAmenity } from '@/lib/amenity-search';
 import { arriveChoices, breakArrivalNote, classStartAt, findBreak, type BreakOffer } from '@/lib/breaks';
 import { useClasses } from '@/lib/classes';
 import { parkingSpoken } from '@/lib/parking';
@@ -86,12 +86,14 @@ import { legSeconds, stopsStart, tripTotals } from '@/lib/stops';
 import { createCameraMemory, createSmoothHeading, shortestTurn } from '@/lib/smooth-heading';
 import { markReady } from '@/lib/splash';
 import { showMeetupOnMap, useShownMeetup } from '@/lib/meetup-focus';
-import { findRoute, remainingPath } from '@/lib/routing';
+import { findRoute, remainingPath, type Route } from '@/lib/routing';
 import { useSocial } from '@/lib/social';
 import {
   MY_LOCATION,
   closeTrip,
+  dropLeg,
   insertStopNow,
+  isNavigating,
   nextLeg,
   onStopNow,
   pickArrive,
@@ -159,6 +161,8 @@ const OBSTACLE_METERS = 150;
 // The break check runs only while the walker is on the route, and the offer lapses this far past the seat.
 const BREAK_ON_ROUTE_METERS = 12;
 const BREAK_PASSED_METERS = 20;
+// A trash can or bench is a one tap stop only when one is this close; farther out, the search finds any place.
+const QUICK_STOP_METERS = 400;
 
 // Room kept for the filter chips along the top, and the gap between the map buttons and the panel below them.
 const TOP_CHROME_ROOM = 72;
@@ -201,6 +205,7 @@ export default function MapScreen() {
   const breakRef = useRef<{ asked: boolean; startedAt: number; arriveBy: number | null }>({ asked: true, startedAt: 0, arriveBy: null });
   const [breakOffer, setBreakOffer] = useState<BreakOffer | null>(null);
   const [breakStop, setBreakStop] = useState<{ id: string; leaveBy: number } | null>(null);
+  const stopNowRef = useRef(0);
   const [isRotated, setIsRotated] = useState(false);
   const [activePerson, setActivePerson] = useState<string | null>(null);
   const [ratingDue, setRatingDue] = useState(false);
@@ -729,17 +734,18 @@ export default function MapScreen() {
     navigation.start(route, here ?? null);
   }
 
-  // A stop added mid walk is the very next place, walked to from here; the rest of the trip carries on after it.
-  function addStopNow(place: Place) {
-    if (!navigating || !target) return;
-    const here = location.fix?.position;
-    const from = here ?? navigation.progress?.point ?? target.coordinate;
-    const route = findRoute(walkGraph(), from, place.coordinate, { avoidStairs: trip.avoidStairs });
-    if (!route) {
-      toast.show({ variant: 'danger', label: `Could not find a way to ${placeCalled(place)}` });
-      return;
-    }
-    insertStopNow(place.id, navigation.hasArrived);
+  // The way to a place picked mid trip, from here; street routes answer later, so only the newest pick counts.
+  async function wayNow(place: Place) {
+    const token = ++stopNowRef.current;
+    const from = location.fix?.position ?? navigation.progress?.point ?? target?.coordinate;
+    if (!from) return { route: null, current: false };
+    const route = await wayFromHere(walkGraph(), from, place, navigation.route?.travel, {
+      avoidStairs: trip.avoidStairs,
+    }).catch(() => null);
+    return { route, current: token === stopNowRef.current && isNavigating() };
+  }
+
+  function guideAlong(route: Route) {
     setHudPanel(null);
     setBreakOffer(null);
     try {
@@ -747,7 +753,21 @@ export default function MapScreen() {
     } catch {
       // Guidance still shows the turns.
     }
-    navigation.start(route, here ?? null);
+    navigation.start(route, location.fix?.position ?? null);
+  }
+
+  // A stop added mid trip is the very next place, from here; the rest of the trip carries on after it.
+  async function addStopNow(place: Place) {
+    if (!navigating || !target) return;
+    const atStop = navigation.hasArrived;
+    const { route, current } = await wayNow(place);
+    if (!current) return;
+    if (!route) {
+      toast.show({ variant: 'danger', label: `Could not find a way to ${placeCalled(place)}` });
+      return;
+    }
+    insertStopNow(place.id, atStop);
+    guideAlong(route);
     toast.show({
       variant: 'success',
       label: 'Stop added',
@@ -755,10 +775,33 @@ export default function MapScreen() {
     });
   }
 
+  // Dropping a stop mid trip; dropping the one being headed to now heads on to the next place instead.
+  async function removeStopNow(index: number) {
+    const place = getPlace(trip.legs[index]);
+    if (!navigating || !place || index >= trip.legs.length - 1) return;
+    if (breakStop?.id === place.id) setBreakStop(null);
+    if (index !== trip.leg || navigation.hasArrived) {
+      dropLeg(index);
+      toast.show({ variant: 'success', label: 'Stop removed', description: place.name });
+      return;
+    }
+    const next = getPlace(trip.legs[index + 1]);
+    if (!next) return;
+    const { route, current } = await wayNow(next);
+    if (!current) return;
+    if (!route) {
+      toast.show({ variant: 'danger', label: `Could not find a way to ${next.name}` });
+      return;
+    }
+    dropLeg(index);
+    guideAlong(route);
+    toast.show({ variant: 'success', label: 'Stop removed', description: place.name });
+  }
+
   function addStopKind(kind: AmenityKind) {
     const from = location.fix?.position ?? navigation.progress?.point ?? target?.coordinate;
     const match = from ? nearestAmenity(kind, from) : undefined;
-    if (match) addStopNow(match.place);
+    if (match) void addStopNow(match.place);
   }
 
   function takeBreak() {
@@ -766,7 +809,7 @@ export default function MapScreen() {
     setBreakOffer(null);
     if (!offer) return;
     setBreakStop({ id: offer.spot.id, leaveBy: Date.now() + offer.toSeat * 1000 + offer.minutes * 60_000 });
-    addStopNow(offer.spot);
+    void addStopNow(offer.spot);
   }
 
   // A place picked on the search sheet mid walk comes back here to be walked to.
@@ -778,7 +821,7 @@ export default function MapScreen() {
     () =>
       onStopNow((id) => {
         const place = getPlace(id);
-        if (place) addStopNowRef.current(place);
+        if (place) void addStopNowRef.current(place);
       }),
     [],
   );
@@ -894,6 +937,23 @@ export default function MapScreen() {
     return numbers;
   }, [navigating, trip.legs, trip.leg, trip.destination, preview.plan]);
   const stopCount = navigating ? trip.legs.length - 1 : 0;
+  // Every stop still to come, and the one being headed to, can be dropped; the destination ends the trip instead.
+  const stopsAhead = useMemo(() => {
+    if (!navigating) return [];
+    const first = navigation.hasArrived ? trip.leg + 1 : trip.leg;
+    return trip.legs.flatMap((id, index) => {
+      const place = getPlace(id);
+      return place && index >= first && index < trip.legs.length - 1 ? [{ index, place, number: stopNumbers[id] ?? index + 1 }] : [];
+    });
+  }, [navigating, navigation.hasArrived, trip.legs, trip.leg, stopNumbers]);
+  const here = location.fix?.position;
+  const quickStops = useMemo(
+    () =>
+      navigating && here
+        ? QUICK_STOPS.filter(({ kind }) => (nearestAmenity(kind, here)?.meters ?? Infinity) <= QUICK_STOP_METERS).map(({ kind }) => kind)
+        : [],
+    [navigating, here],
+  );
 
   const currentPath = navigating
     ? navigation.route && navigation.progress
@@ -1465,7 +1525,9 @@ export default function MapScreen() {
             onContinue={continueTrip}
             onStep={step}
             onEnd={end}
-            canAddStop={!navigation.route.travel && navigation.manualStep === null}
+            stopsAhead={stopsAhead}
+            onRemoveStop={(index) => void removeStopNow(index)}
+            quickStops={quickStops}
             onAddStopKind={addStopKind}
             onAnotherStop={() => router.push({ pathname: '/stop', params: { now: '1' } })}
           />

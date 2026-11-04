@@ -31,10 +31,10 @@ import { useWakeLock } from "@/hooks/use-wake-lock";
 import { campusActivityByPlace, eventsAtPlace } from "@/lib/campus-activity";
 import { isAmenity, placeCalled, type AmenityKind } from "@/data/amenities";
 import { useNow } from "@/hooks/use-now";
-import { amenityWhere, nearestAmenity } from "@/lib/amenity-search";
+import { QUICK_STOPS, amenityWhere, nearestAmenity } from "@/lib/amenity-search";
 import { arriveChoices, breakArrivalNote, classStartAt, findBreak, type BreakOffer } from "@/lib/breaks";
 import { MAP_FILTERS, type MapFilter } from "@/lib/categories";
-import { fetchTripRoute } from "@/lib/directions";
+import { fetchTripRoute, wayFromHere } from "@/lib/directions";
 import { roomSpot, safetyBuildingHere, safetyBuildings } from "@/lib/building-safety";
 import { metersFromBuilding } from "@/lib/buildings";
 import { autoTravelOn } from "@/lib/travel-prefs";
@@ -241,6 +241,8 @@ function MapViewControls({
 
 // Past the seat by this much, the offer to rest there has lapsed.
 const BREAK_PASSED_METERS = 20;
+// A trash can or bench is a one tap stop only when one is this close; farther out, the search finds any place.
+const QUICK_STOP_METERS = 400;
 
 export function MapApp({ initialPlaceId, initialRoom, initialAccountOpen = false }: MapAppProps) {
   const mapRef = useRef<CampusMapHandle>(null);
@@ -380,6 +382,7 @@ export function MapApp({ initialPlaceId, initialRoom, initialAccountOpen = false
   const missedLotsRef = useRef(createMissedLotWatch());
   // After driving right up to the place, the trip to the offered lot, started if the driver says yes.
   const parkingTripRef = useRef<Route | null>(null);
+  const stopNowRef = useRef(0);
 
   const followAgainRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
@@ -1353,28 +1356,63 @@ export function MapApp({ initialPlaceId, initialRoom, initialAccountOpen = false
     beginRoute(previewRoute, from);
   }
 
-  // A stop added mid walk is the very next place, walked to from here; the rest of the trip carries on after it.
-  function addStopNow(place: Place) {
-    if (mode !== "navigate" || !graph || !target) return;
-    const from = geo.position ?? progress?.point ?? target.coordinate;
-    const route = findRoute(graph, from, place.coordinate, { avoidStairs });
+  // The way to a place picked mid trip, from here; street routes answer later, so only the newest pick counts.
+  async function wayNow(place: Place) {
+    const token = ++stopNowRef.current;
+    const from = latestFixRef.current ?? geo.position ?? progress?.point ?? target?.coordinate;
+    if (!from) return { route: null, current: false };
+    const route = await wayFromHere(graph, from, place, navRoute?.travel, { avoidStairs }).catch(() => null);
+    return { route, current: token === stopNowRef.current && navRef.current.mode === "navigate" };
+  }
+
+  // A stop added mid trip is the very next place, from here; the rest of the trip carries on after it.
+  async function addStopNow(place: Place) {
+    if (mode !== "navigate" || !target) return;
+    // Standing at a stop already, the new one comes after it rather than sending them back.
+    const at = hasArrived ? leg + 1 : leg;
+    const { route, current } = await wayNow(place);
+    if (!current) return;
     if (!route) {
       toast.danger(`Could not find a way to ${placeCalled(place)}`);
       return;
     }
-    // Standing at a stop already, the new one comes after it rather than sending them back.
-    const at = hasArrived ? leg + 1 : leg;
-    setLegs((current) => [...current.slice(0, at), place.id, ...current.slice(at)]);
+    setLegs((now) => [...now.slice(0, at), place.id, ...now.slice(at)]);
     if (hasArrived) setLeg(at);
     setBreakOffer(null);
-    beginRoute(route, geo.position);
+    beginRoute(route, latestFixRef.current ?? geo.position);
     toast.success(isAmenity(place) ? `Stop added: ${place.name}, ${lowerFirst(amenityWhere(place))}` : `Stop added: ${place.name}`);
+  }
+
+  // Dropping a stop mid trip; dropping the one being headed to now heads on to the next place instead.
+  async function removeStopNow(index: number) {
+    const id = legs[index];
+    const place = getPlace(id);
+    if (mode !== "navigate" || !place || index >= legs.length - 1) return;
+    const drop = () => setLegs((now) => now.filter((stop, i) => !(i === index && stop === id)));
+    if (breakStop?.id === id) setBreakStop(null);
+    if (index !== leg || hasArrived) {
+      drop();
+      toast.success(`Stop removed: ${place.name}`);
+      return;
+    }
+    const next = getPlace(legs[index + 1]);
+    if (!next) return;
+    const { route, current } = await wayNow(next);
+    if (!current) return;
+    if (!route) {
+      toast.danger(`Could not find a way to ${next.name}`);
+      return;
+    }
+    drop();
+    setBreakOffer(null);
+    beginRoute(route, latestFixRef.current ?? geo.position);
+    toast.success(`Stop removed: ${place.name}`);
   }
 
   function addStopKind(kind: AmenityKind) {
     const from = geo.position ?? progress?.point ?? target?.coordinate;
     const match = from ? nearestAmenity(kind, from) : undefined;
-    if (match) addStopNow(match.place);
+    if (match) void addStopNow(match.place);
   }
 
   function takeBreak() {
@@ -1382,7 +1420,7 @@ export function MapApp({ initialPlaceId, initialRoom, initialAccountOpen = false
     setBreakOffer(null);
     if (!offer) return;
     setBreakStop({ id: offer.spot.id, leaveBy: Date.now() + offer.toSeat * 1000 + offer.minutes * 60_000 });
-    addStopNow(offer.spot);
+    void addStopNow(offer.spot);
   }
 
   // Arrived at a stop: on to the next place, from wherever the walker is now.
@@ -1531,6 +1569,14 @@ export function MapApp({ initialPlaceId, initialRoom, initialAccountOpen = false
     return current && [...current, ...legsAhead.flatMap((next) => next.path)];
   }, [navRoute, progress, legsAhead]);
 
+  const quickStops = useMemo(() => {
+    const here = geo.position;
+    if (mode !== "navigate" || !here) return [];
+    return QUICK_STOPS.filter(({ kind }) => (nearestAmenity(kind, here)?.meters ?? Infinity) <= QUICK_STOP_METERS).map(
+      ({ kind }) => kind,
+    );
+  }, [mode, geo.position]);
+
   // Stops keep their number from the plan, so stop 2 is still stop 2 once stop 1 is done.
   const stopNumbers = useMemo(() => {
     const visits = mode === "navigate" ? legs : mode === "directions" ? (plan?.targets.map((place) => place.id) ?? []) : [];
@@ -1543,6 +1589,16 @@ export function MapApp({ initialPlaceId, initialRoom, initialAccountOpen = false
     });
     return numbers;
   }, [mode, legs, leg, plan, selectedId]);
+
+  // Every stop still to come, and the one being headed to, can be dropped; the destination ends the trip instead.
+  const stopsAhead = useMemo(() => {
+    if (mode !== "navigate") return [];
+    const first = hasArrived ? leg + 1 : leg;
+    return legs.flatMap((id, index) => {
+      const place = getPlace(id);
+      return place && index >= first && index < legs.length - 1 ? [{ index, place, number: stopNumbers[id] ?? index + 1 }] : [];
+    });
+  }, [mode, legs, leg, hasArrived, stopNumbers]);
   const stopCount = mode === "navigate" ? legs.length - 1 : 0;
   const mapRoute = mode === "navigate" ? navPath : mode === "directions" ? previewPath : undefined;
   const snappedToRoute =
@@ -2031,7 +2087,9 @@ export function MapApp({ initialPlaceId, initialRoom, initialAccountOpen = false
           breakOffer={shownBreak}
           onTakeBreak={takeBreak}
           onSkipBreak={() => setBreakOffer(null)}
-          canAddStop={Boolean(graph) && !navRoute.travel && manualStep === null}
+          stopsAhead={stopsAhead}
+          onRemoveStop={(index) => void removeStopNow(index)}
+          quickStops={quickStops}
           onAddStopKind={addStopKind}
           onAddStopSearch={() => setPicker("stopNow")}
           parking={parking}
@@ -2060,12 +2118,16 @@ export function MapApp({ initialPlaceId, initialRoom, initialAccountOpen = false
           const kind = picker;
           setPicker(null);
           if (kind === "origin") handleOriginChange(place.id);
-          else if (kind === "stopNow") addStopNow(place);
+          else if (kind === "stopNow") void addStopNow(place);
           else addStop(place.id);
         }}
         nearby={nearby}
         greetName={greetName}
-        hide={[...(selectedId ? [selectedId] : []), ...(picker === "origin" ? [] : [...stopOrder.stops, ...stopOrder.after])]}
+        hide={
+          picker === "stopNow"
+            ? legs.slice(leg)
+            : [...(selectedId ? [selectedId] : []), ...(picker === "origin" ? [] : [...stopOrder.stops, ...stopOrder.after])]
+        }
         header={
           picker === "origin" ? (
             <Button
