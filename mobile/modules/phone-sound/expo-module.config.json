@@ -1,0 +1,9 @@
+{
+  "platforms": ["apple", "android"],
+  "apple": {
+    "modules": ["PhoneSoundModule"]
+  },
+  "android": {
+    "modules": ["expo.modules.phonesound.PhoneSoundModule"]
+  }
+}

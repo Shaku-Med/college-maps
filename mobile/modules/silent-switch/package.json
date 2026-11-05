@@ -1,9 +1,0 @@
-{
-  "name": "silent-switch",
-  "version": "1.0.0",
-  "private": true,
-  "description": "Tells whether an iPhone is set to silent, so spoken directions can chime instead",
-  "license": "UNLICENSED",
-  "author": "CSI Map",
-  "homepage": "https://github.com/Shaku-Med/college-maps"
-}

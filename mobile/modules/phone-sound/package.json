@@ -1,0 +1,9 @@
+{
+  "name": "phone-sound",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Tells spoken directions when to stay quiet, like on silent or during a call, and lets other audio back in after each line",
+  "license": "UNLICENSED",
+  "author": "CSI Map",
+  "homepage": "https://github.com/Shaku-Med/college-maps"
+}

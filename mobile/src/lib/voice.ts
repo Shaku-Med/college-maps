@@ -1,5 +1,4 @@
 import { createAudioPlayer, setAudioModeAsync, type AudioPlayer } from 'expo-audio';
-import * as Haptics from 'expo-haptics';
 import * as SecureStore from 'expo-secure-store';
 import * as Speech from 'expo-speech';
 
@@ -16,7 +15,15 @@ import {
   startEngine,
   storedClip,
 } from '@/lib/voice-engine';
-import { checkSilentSwitch, phoneIsSilent } from '@/lib/silent-switch';
+import {
+  beginPrompt,
+  checkSilentSwitch,
+  endPrompt,
+  isOnCall,
+  onCallChange,
+  phoneWantsQuiet,
+  tapForTurn,
+} from '@/lib/phone-sound';
 import { PREVIEW_LINE, isNaturalVoice, isVoiceId, type NaturalVoiceId, type VoiceId } from '@/lib/voice-options';
 
 // Spoken directions use a natural voice made on the phone when one is picked, and the phone's own speech engine otherwise.
@@ -31,20 +38,35 @@ const WAIT_FOR_CLIP_MS = 4_000;
 const WAIT_FOR_BANK_MS = 1_500;
 // Until a clip reports its length, the longest it may hold up the next one.
 const CLIP_TIMEOUT_MS = 30_000;
+// Other audio comes back this long after the last line, so lines close together don't pump music up and down.
+const RELEASE_AFTER_MS = 700;
 
 let voiceId: string | undefined;
 let chosen = false;
 // A phone whose speech engine is missing or not ready fails inside expo-speech where nothing can catch it, so it waits.
 let canSpeak = true;
-let audioReady: Promise<void> | null = null;
+let audioMode: Promise<void> | null = null;
+let releaseTimer: ReturnType<typeof setTimeout> | undefined;
+// Lines still getting the audio ready, which must not have it taken away underneath them.
+let preparing = 0;
 
-function prepareAudio() {
-  audioReady ??= setAudioModeAsync({
+// Plays with the screen locked; the ring switch and calls are handled before anything is said.
+const setUpAudio = () =>
+  (audioMode ??= setAudioModeAsync({
     playsInSilentMode: true,
     shouldPlayInBackground: true,
     interruptionMode: 'duckOthers',
-  }).catch(() => undefined);
-  return audioReady;
+  }).catch(() => undefined));
+
+async function prepareAudio() {
+  clearTimeout(releaseTimer);
+  preparing++;
+  try {
+    await setUpAudio();
+    await beginPrompt();
+  } finally {
+    preparing--;
+  }
 }
 
 const clean = (text: string) => text.trim().slice(0, MAX_TEXT);
@@ -168,11 +190,12 @@ async function speakWithDevice(text: string) {
   playNext();
 }
 
+// A sample someone tapped plays even on silent, like any sound they ask for.
 export async function previewDirectionVoice(id: string) {
   silenceAll();
   await Promise.all([pickVoice(), prepareAudio()]);
   if (!canSpeak) return;
-  Speech.speak(PREVIEW_LINE, { voice: id, language: undefined, rate: 1.0 });
+  Speech.speak(PREVIEW_LINE, { voice: id, language: undefined, rate: 1.0, onDone: () => releaseSoon(), onStopped: () => releaseSoon() });
 }
 
 // ---- Playing natural clips -------------------------------------------------------------------------
@@ -222,8 +245,25 @@ function finishClip(done: AudioPlayer) {
   playNext();
 }
 
+const idle = () => preparing === 0 && !player && !deviceSpeaking && queue.length === 0;
+
+function releaseSoon(retry = true) {
+  clearTimeout(releaseTimer);
+  releaseTimer = setTimeout(() => {
+    if (!idle()) return;
+    // The phone's voice can hold the audio a moment after it finishes, so one more try follows.
+    void endPrompt().then((released) => {
+      if (!released && retry) releaseSoon(false);
+    });
+  }, RELEASE_AFTER_MS);
+}
+
 function playNext() {
-  if (player || deviceSpeaking || queue.length === 0) return;
+  if (player || deviceSpeaking) return;
+  if (queue.length === 0) {
+    releaseSoon();
+    return;
+  }
   const line = queue.shift() as Line;
   if ('text' in line) {
     sayWithDevice(line.text);
@@ -276,7 +316,14 @@ function silenceAll() {
   deviceLine++;
   deviceSpeaking = false;
   void Speech.stop();
+  releaseSoon();
 }
+
+// A call that starts mid line cuts it off; when the call ends, whatever iOS turned back on is let go.
+onCallChange((calling) => {
+  if (calling) silenceAll();
+  else releaseSoon();
+});
 
 // ---- Speaking ----------------------------------------------------------------------------------------
 
@@ -308,9 +355,12 @@ export async function speak(
   const now = Date.now();
   if (!urgent && last.text === text && now - last.at < REPEAT_WINDOW_MS) return;
   last = { text, at: now };
-  // On silent an iPhone chimes and taps at the turn instead of talking, like Apple Maps; nothing else is said until the sound is on.
-  if (phoneIsSilent()) {
-    if (urgent) void playTurnChime();
+  // On silent or during a call nothing is said; a turn gets a buzz instead.
+  if (await phoneWantsQuiet({ recheck: idle() })) {
+    if (urgent) {
+      silenceAll();
+      tapForTurn();
+    }
     return;
   }
   if (urgent) silenceAll();
@@ -398,22 +448,13 @@ export function holdVoice() {
 }
 
 // The model only loads for a line the bank does not have, so a walk on campus never waits for it.
-let chime: AudioPlayer | null = null;
-
-async function playTurnChime() {
-  await prepareAudio();
-  chime ??= createAudioPlayer(require('../../assets/sounds/turn-chime.wav'));
-  void chime.seekTo(0);
-  chime.play();
-  void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-}
-
 export async function warmUpVoice() {
-  checkSilentSwitch(true);
   if (naturalVoice()) void loadVoiceBank();
-  const [voice] = await Promise.all([pickVoice(), prepareAudio()]);
-  if (!canSpeak) return;
-  Speech.speak(' ', { voice, language: voice ? undefined : 'en-US', volume: 0 });
+  const [voice] = await Promise.all([pickVoice(), setUpAudio()]);
+  // Read after the audio is set up, which would otherwise undo how the check listens.
+  checkSilentSwitch();
+  if (!canSpeak || isOnCall()) return;
+  Speech.speak(' ', { voice, language: voice ? undefined : 'en-US', volume: 0, onDone: () => releaseSoon(), onStopped: () => releaseSoon() });
 }
 
 export function stopSpeaking() {
