@@ -21,8 +21,7 @@ import {
   endPrompt,
   isOnCall,
   onCallChange,
-  phoneWantsQuiet,
-  tapForTurn,
+  quietReason,
 } from '@/lib/phone-sound';
 import { PREVIEW_LINE, isNaturalVoice, isVoiceId, type NaturalVoiceId, type VoiceId } from '@/lib/voice-options';
 
@@ -355,11 +354,12 @@ export async function speak(
   const now = Date.now();
   if (!urgent && last.text === text && now - last.at < REPEAT_WINDOW_MS) return;
   last = { text, at: now };
-  // On silent or during a call nothing is said; a turn gets a buzz instead.
-  if (await phoneWantsQuiet({ recheck: idle() })) {
+  // On silent a turn gets a soft ping instead of words, like Apple Maps; during a call nothing plays at all.
+  const quiet = await quietReason({ recheck: idle() });
+  if (quiet) {
     if (urgent) {
       silenceAll();
-      tapForTurn();
+      if (quiet === 'silent') void playTurnPing();
     }
     return;
   }
@@ -445,6 +445,16 @@ export async function previewNaturalVoice(id: NaturalVoiceId): Promise<'played' 
 /** Keeps the natural voice loaded while directions are open, and returns the function that lets it unload. */
 export function holdVoice() {
   return naturalVoice() ? holdEngine() : () => undefined;
+}
+
+let ping: AudioPlayer | null = null;
+
+async function playTurnPing() {
+  await prepareAudio();
+  ping ??= createAudioPlayer(require('../../assets/sounds/turn-chime.wav'));
+  void ping.seekTo(0);
+  ping.play();
+  releaseSoon();
 }
 
 // The model only loads for a line the bank does not have, so a walk on campus never waits for it.

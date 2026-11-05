@@ -1,5 +1,4 @@
 import { NativeModule, requireOptionalNativeModule } from 'expo';
-import * as Haptics from 'expo-haptics';
 import { AppState, Platform } from 'react-native';
 
 declare class PhoneSoundModule extends NativeModule<{ onCallChange(event: { onCall: boolean }): void }> {
@@ -7,7 +6,6 @@ declare class PhoneSoundModule extends NativeModule<{ onCallChange(event: { onCa
   isOnCall(): boolean;
   beginPrompt(): Promise<void>;
   endPrompt(): Promise<boolean>;
-  vibrate?(): void;
 }
 
 // Only in builds made after this module was added; older builds always speak.
@@ -48,11 +46,12 @@ export function isOnCall() {
   }
 }
 
-/** On silent (or vibrate on Android) or with a call ringing or going; recheck false while a line plays, as the iPhone check changes how sound plays. */
-export async function phoneWantsQuiet({ recheck = true } = {}) {
-  if (!native) return false;
-  if (isOnCall()) return true;
-  return recheck ? readSilent() : silent;
+/** Why directions should not talk right now, if at all; recheck false while a line plays, as the iPhone check changes how sound plays. */
+export async function quietReason({ recheck = true } = {}): Promise<'call' | 'silent' | null> {
+  if (!native) return null;
+  if (isOnCall()) return 'call';
+  const isSilent = recheck ? await readSilent() : silent;
+  return isSilent ? 'silent' : null;
 }
 
 /** Reads the ring switch again right away, such as when directions start. */
@@ -74,12 +73,6 @@ export async function beginPrompt() {
 /** Gives other audio its volume back once nothing is being said; false when the phone was still busy. */
 export async function endPrompt() {
   return native ? native.endPrompt().catch(() => false) : true;
-}
-
-/** A buzz at a turn in place of speech. */
-export function tapForTurn() {
-  if (Platform.OS === 'ios' && native?.vibrate) native.vibrate();
-  else void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
 }
 
 if (native) {

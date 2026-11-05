@@ -57,11 +57,6 @@ public class PhoneSoundModule: Module {
       }
     }
     .runOnQueue(.main)
-
-    // Unlike the haptics engine this also works with the screen locked, and it follows the phone's own vibration settings.
-    Function("vibrate") {
-      AudioServicesPlaySystemSound(kSystemSoundID_Vibrate)
-    }
   }
 
   private func silentSound() -> SystemSoundID? {
