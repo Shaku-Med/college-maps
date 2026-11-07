@@ -6,6 +6,8 @@
   --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
   --animate-sheet-in: sheet-in 280ms cubic-bezier(0.22, 1, 0.36, 1);
   --animate-fade-in: fade-in 160ms ease-out;
+  --animate-step-in: step-in 280ms cubic-bezier(0.22, 1, 0.36, 1);
+  --animate-pill-in: pill-in 240ms cubic-bezier(0.22, 1, 0.36, 1);
   --animate-marker-ring: marker-ring 900ms cubic-bezier(0.22, 1, 0.36, 1);
   --animate-marker-live: marker-live 2.6s cubic-bezier(0.22, 1, 0.36, 1) infinite;
   --animate-safety-in: safety-in 320ms cubic-bezier(0.22, 1, 0.36, 1) both;
@@ -38,6 +40,62 @@
 @keyframes fade-in {
   from {
     opacity: 0;
+  }
+}
+
+/* The next turn rising into place when the one before it is done. */
+@keyframes step-in {
+  from {
+    transform: translateY(8px);
+    opacity: 0;
+  }
+}
+
+@keyframes pill-in {
+  from {
+    transform: translateY(-6px) scale(0.96);
+    opacity: 0;
+  }
+}
+
+@keyframes leave-down {
+  to {
+    transform: translateY(24px);
+    opacity: 0;
+  }
+}
+
+@keyframes leave-up {
+  to {
+    transform: translateY(-24px);
+    opacity: 0;
+  }
+}
+
+/* A quiet scrollbar in the text color, so it suits the blue card and the plain one. */
+.panel-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in oklab, currentColor 35%, transparent) transparent;
+}
+
+.presence[data-leaving] > * {
+  pointer-events: none;
+  animation: leave-down 200ms cubic-bezier(0.4, 0, 1, 1) forwards;
+}
+
+.presence[data-leaving] > [data-leave="up"] {
+  animation-name: leave-up;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-step-in,
+  .animate-pill-in,
+  .animate-sheet-in {
+    animation: none;
+  }
+
+  .presence[data-leaving] > * {
+    animation-duration: 1ms;
   }
 }
 

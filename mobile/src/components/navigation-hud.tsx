@@ -1,19 +1,14 @@
 import type { SFSymbol } from 'expo-symbols';
 import * as Haptics from 'expo-haptics';
 import { useThemeColor } from 'heroui-native';
-import { useEffect, useState } from 'react';
-import { Platform, ScrollView, StyleSheet, Switch, Text, useWindowDimensions, View } from 'react-native';
-import { Pressable, type PressableProps } from 'react-native-gesture-handler';
+import { Platform, StyleSheet, Switch, Text, useWindowDimensions, View, type ViewStyle } from 'react-native';
+import { GestureDetector, Pressable, type PressableProps } from 'react-native-gesture-handler';
 import Animated, {
-  Easing,
   FadeIn,
   FadeInDown,
   FadeInUp,
-  FadeOut,
-  FadeOutDown,
-  FadeOutUp,
-  LinearTransition,
   useReducedMotion,
+  type AnimatedStyle,
 } from 'react-native-reanimated';
 import { useResolveClassNames } from 'uniwind';
 
@@ -22,9 +17,10 @@ import { StopRow } from '@/components/stop-row';
 import { Glass, HAS_LIQUID_GLASS } from '@/components/glass';
 import { MapButton } from '@/components/map-button';
 import { StepIcon } from '@/components/step-icon';
+import { useDragPanel } from '@/hooks/use-drag-panel';
 import { useNow } from '@/hooks/use-now';
 import type { RouteNotice } from '@/hooks/use-voice-guidance';
-import { formatRouteTime } from '@/lib/directions';
+import { arrivalClock, formatRouteTime } from '@/lib/directions';
 import { formatDistance } from '@/lib/geo';
 import { stepText } from '@/lib/instructions';
 import { parkingChoices, parkingDetail, parkingTitle, type ParkingPrompt } from '@/lib/parking';
@@ -41,10 +37,11 @@ const NOTICE_TEXT: Record<RouteNotice, string> = {
   switched: 'Back on your earlier route',
 };
 
+// No exit animations on this screen: its views all mount on one root view, where Reanimated holding a leaving one can scramble the order and blank the app.
 function Pill({ symbol, text, tone = 'default' }: { symbol: SFSymbol; text: string; tone?: 'default' | 'danger' }) {
   const [foreground, danger] = useThemeColor(['foreground', 'danger']);
   return (
-    <Animated.View entering={FadeInUp.duration(200)} exiting={FadeOutUp.duration(160)} className="items-center">
+    <Animated.View entering={FadeInUp.duration(200)} className="items-center">
       <Glass className="flex-row items-center gap-2 rounded-full px-3.5 py-2">
         <Icon name={symbol} size={13} weight="semibold" tintColor={tone === 'danger' ? danger : foreground} />
         <Text className={tone === 'danger' ? 'text-sm font-semibold text-danger' : 'text-sm font-medium text-foreground'}>
@@ -79,26 +76,18 @@ type TopProps = {
 const THEN_WITHIN_METERS = 60;
 // The open list stops short of the footer, so the map and End stay in view.
 const STEPS_MAX_SHARE = 0.45;
+// The next turn rises into place when the one before it is done.
+const STEP_IN = FadeInDown.duration(260).withInitialValues({ opacity: 0, transform: [{ translateY: 8 }] });
 // The trip panel scrolls past this, so a long list of stops never pushes End off the screen.
 const TRIP_MAX_SHARE = 0.45;
-// Opening and closing ease like a system sheet: smooth, with no overshoot.
-const PANEL_MOTION = LinearTransition.duration(240).easing(Easing.out(Easing.cubic));
-const PANEL_MOTION_MS = 400;
 
-/** Animates the card's size only around opening or closing. */
-function usePanelMotion(open: boolean, reduceMotion: boolean) {
-  const [moving, setMoving] = useState(false);
-  const [seen, setSeen] = useState(open);
-  if (seen !== open) {
-    setSeen(open);
-    setMoving(true);
-  }
-  useEffect(() => {
-    if (!moving) return;
-    const timer = setTimeout(() => setMoving(false), PANEL_MOTION_MS);
-    return () => clearTimeout(timer);
-  }, [moving]);
-  return moving && !reduceMotion ? PANEL_MOTION : undefined;
+/** The little bar that says a panel can be pulled, a bit livelier under the finger. */
+function PanelHandle({ color, style, className }: { color: string; style: AnimatedStyle<ViewStyle>; className: string }) {
+  return (
+    <View className={`items-center ${className}`} importantForAccessibility="no-hide-descendants" accessibilityElementsHidden>
+      <Animated.View style={[{ height: 4, borderRadius: 2, backgroundColor: color }, style]} />
+    </View>
+  );
 }
 
 const DIMS_ON_PRESS = Platform.OS === 'ios' && !HAS_LIQUID_GLASS;
@@ -133,12 +122,12 @@ function StepRow({
   ink: string;
 }) {
   return (
-    <View className="flex-row items-center gap-3 py-2.5">
-      <View className="size-9 items-center justify-center rounded-full">
-        <View style={[StyleSheet.absoluteFill, { borderRadius: 18, backgroundColor: ink, opacity: 0.16 }]} />
-        <StepIcon step={step} size={16} color={ink} />
+    <View className="flex-row items-center gap-3 py-3">
+      <View className="size-10 items-center justify-center rounded-full">
+        <View style={[StyleSheet.absoluteFill, { borderRadius: 20, backgroundColor: ink, opacity: 0.16 }]} />
+        <StepIcon step={step} size={18} color={ink} />
       </View>
-      <Text className="min-w-0 flex-1 text-base leading-5" style={{ color: ink }} numberOfLines={2}>
+      <Text className="min-w-0 flex-1 text-base leading-6" style={{ color: ink }} numberOfLines={2}>
         {stepText(step, destinationName)}
       </Text>
       <Text className="text-sm font-medium" style={{ color: ink, opacity: 0.75 }}>
@@ -184,124 +173,138 @@ export function NavigationBanner({
   const open = expanded && canExpand;
   const ahead = route.steps.slice(index + 1);
   const ink = wrong ? dangerForeground : accentForeground;
-  const layout = usePanelMotion(open, reduceMotion);
+  const panel = useDragPanel({ edge: 'top', open, canOpen: canExpand, onOpenChange: onExpandedChange });
 
   function toggle() {
-    if (!canExpand) return;
+    if (!canExpand || panel.pressIsDrag()) return;
     void Haptics.selectionAsync();
     onExpandedChange(!open);
   }
 
   return (
     <View pointerEvents="box-none" className="gap-2.5 px-3">
-      <Animated.View layout={layout}>
-        <Glass radius={28} tint={wrong ? danger : accent} interactive>
-          <Press
-            accessibilityRole="button"
-            accessibilityState={{ expanded: open, disabled: !canExpand }}
-            accessibilityLabel={
-              hasArrived
-                ? [`You have arrived at ${destinationName}`, arrivalNote].filter(Boolean).join('. ')
-                : wrong
-                  ? 'Wrong way. Turn around when it is safe'
-                  : `In ${formatDistance(toStep)}, ${stepText(step, destinationName)}`
-            }
-            accessibilityHint={canExpand ? (open ? 'Hides the turns ahead' : 'Shows every turn still ahead') : undefined}
-            onPress={toggle}
-            className="p-4">
-            {hasArrived ? (
-              <View className="flex-row items-center gap-3.5">
-                <Icon name="flag.checkered" size={30} weight="semibold" tintColor={ink} />
-                <View className="min-w-0 flex-1">
-                  <Text className="text-2xl font-bold" style={{ color: ink }}>
-                    {nextStopName ? 'Stop reached' : 'You have arrived'}
-                  </Text>
-                  <Text className="text-base opacity-80" style={{ color: ink }} numberOfLines={1}>
-                    {nextStopName ? `${destinationName} · Next: ${nextStopName}` : destinationName}
-                  </Text>
-                  {arrivalNote ? (
-                    <Text className="mt-1.5 text-base font-semibold" style={{ color: ink }}>
-                      {arrivalNote}
-                    </Text>
-                  ) : null}
-                </View>
-              </View>
-            ) : wrong ? (
-              <View className="flex-row items-center gap-3.5">
-                <Icon name="arrow.uturn.down" size={30} weight="semibold" tintColor={ink} />
-                <View className="min-w-0 flex-1">
-                  <Text className="text-2xl font-bold" style={{ color: ink }}>
-                    Wrong way
-                  </Text>
-                  <Text className="text-base opacity-80" style={{ color: ink }}>
-                    Turn around when it is safe
-                  </Text>
-                </View>
-              </View>
-            ) : (
-              <>
+      <Glass radius={28} tint={wrong ? danger : accent} interactive>
+        <GestureDetector gesture={panel.dragZone()}>
+          <View collapsable={false}>
+            <Press
+              accessibilityRole="button"
+              accessibilityState={{ expanded: open, disabled: !canExpand }}
+              accessibilityLabel={
+                hasArrived
+                  ? [`You have arrived at ${destinationName}`, arrivalNote].filter(Boolean).join('. ')
+                  : wrong
+                    ? 'Wrong way. Turn around when it is safe'
+                    : `In ${formatDistance(toStep)}, ${stepText(step, destinationName)}`
+              }
+              accessibilityHint={canExpand ? (open ? 'Hides the turns ahead' : 'Shows every turn still ahead') : undefined}
+              onPress={toggle}
+              className={canExpand ? 'px-4 pb-1 pt-4' : 'p-4'}>
+              {hasArrived ? (
                 <View className="flex-row items-center gap-3.5">
-                  <StepIcon step={step} size={34} color={ink} />
+                  <Icon name="flag.checkered" size={30} weight="semibold" tintColor={ink} />
                   <View className="min-w-0 flex-1">
-                    <Text className="text-3xl font-bold" style={{ color: ink }}>
-                      {formatDistance(toStep)}
+                    <Text className="text-2xl font-bold" style={{ color: ink }}>
+                      {nextStopName ? 'Stop reached' : 'You have arrived'}
                     </Text>
-                    <Text className="text-lg font-medium leading-6" style={{ color: ink }} numberOfLines={2}>
-                      {stepText(step, destinationName)}
+                    <Text className="text-base opacity-80" style={{ color: ink }} numberOfLines={1}>
+                      {nextStopName ? `${destinationName} · Next: ${nextStopName}` : destinationName}
+                    </Text>
+                    {arrivalNote ? (
+                      <Text className="mt-1.5 text-base font-semibold" style={{ color: ink }}>
+                        {arrivalNote}
+                      </Text>
+                    ) : null}
+                  </View>
+                </View>
+              ) : wrong ? (
+                <View className="flex-row items-center gap-3.5">
+                  <Icon name="arrow.uturn.down" size={30} weight="semibold" tintColor={ink} />
+                  <View className="min-w-0 flex-1">
+                    <Text className="text-2xl font-bold" style={{ color: ink }}>
+                      Wrong way
+                    </Text>
+                    <Text className="text-base opacity-80" style={{ color: ink }}>
+                      Turn around when it is safe
                     </Text>
                   </View>
-                  {canExpand ? (
-                    <Icon name={open ? 'chevron.up' : 'chevron.down'} size={14} weight="semibold" tintColor={ink} />
-                  ) : null}
                 </View>
-
-                {then && !open && toStep <= THEN_WITHIN_METERS ? (
-                  <Animated.View entering={reduceMotion ? undefined : FadeIn.duration(180)} className="mt-3 gap-3">
-                    <Rule color={ink} />
-                    <View className="flex-row items-center gap-2">
-                      <Text className="text-sm font-semibold opacity-80" style={{ color: ink }}>
-                        Then
+              ) : (
+                <>
+                  <Animated.View key={index} entering={reduceMotion ? undefined : STEP_IN} className="flex-row items-center gap-3.5">
+                    <StepIcon step={step} size={38} color={ink} />
+                    <View className="min-w-0 flex-1">
+                      <Text className="text-4xl font-bold" style={{ color: ink, fontVariant: ['tabular-nums'] }}>
+                        {formatDistance(toStep)}
                       </Text>
-                      <StepIcon step={then} size={15} color={ink} />
-                      <Text className="min-w-0 flex-1 text-sm" style={{ color: ink }} numberOfLines={1}>
-                        {stepText(then, destinationName)}
+                      <Text className="text-xl font-semibold leading-7" style={{ color: ink }} numberOfLines={2}>
+                        {stepText(step, destinationName)}
                       </Text>
                     </View>
                   </Animated.View>
-                ) : null}
-              </>
-            )}
-          </Press>
 
-          {/* Outside the pressable, so dragging the list scrolls it instead of counting as a tap. */}
-          {open ? (
+                  {then && !open && toStep <= THEN_WITHIN_METERS ? (
+                    <Animated.View entering={reduceMotion ? undefined : FadeIn.duration(180)} className="mt-3 gap-3">
+                      <Rule color={ink} />
+                      <View className="flex-row items-center gap-2">
+                        <Text className="text-base font-semibold opacity-80" style={{ color: ink }}>
+                          Then
+                        </Text>
+                        <StepIcon step={then} size={16} color={ink} />
+                        <Text className="min-w-0 flex-1 text-base" style={{ color: ink }} numberOfLines={1}>
+                          {stepText(then, destinationName)}
+                        </Text>
+                      </View>
+                    </Animated.View>
+                  ) : null}
+                </>
+              )}
+            </Press>
+          </View>
+        </GestureDetector>
+
+        {/* Outside the pressable, so dragging the list scrolls it instead of counting as a tap. */}
+        <Animated.View style={panel.clipStyle}>
+          {panel.mounted ? (
             <Animated.View
-              entering={reduceMotion ? undefined : FadeIn.duration(220).delay(60)}
-              exiting={reduceMotion ? undefined : FadeOut.duration(120)}
-              className="px-4 pb-3">
+              onLayout={panel.onContentLayout}
+              accessibilityElementsHidden={!open}
+              importantForAccessibility={open ? 'auto' : 'no-hide-descendants'}
+              pointerEvents={open ? 'auto' : 'none'}
+              style={[{ position: 'absolute', top: 0, left: 0, right: 0 }, panel.contentStyle]}
+              className="px-4 pt-3">
               <Rule color={ink} />
-              <ScrollView
-                style={{ maxHeight: height * STEPS_MAX_SHARE }}
-                nestedScrollEnabled
-                showsVerticalScrollIndicator={false}>
-                {ahead.map((next, offset) => (
-                  <StepRow
-                    key={index + 1 + offset}
-                    step={next}
-                    away={Math.max(0, next.startDistance - along)}
-                    destinationName={destinationName}
-                    ink={ink}
-                  />
-                ))}
-              </ScrollView>
-              <Text className="pt-2 text-center text-xs opacity-80" style={{ color: ink }}>
+              <GestureDetector gesture={panel.listGesture}>
+                <Animated.ScrollView
+                  {...panel.listProps}
+                  style={{ maxHeight: height * STEPS_MAX_SHARE }}
+                  nestedScrollEnabled
+                  showsVerticalScrollIndicator={false}>
+                  {ahead.map((next, offset) => (
+                    <StepRow
+                      key={index + 1 + offset}
+                      step={next}
+                      away={Math.max(0, next.startDistance - along)}
+                      destinationName={destinationName}
+                      ink={ink}
+                    />
+                  ))}
+                </Animated.ScrollView>
+              </GestureDetector>
+              <Text className="pt-2 text-center text-sm opacity-80" style={{ color: ink }}>
                 {ahead.length} more {ahead.length === 1 ? 'turn' : 'turns'} ·{' '}
                 {formatDistance(progress?.remaining ?? route.distance)} to go
               </Text>
             </Animated.View>
           ) : null}
-        </Glass>
-      </Animated.View>
+        </Animated.View>
+        {canExpand ? (
+          <GestureDetector gesture={panel.dragZone()}>
+            <View collapsable={false}>
+              <PanelHandle color={ink} style={panel.handleStyle} className="pb-2.5 pt-2" />
+            </View>
+          </GestureDetector>
+        ) : null}
+      </Glass>
 
       {isRiding && !hasArrived ? (
         <Pill symbol="bus.fill" text="Riding. Directions pick up when you get off" />
@@ -411,24 +414,29 @@ export function NavigationFooter({
   onAddStopKind,
   onAnotherStop,
 }: BottomProps) {
-  const [foreground, muted, accent] = useThemeColor(['foreground', 'muted', 'accent']);
+  const [foreground, accent] = useThemeColor(['foreground', 'accent']);
   const { height } = useWindowDimensions();
   const now = useNow();
-  const reduceMotion = useReducedMotion();
   const remaining = progress?.remaining ?? route.distance;
-  const seconds = route.duration !== undefined && route.distance > 0 ? route.duration * (remaining / route.distance) : remaining / 1.3;
-  const arrive = new Date(now + seconds * 1000).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  const arrive = arrivalClock(route, remaining, now);
   // At a stop with more to go, the trip panel still opens so stops can be added or dropped.
   const canOpen = !hasArrived || !!nextStopName;
   const open = expanded && canOpen;
+  const panel = useDragPanel({ edge: 'bottom', open, canOpen, onOpenChange: onExpandedChange });
   const quick = QUICK_STOPS.filter(({ kind }) => quickStops.includes(kind));
   const stepNumber = Math.min((progress?.stepIndex ?? 0) + 1, route.steps.length);
 
-  // No layout animation on the footer: it sits on `bottom`, and Reanimated would grow it downward off the screen.
   return (
     <View style={{ marginHorizontal: 12 }}>
       <Glass radius={28} interactive>
-        <View className="gap-3 p-4">
+        {canOpen ? (
+          <GestureDetector gesture={panel.dragZone()}>
+            <View collapsable={false}>
+              <PanelHandle color={foreground} style={panel.handleStyle} className="pb-2 pt-2.5" />
+            </View>
+          </GestureDetector>
+        ) : null}
+        <View className={canOpen ? 'gap-3 px-4 pb-4' : 'gap-3 p-4'}>
           {manualStep !== null && !hasArrived ? (
             <View className="flex-row gap-2">
               <MapButton
@@ -443,29 +451,28 @@ export function NavigationFooter({
           ) : null}
           <View className="flex-row items-center gap-3">
             <View className="min-w-0 flex-1">
-              <Press
-                accessibilityRole="button"
-                accessibilityState={{ expanded: open, disabled: !canOpen }}
-                accessibilityHint={canOpen ? (open ? 'Hides trip settings' : 'Shows trip settings') : undefined}
-                disabled={!canOpen}
-                onPress={() => {
-                  void Haptics.selectionAsync();
-                  onExpandedChange(!open);
-                }}
-                className="flex-row items-center gap-2">
-                <View className="min-w-0 flex-1">
-                  <Text className="text-2xl font-bold text-foreground">
-                    {hasArrived ? 'Arrived' : formatRouteTime(route, remaining)}
-                  </Text>
-                  {/* One line beside the buttons: with a stop label it shrinks a little instead of wrapping. */}
-                  <Text className="text-sm text-muted" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
-                    {hasArrived ? "You're here" : [formatDistance(remaining), arrive, stopLabel].filter(Boolean).join(' · ')}
-                  </Text>
+              <GestureDetector gesture={panel.dragZone()}>
+                <View collapsable={false}>
+                  <Press
+                    accessibilityRole="button"
+                    accessibilityState={{ expanded: open, disabled: !canOpen }}
+                    accessibilityHint={canOpen ? (open ? 'Hides trip settings' : 'Shows trip settings') : undefined}
+                    disabled={!canOpen}
+                    onPress={() => {
+                      if (panel.pressIsDrag()) return;
+                      void Haptics.selectionAsync();
+                      onExpandedChange(!open);
+                    }}>
+                    <Text className="text-3xl font-bold text-foreground" style={{ fontVariant: ['tabular-nums'] }}>
+                      {hasArrived ? 'Arrived' : formatRouteTime(route, remaining)}
+                    </Text>
+                    {/* One line beside the buttons: with a stop label it shrinks a little instead of wrapping. */}
+                    <Text className="text-base text-muted" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>
+                      {hasArrived ? "You're here" : [formatDistance(remaining), arrive, stopLabel].filter(Boolean).join(' · ')}
+                    </Text>
+                  </Press>
                 </View>
-                {canOpen ? (
-                  <Icon name={open ? 'chevron.down' : 'chevron.up'} size={14} weight="semibold" tintColor={muted} />
-                ) : null}
-              </Press>
+              </GestureDetector>
             </View>
             <Press
               accessibilityRole="switch"
@@ -487,62 +494,75 @@ export function NavigationFooter({
               onPress={onEnd}
             />
           </View>
+        </View>
 
-          {open ? (
+        <Animated.View style={panel.clipStyle}>
+          {panel.mounted ? (
             <Animated.View
-              entering={reduceMotion ? undefined : FadeIn.duration(220).delay(60)}
-              exiting={reduceMotion ? undefined : FadeOut.duration(120)}
-              className="border-t border-border pt-1">
-              <ScrollView style={{ maxHeight: height * TRIP_MAX_SHARE }} nestedScrollEnabled showsVerticalScrollIndicator={false}>
-                {hasArrived ? null : (
-                  <Text className="pb-1 pt-2 text-xs font-semibold uppercase tracking-wide text-muted">
-                    Arrive {arrive} · Step {stepNumber} of {route.steps.length}
-                  </Text>
-                )}
-                {canAvoidStairs ? (
-                  <Setting symbol="figure.stairs" title="Avoid stairs" value={avoidStairs} onChange={onAvoidStairs} />
-                ) : null}
-                <Setting symbol="speaker.wave.2.fill" title="Spoken directions" value={voiceOn} onChange={() => onToggleVoice()} />
-                <Setting symbol="location.north.line.fill" title="Turn the map with me" value={facingUp} onChange={onFacingUp} />
-                <View className="gap-2 pb-1 pt-2">
-                  <Text className="text-xs font-semibold uppercase tracking-wide text-muted">
-                    {stopsAhead.length > 0 ? 'Stops' : 'Add a stop'}
-                  </Text>
-                  {stopsAhead.map(({ index, place, number }) => (
-                    <StopRow key={`${place.id}-${index}`} stop={place} number={number} onRemove={() => onRemoveStop?.(index)} />
-                  ))}
-                  <View className="flex-row flex-wrap gap-2">
-                    {quick.map(({ kind, label }) => (
-                      <Press
-                        key={kind}
-                        accessibilityRole="button"
-                        accessibilityLabel={`Add the nearest ${/^[A-Z]{2}/.test(label) ? label : label.toLowerCase()} as a stop`}
-                        onPress={() => {
-                          void Haptics.selectionAsync();
-                          onAddStopKind?.(kind);
-                        }}
-                        dim={0.7}
-                        className="flex-row items-center gap-1.5 rounded-full bg-default px-3 py-2">
-                        <Icon name={AMENITY_SYMBOLS[kind]} size={13} tintColor={foreground} />
-                        <Text className="text-sm font-semibold text-foreground">{label}</Text>
-                      </Press>
-                    ))}
-                    <Press
-                      accessibilityRole="button"
-                      onPress={onAnotherStop}
-                      dim={0.7}
-                      className="flex-row items-center gap-1.5 rounded-full bg-default px-3 py-2">
-                      <Icon name="plus.circle.fill" size={13} tintColor={accent} />
-                      <Text className="text-sm font-semibold text-accent">
-                        {quick.length > 0 ? 'Another place' : stopsAhead.length > 0 ? 'Add another stop' : 'Search places'}
-                      </Text>
-                    </Press>
-                  </View>
-                </View>
-              </ScrollView>
+              onLayout={panel.onContentLayout}
+              accessibilityElementsHidden={!open}
+              importantForAccessibility={open ? 'auto' : 'no-hide-descendants'}
+              pointerEvents={open ? 'auto' : 'none'}
+              style={[{ position: 'absolute', top: 0, left: 0, right: 0 }, panel.contentStyle]}
+              className="px-4 pb-3">
+              <View className="border-t border-border pt-1">
+                <GestureDetector gesture={panel.listGesture}>
+                  <Animated.ScrollView
+                    {...panel.listProps}
+                    style={{ maxHeight: height * TRIP_MAX_SHARE }}
+                    nestedScrollEnabled
+                    showsVerticalScrollIndicator={false}>
+                      {hasArrived ? null : (
+                        <Text className="pb-1 pt-2 text-xs font-semibold uppercase tracking-wide text-muted">
+                          Arrive {arrive} · Step {stepNumber} of {route.steps.length}
+                        </Text>
+                      )}
+                      {canAvoidStairs ? (
+                        <Setting symbol="figure.stairs" title="Avoid stairs" value={avoidStairs} onChange={onAvoidStairs} />
+                      ) : null}
+                      <Setting symbol="speaker.wave.2.fill" title="Spoken directions" value={voiceOn} onChange={() => onToggleVoice()} />
+                      <Setting symbol="location.north.line.fill" title="Turn the map with me" value={facingUp} onChange={onFacingUp} />
+                      <View className="gap-2 pb-1 pt-2">
+                        <Text className="text-xs font-semibold uppercase tracking-wide text-muted">
+                          {stopsAhead.length > 0 ? 'Stops' : 'Add a stop'}
+                        </Text>
+                        {stopsAhead.map(({ index, place, number }) => (
+                          <StopRow key={`${place.id}-${index}`} stop={place} number={number} onRemove={() => onRemoveStop?.(index)} />
+                        ))}
+                        <View className="flex-row flex-wrap gap-2">
+                          {quick.map(({ kind, label }) => (
+                            <Press
+                              key={kind}
+                              accessibilityRole="button"
+                              accessibilityLabel={`Add the nearest ${/^[A-Z]{2}/.test(label) ? label : label.toLowerCase()} as a stop`}
+                              onPress={() => {
+                                void Haptics.selectionAsync();
+                                onAddStopKind?.(kind);
+                              }}
+                              dim={0.7}
+                              className="flex-row items-center gap-1.5 rounded-full bg-default px-3 py-2">
+                              <Icon name={AMENITY_SYMBOLS[kind]} size={13} tintColor={foreground} />
+                              <Text className="text-sm font-semibold text-foreground">{label}</Text>
+                            </Press>
+                          ))}
+                          <Press
+                            accessibilityRole="button"
+                            onPress={onAnotherStop}
+                            dim={0.7}
+                            className="flex-row items-center gap-1.5 rounded-full bg-default px-3 py-2">
+                            <Icon name="plus.circle.fill" size={13} tintColor={accent} />
+                            <Text className="text-sm font-semibold text-accent">
+                              {quick.length > 0 ? 'Another place' : stopsAhead.length > 0 ? 'Add another stop' : 'Search places'}
+                            </Text>
+                          </Press>
+                        </View>
+                      </View>
+                  </Animated.ScrollView>
+                </GestureDetector>
+              </View>
             </Animated.View>
           ) : null}
-        </View>
+        </Animated.View>
       </Glass>
     </View>
   );
@@ -555,7 +575,6 @@ export function BreakCard({ offer, onTake, onSkip }: { offer: BreakOffer; onTake
   return (
     <Animated.View
       entering={reduceMotion ? undefined : FadeInDown.duration(220)}
-      exiting={reduceMotion ? undefined : FadeOutDown.duration(160)}
       accessibilityLiveRegion="polite"
       style={{ marginHorizontal: 12 }}>
       <Glass radius={24} interactive>
@@ -592,7 +611,6 @@ export function ParkingCard({
   return (
     <Animated.View
       entering={reduceMotion ? undefined : FadeInDown.duration(220)}
-      exiting={reduceMotion ? undefined : FadeOutDown.duration(160)}
       accessibilityLiveRegion="polite"
       style={{ marginHorizontal: 12 }}>
       <Glass radius={24} interactive>

@@ -444,6 +444,12 @@ export function decodePolyline6(encoded: string): Coordinate[] {
   return points;
 }
 
+/** The clock time someone gets there, at the router's own pace when it gave one and walking pace otherwise. */
+export function arrivalClock(route: Route, meters: number, now: number) {
+  const seconds = route.duration !== undefined && route.distance > 0 ? route.duration * (meters / route.distance) : meters / WALK_SPEED_MPS;
+  return new Date(now + seconds * 1000).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+}
+
 /** Time for the rest of a route: the router's own estimate when it gave one, walking pace otherwise. */
 export function formatRouteTime(route: Route, meters = route.distance) {
   if (route.duration === undefined || route.distance === 0) return formatDuration(meters);

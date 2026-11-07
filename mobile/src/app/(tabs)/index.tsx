@@ -105,7 +105,7 @@ import {
   startNavigating,
   useTrip,
 } from '@/lib/trip';
-import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
+import Animated, { FadeIn } from 'react-native-reanimated';
 
 const { center, zoom, bounds, styles } = CAMPUS.map;
 const CAMPUS_CENTER: [number, number] = [center.longitude, center.latitude];
@@ -1433,7 +1433,6 @@ export default function MapScreen() {
         {showControls ? (
           <Animated.View
             entering={FadeIn.duration(180)}
-            exiting={FadeOut.duration(140)}
             pointerEvents="box-none"
             className="items-end px-4"
             onLayout={(event) => setControlsHeight(event.nativeEvent.layout.height)}>

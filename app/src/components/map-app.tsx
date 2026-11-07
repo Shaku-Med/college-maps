@@ -10,6 +10,7 @@ import { DirectionsPanel, type RouteIssue } from "@/components/directions-panel"
 import { DragScroll } from "@/components/drag-scroll";
 import { LaunchSplash } from "@/components/launch-splash";
 import { NavigationHud, type RouteNotice } from "@/components/navigation-hud";
+import { Presence } from "@/components/presence";
 import { MeetupPeek, MeetupSheet } from "@/components/meetup-sheet";
 import { PeoplePanel, initialsFor } from "@/components/people-panel";
 import { PersonCard } from "@/components/person-card";
@@ -1683,6 +1684,7 @@ export function MapApp({ initialPlaceId, initialRoom, initialAccountOpen = false
         </div>
       ) : null}
 
+      <Presence show={Boolean(mode === "browse" && scheduleExpanded)}>
       {mode === "browse" && scheduleExpanded ? (
         <SheetLayer wrapClassName={SHEET_FULL_WRAP} onCollapse={() => setIsScheduleExpanded(false)}>
           <SchedulePanel
@@ -1696,7 +1698,9 @@ export function MapApp({ initialPlaceId, initialRoom, initialAccountOpen = false
           />
         </SheetLayer>
       ) : null}
+      </Presence>
 
+      <Presence show={Boolean(mode === "browse" && peopleExpanded)}>
       {mode === "browse" && peopleExpanded ? (
         <SheetLayer wrapClassName={SHEET_FULL_WRAP} onCollapse={() => setIsPeopleExpanded(false)}>
           <PeoplePanel
@@ -1713,7 +1717,9 @@ export function MapApp({ initialPlaceId, initialRoom, initialAccountOpen = false
           />
         </SheetLayer>
       ) : null}
+      </Presence>
 
+      <Presence show={Boolean(mode === "browse" && !isPeopleOpen && meetup && isMeetupSheetOpen)}>
       {mode === "browse" && !isPeopleOpen && meetup && isMeetupSheetOpen ? (
         <SheetLayer wrapClassName={SHEET_FULL_WRAP} onCollapse={() => setIsMeetupSheetOpen(false)}>
           <MeetupSheet
@@ -1741,6 +1747,7 @@ export function MapApp({ initialPlaceId, initialRoom, initialAccountOpen = false
           />
         </SheetLayer>
       ) : null}
+      </Presence>
 
       {meetupPeeked && meetup ? (
         <SheetLayer wrapClassName={SHEET_PEEK_WRAP} onExpand={() => setIsMeetupSheetOpen(true)}>
@@ -1753,6 +1760,7 @@ export function MapApp({ initialPlaceId, initialRoom, initialAccountOpen = false
         </SheetLayer>
       ) : null}
 
+      <Presence show={Boolean(mode === "browse" && accountExpanded)}>
       {mode === "browse" && accountExpanded ? (
         <SheetLayer wrapClassName={SHEET_FULL_WRAP} onCollapse={() => setIsAccountExpanded(false)}>
           <AccountPanel
@@ -1768,6 +1776,7 @@ export function MapApp({ initialPlaceId, initialRoom, initialAccountOpen = false
           />
         </SheetLayer>
       ) : null}
+      </Presence>
 
       {peopleOpenPeeked ? (
         <SheetLayer wrapClassName={SHEET_PEEK_WRAP} onExpand={() => setIsPeopleExpanded(true)}>
@@ -1903,7 +1912,7 @@ export function MapApp({ initialPlaceId, initialRoom, initialAccountOpen = false
             </div>
 
             {isSearchOpen ? null : (
-              <DragScroll activeKey={filter} className="pointer-events-auto -mx-3 px-3 md:mx-0 md:px-0">
+              <DragScroll activeKey={filter} className="animate-fade-in pointer-events-auto -mx-3 px-3 md:mx-0 md:px-0">
                 <ToggleButtonGroup
                   aria-label="Filter places"
                   selectionMode="single"
@@ -1920,7 +1929,7 @@ export function MapApp({ initialPlaceId, initialRoom, initialAccountOpen = false
                     <ToggleButton
                       key={option}
                       id={option}
-                      className="glass-chrome shrink-0 rounded-full bg-overlay px-3.5 shadow-sm data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground data-[selected=true]:[--glass-strength:85%] data-[selected=true]:[--glass-tint:var(--accent)]">
+                      className="glass-chrome shrink-0 rounded-full bg-overlay px-3.5 shadow-sm transition-colors duration-200 data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground data-[selected=true]:[--glass-strength:85%] data-[selected=true]:[--glass-tint:var(--accent)]">
                       {option === "all" ? "All" : CATEGORY_LABELS[option]}
                     </ToggleButton>
                   ))}
@@ -1932,10 +1941,10 @@ export function MapApp({ initialPlaceId, initialRoom, initialAccountOpen = false
           <div
             className={
               selected && isPlaceExpanded
-                ? "absolute bottom-12 z-10 max-md:hidden right-[var(--map-safe-right)] md:right-4"
+                ? "absolute bottom-12 z-10 transition-[bottom] duration-300 ease-out max-md:hidden right-[var(--map-safe-right)] md:right-4"
                 : hasPeek
-                  ? "absolute bottom-[calc(6.5rem+var(--map-safe-bottom))] z-10 right-[var(--map-safe-right)] md:bottom-[calc(5.5rem+var(--map-safe-bottom))] md:right-4"
-                  : "absolute bottom-[calc(3rem+var(--map-safe-bottom))] z-10 right-[var(--map-safe-right)] md:right-4"
+                  ? "absolute bottom-[calc(6.5rem+var(--map-safe-bottom))] z-10 transition-[bottom] duration-300 ease-out right-[var(--map-safe-right)] md:bottom-[calc(5.5rem+var(--map-safe-bottom))] md:right-4"
+                  : "absolute bottom-[calc(3rem+var(--map-safe-bottom))] z-10 transition-[bottom] duration-300 ease-out right-[var(--map-safe-right)] md:right-4"
             }>
             <MapViewControls
               buildingView={buildingView}
@@ -1949,6 +1958,7 @@ export function MapApp({ initialPlaceId, initialRoom, initialAccountOpen = false
             />
           </div>
 
+          <Presence show={Boolean(selected) && !isSearchOpen && isPlaceExpanded && !peopleOpenPeeked && !scheduleOpenPeeked && !accountOpenPeeked}>
           {selected && !isSearchOpen && isPlaceExpanded && !peopleOpenPeeked && !scheduleOpenPeeked && !accountOpenPeeked ? (
             <SheetLayer
               wrapClassName="absolute inset-x-0 bottom-0 z-20 md:bottom-auto md:left-4 md:right-auto md:top-[124px] md:w-[400px]"
@@ -1968,9 +1978,11 @@ export function MapApp({ initialPlaceId, initialRoom, initialAccountOpen = false
               />
             </SheetLayer>
           ) : null}
+          </Presence>
         </>
       ) : null}
 
+      <Presence show={mode === "directions" && Boolean(selected) && isDirectionsExpanded}>
       {mode === "directions" && selected && isDirectionsExpanded ? (
         <SheetLayer
           wrapClassName="absolute inset-x-0 bottom-0 z-20 md:bottom-auto md:left-4 md:right-auto md:top-4 md:w-[420px]"
@@ -2027,6 +2039,7 @@ export function MapApp({ initialPlaceId, initialRoom, initialAccountOpen = false
           />
         </SheetLayer>
       ) : null}
+      </Presence>
 
       {directionsPeeked ? (
         <div className="absolute bottom-[calc(6.5rem+var(--map-safe-bottom))] z-10 right-[var(--map-safe-right)] md:bottom-[calc(5.5rem+var(--map-safe-bottom))] md:right-4">
@@ -2043,6 +2056,7 @@ export function MapApp({ initialPlaceId, initialRoom, initialAccountOpen = false
         </div>
       ) : null}
 
+      <Presence show={showTabBar}>
       {showTabBar ? (
         <TabBar
           selected={selectedTab}
@@ -2052,7 +2066,9 @@ export function MapApp({ initialPlaceId, initialRoom, initialAccountOpen = false
           onSelect={selectTab}
         />
       ) : null}
+      </Presence>
 
+      <Presence show={mode === "navigate" && Boolean(target && navRoute)}>
       {mode === "navigate" && target && navRoute ? (
         <NavigationHud
           destination={target}
@@ -2115,6 +2131,7 @@ export function MapApp({ initialPlaceId, initialRoom, initialAccountOpen = false
           }}
         />
       ) : null}
+      </Presence>
       <PlacePickerModal
         title={picker === "origin" ? "Start from" : picker ? "Add a stop" : null}
         onClose={() => setPicker(null)}
