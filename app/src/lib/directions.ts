@@ -1,9 +1,10 @@
 import { CAMPUS, contains, PLACES, type Coordinate, type Place } from "@/data/campus";
-import { distanceMeters, formatDuration, formatSeconds, WALK_SPEED_MPS } from "@/lib/geo";
+import { bearingDegrees, distanceMeters, formatDuration, formatSeconds, turnAngle, WALK_SPEED_MPS } from "@/lib/geo";
 import {
   findRoute,
   joinRoutes,
   matchWalkway,
+  pointAtDistance,
   type Route,
   type RouteStep,
   type StreetManeuver,
@@ -24,6 +25,10 @@ const MAX_SNAP_METERS = 1_000;
 // With a known direction of travel, the start is matched to a road running that way.
 const HEADING_TOLERANCE_DEGREES = 45;
 const HEADING_SEARCH_METERS: Record<TravelMode, number> = { walk: 15, bike: 25, drive: 35 };
+// At this speed a car is on a fast road, so drifting GPS must not start the route on the side street next to the highway.
+const FAST_ROAD_MPS = 22;
+const FAST_ROAD_SNAP_METERS = 60;
+const FAST_ROAD_FILTER = { min_road_class: "primary" };
 
 const COSTING: Record<TravelMode, string> = { walk: "pedestrian", drive: "auto", bike: "bicycle" };
 // Valhalla counts every gate as five minutes, which sent drivers round Loop Road to skip the lift gates by the lots.
@@ -55,6 +60,10 @@ const TURNS: Record<number, TurnDirection> = {
   37: "slight-right",
   38: "slight-left",
 };
+// The router can call a gentle fork a turn, so hard turns are checked against the road itself.
+const HARD_TURNS: Record<number, "left" | "right"> = { 10: "right", 11: "right", 14: "left", 15: "left" };
+const BEND_LOOKS_METERS = [40, 150];
+const GENTLE_BEND_DEGREES = 32;
 const DEPART = new Set([1, 2, 3]);
 const ARRIVE = new Set([4, 5, 6]);
 const STAIRS = 40;
@@ -104,9 +113,11 @@ export async function fetchStreetRoute(
   {
     avoidStairs = false,
     heading,
+    speed = 0,
     signal,
-  }: { avoidStairs?: boolean; heading?: number; signal?: AbortSignal } = {},
+  }: { avoidStairs?: boolean; heading?: number; speed?: number; signal?: AbortSignal } = {},
 ): Promise<Route | null> {
+  const onFastRoad = travel === "drive" && speed >= FAST_ROAD_MPS;
   const facing =
     heading !== undefined && Number.isFinite(heading)
       ? { heading: ((heading % 360) + 360) % 360, heading_tolerance: HEADING_TOLERANCE_DEGREES, radius: HEADING_SEARCH_METERS[travel] }
@@ -122,7 +133,13 @@ export async function fetchStreetRoute(
       headers: { "Content-Type": "application/json", "X-Client-Id": CLIENT_ID },
       body: JSON.stringify({
         locations: [
-          { lat: from.latitude, lon: from.longitude, search_cutoff: MAX_SNAP_METERS, ...facing },
+          {
+            lat: from.latitude,
+            lon: from.longitude,
+            search_cutoff: onFastRoad ? FAST_ROAD_SNAP_METERS : MAX_SNAP_METERS,
+            ...(onFastRoad ? { search_filter: FAST_ROAD_FILTER } : {}),
+            ...facing,
+          },
           { lat: to.latitude, lon: to.longitude, search_cutoff: MAX_SNAP_METERS },
         ],
         costing: COSTING[travel],
@@ -134,8 +151,8 @@ export async function fetchStreetRoute(
       referrerPolicy: "no-referrer",
       signal: controller.signal,
     });
-    // Valhalla answers 400 when the places cannot be joined, such as no road near one end.
-    if (response.status === 400) return null;
+    // Valhalla answers 400 when the places cannot be joined, such as no road near one end; a fast local road ends up here too.
+    if (response.status === 400) return onFastRoad ? fetchStreetRoute(from, to, travel, { avoidStairs, heading, signal }) : null;
     if (!response.ok) throw new StreetRoutingError(`Directions service returned ${response.status}`);
     const route = toRoute(await response.json(), travel);
     if (
@@ -164,6 +181,7 @@ const ON_PATHS_METERS = 40;
 type TripOptions = {
   avoidStairs: boolean;
   heading?: number;
+  speed?: number;
   signal?: AbortSignal;
   /** The lot a drive already chose, so a reroute keeps heading for it; null drives right up to the place instead. */
   parkAt?: string | null;
@@ -208,7 +226,9 @@ export async function wayFromHere(
     (contains(CAMPUS.map.walkingArea, from) ||
       (matchWalkway(g, from, { avoidStairs: false })?.distance ?? Infinity) <= ON_PATHS_METERS);
   if (g && (onPaths || !travel)) return findRoute(g, from, to.coordinate, { avoidStairs: options.avoidStairs });
-  return fetchTripRoute(g, from, to, travel ?? "walk", options);
+  const route = await fetchTripRoute(g, from, to, travel ?? "walk", options);
+  // If nothing runs the way they are going, a route without the heading beats no route at all.
+  return route || options.heading === undefined ? route : fetchTripRoute(g, from, to, travel ?? "walk", { ...options, heading: undefined });
 }
 
 async function driveAndWalk(g: WalkGraph, from: Coordinate, to: Place, options: TripOptions) {
@@ -329,6 +349,22 @@ function streetManeuver(raw: Record<string, unknown>, type: number): StreetManeu
   };
 }
 
+// How much the road really bends here: a real turn shows up over a short look or a longer one.
+function realBend(path: Coordinate[], cumulative: number[], at: number) {
+  return Math.max(
+    ...BEND_LOOKS_METERS.map((look) =>
+      Math.abs(
+        turnAngle(
+          bearingDegrees(pointAtDistance(path, cumulative, cumulative[at] - look), path[at]),
+          bearingDegrees(path[at], pointAtDistance(path, cumulative, cumulative[at] + look)),
+        ),
+      ),
+    ),
+  );
+}
+
+const asBear = (line: string | undefined) => line?.replace(/\b(?:Turn|Make a sharp) (left|right)\b/g, "Bear $1");
+
 // The answer comes from a server we do not run, so every field is checked before it is trusted.
 function toRoute(data: unknown, travel: TravelMode): Route | null {
   const trip = (data as { trip?: { legs?: unknown; summary?: { time?: unknown } } } | null)?.trip;
@@ -348,16 +384,19 @@ function toRoute(data: unknown, travel: TravelMode): Route | null {
   for (const raw of leg.maneuvers as Array<Record<string, unknown>>) {
     const type = typeof raw.type === "number" ? raw.type : 0;
     const begin = typeof raw.begin_shape_index === "number" ? Math.min(Math.max(0, Math.trunc(raw.begin_shape_index)), last) : 0;
-    const instruction = text(raw.instruction);
+    const side = travel === "walk" || begin === 0 || begin === last ? undefined : HARD_TURNS[type];
+    const gentle = side !== undefined && realBend(path, cumulative, begin) < GENTLE_BEND_DEGREES;
+    const worded = gentle ? asBear : (line: string | undefined) => line;
+    const instruction = worded(text(raw.instruction));
     steps.push({
       kind: DEPART.has(type) ? "depart" : ARRIVE.has(type) ? "arrive" : type === STAIRS ? "stairs" : "turn",
-      direction: TURNS[type] ?? "straight",
+      direction: gentle ? `slight-${side}` : (TURNS[type] ?? "straight"),
       bearing: typeof raw.bearing_after === "number" ? raw.bearing_after : undefined,
       startDistance: cumulative[begin],
       length: 0,
       text: instruction,
-      alert: text(raw.verbal_transition_alert_instruction) ?? text(raw.verbal_pre_transition_instruction) ?? instruction,
-      spoken: text(raw.verbal_pre_transition_instruction) ?? instruction,
+      alert: worded(text(raw.verbal_transition_alert_instruction) ?? text(raw.verbal_pre_transition_instruction)) ?? instruction,
+      spoken: worded(text(raw.verbal_pre_transition_instruction)) ?? instruction,
       street: streetManeuver(raw, type),
     });
   }

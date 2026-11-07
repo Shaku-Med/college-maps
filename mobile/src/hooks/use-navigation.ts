@@ -263,7 +263,7 @@ export function useNavigation({ destination, avoidStairs, follow, facingUp }: Op
       const heading = travelHeading();
       const parkAt = choice && 'parkAt' in choice ? choice.parkAt : leaving.parkAt;
       const options = { avoidStairs: stairs, parkAt, skipLots: choice?.skipLots };
-      fetchTripRoute(walkGraph(), position, target, travel, { ...options, heading })
+      fetchTripRoute(walkGraph(), position, target, travel, { ...options, heading, speed: motionState.current.speed })
         .then((candidate) =>
           candidate || heading === undefined ? candidate : fetchTripRoute(walkGraph(), position, target, travel, options),
         )

@@ -52,6 +52,7 @@ export function useRoutePreview(
   position: Coordinate | undefined,
   status: LocationStatus,
   heading: () => number | undefined,
+  speed: () => number,
 ): Preview {
   const planning = trip.phase === 'preview' && trip.destination !== null;
   const fromMe = trip.origin === MY_LOCATION;
@@ -109,6 +110,7 @@ export function useRoutePreview(
     fetchTripRoute(walkGraph(), from, first, trip.travelMode, {
       avoidStairs: trip.avoidStairs,
       heading: heading(),
+      speed: speed(),
       signal: controller.signal,
     })
       .then((route) => {
@@ -126,7 +128,7 @@ export function useRoutePreview(
       controller.abort();
       if (lastFetch.current?.key === streetKey) lastFetch.current = null;
     };
-  }, [streetKey, streetCell, first, trip.travelMode, trip.avoidStairs, heading]);
+  }, [streetKey, streetCell, first, trip.travelMode, trip.avoidStairs, heading, speed]);
 
   const none = { route: null, later: [], plan, isOffCampus };
   if (!planning) return none;

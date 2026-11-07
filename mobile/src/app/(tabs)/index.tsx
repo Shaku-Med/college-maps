@@ -430,7 +430,7 @@ export default function MapScreen() {
   }, [facingUp, smoothHeading]);
 
   useEffect(() => () => smoothHeading.stop(), [smoothHeading]);
-  const preview = useRoutePreview(trip, location.fix?.position, location.status, navigation.travelHeading);
+  const preview = useRoutePreview(trip, location.fix?.position, location.status, navigation.travelHeading, navigation.speed);
   const livePosition = location.fix?.position;
   useEffect(() => {
     const route = preview.route;
@@ -741,6 +741,8 @@ export default function MapScreen() {
     if (!from) return { route: null, current: false };
     const route = await wayFromHere(walkGraph(), from, place, navigation.route?.travel, {
       avoidStairs: trip.avoidStairs,
+      heading: navigation.travelHeading(),
+      speed: navigation.speed(),
     }).catch(() => null);
     return { route, current: token === stopNowRef.current && isNavigating() };
   }

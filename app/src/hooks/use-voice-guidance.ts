@@ -108,7 +108,7 @@ export function useVoiceGuidance({
     unlockAudio();
     warmUpVoice();
     const destination = nameRef.current ?? DEFAULT_DESTINATION;
-    speak(departLine(next, destination, facing), { urgent: true, fallback: actLine(next, 0, destination) });
+    speak(departLine(next, destination, facing, speedRef.current?.() ?? 0), { urgent: true, fallback: actLine(next, 0, destination) });
     planAhead(spokenRef.current, next, 0, 0, destination, 0);
     const plan = voicePlan(next, destination, plannedLines(spokenRef.current), noteRef.current);
     prepareSpeech(plan.now);

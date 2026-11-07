@@ -468,7 +468,7 @@ export function MapApp({ initialPlaceId, initialRoom, initialAccountOpen = false
       const heading = travelHeading();
       const parkAt = choice && "parkAt" in choice ? choice.parkAt : leaving.parkAt;
       const options = { avoidStairs: nav.avoidStairs, parkAt, skipLots: choice?.skipLots };
-      fetchTripRoute(graph, position, destination, travel, { ...options, heading })
+      fetchTripRoute(graph, position, destination, travel, { ...options, heading, speed: motionStateRef.current.speed })
         // If nothing runs the way they are going, a route without the heading beats no route at all.
         .then((candidate) =>
           candidate || heading === undefined ? candidate : fetchTripRoute(graph, position, destination, travel, options),
@@ -999,7 +999,7 @@ export function MapApp({ initialPlaceId, initialRoom, initialAccountOpen = false
 
     const controller = new AbortController();
     let settled = false;
-    fetchTripRoute(graph, from, firstStop, travelMode, { avoidStairs, heading: travelHeading(), signal: controller.signal })
+    fetchTripRoute(graph, from, firstStop, travelMode, { avoidStairs, heading: travelHeading(), speed: motionStateRef.current.speed, signal: controller.signal })
       .then((route) => {
         settled = true;
         setStreetResult({ key: streetKey, route, failed: false });
@@ -1361,7 +1361,11 @@ export function MapApp({ initialPlaceId, initialRoom, initialAccountOpen = false
     const token = ++stopNowRef.current;
     const from = latestFixRef.current ?? geo.position ?? progress?.point ?? target?.coordinate;
     if (!from) return { route: null, current: false };
-    const route = await wayFromHere(graph, from, place, navRoute?.travel, { avoidStairs }).catch(() => null);
+    const route = await wayFromHere(graph, from, place, navRoute?.travel, {
+      avoidStairs,
+      heading: travelHeading(),
+      speed: motionStateRef.current.speed,
+    }).catch(() => null);
     return { route, current: token === stopNowRef.current && navRef.current.mode === "navigate" };
   }
 

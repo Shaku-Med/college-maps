@@ -474,7 +474,7 @@ function dedupe(path: Coordinate[], stairFlags: boolean[]) {
   return { points, stairs };
 }
 
-function pointAtDistance(path: Coordinate[], cumulative: number[], target: number): Coordinate {
+export function pointAtDistance(path: Coordinate[], cumulative: number[], target: number): Coordinate {
   const d = Math.max(0, Math.min(cumulative[cumulative.length - 1], target));
   let i = 1;
   while (i < cumulative.length - 1 && cumulative[i] < d) i++;
@@ -567,9 +567,15 @@ export type RouteProgress = {
   segmentIndex: number;
 };
 
+// A later stretch of the route running beside or under this one must not pull progress past the turns in between.
+const LEAP_AHEAD_METERS = 200;
+
 export function trackProgress(route: Route, position: Coordinate, hintSegment = 0): RouteProgress {
   let best = { segment: 1, distance: Infinity, along: 0, point: route.path[0] };
   const from = Math.max(1, hintSegment - 5);
+  const reach = route.cumulative[Math.min(hintSegment, route.path.length - 1)] + LEAP_AHEAD_METERS;
+  let to = from;
+  while (to < route.path.length && route.cumulative[to - 1] <= reach) to++;
   const scan = (lo: number, hi: number) => {
     for (let i = lo; i < hi; i++) {
       const hit = projectOntoSegment(position, route.path[i - 1], route.path[i]);
@@ -583,8 +589,11 @@ export function trackProgress(route: Route, position: Coordinate, hintSegment = 
       }
     }
   };
-  scan(from, route.path.length);
-  if (best.distance > 30) scan(1, from);
+  scan(from, to);
+  if (best.distance > 30) {
+    scan(to, route.path.length);
+    scan(1, from);
+  }
 
   let stepIndex = 0;
   for (let i = 0; i < route.steps.length; i++) {

@@ -36,6 +36,8 @@ const CALL_SECONDS = 3.5;
 // Within this of the way the route leaves, the person is already facing it; beyond the other, it leaves behind them.
 const FACING_AHEAD_DEGREES = 35;
 const FACING_BEHIND_DEGREES = 145;
+// Faster than a run, someone is in or on something and already pointed down the road.
+const ON_FOOT_MPS = 4;
 // How many maneuvers ahead get their lines made in advance. Making speech takes a moment on a phone.
 const LOOKAHEAD_STEPS = 3;
 // About a mile out on a highway, drivers hear which lane to get into, as long as the stretch is long enough to fit it.
@@ -95,10 +97,14 @@ function cueFor(travel: TravelMode | undefined, speed: number) {
   return { prepare: Math.max(base.prepare, speed * HEADS_UP_SECONDS), act: Math.max(base.act, speed * CALL_SECONDS) };
 }
 
+// A phone on a dashboard or in a pocket says nothing about which way a car or bike is pointed.
+const facesTheWay = (route: Route) => (route.travel ?? "walk") === "walk";
+
 // "Head west" only helps someone who knows which way west is, so the first line says which way to turn.
-export function departLine(route: Route, destination: string, facing: number | undefined) {
+export function departLine(route: Route, destination: string, facing: number | undefined, speed = 0) {
   const line = actLine(route, 0, destination);
   const step = route.steps[0];
+  if (!facesTheWay(route) || speed >= ON_FOOT_MPS) return line;
   if (facing === undefined || step.kind !== "depart" || step.bearing === undefined) return line;
   const turn = turnAngle(facing, step.bearing);
   const size = Math.abs(turn);
@@ -122,7 +128,7 @@ export function voicePlan(route: Route, destination: string, planned: FreshLines
       NOTICE_LINES.switched,
       ...Object.values(RIDING_LINES),
       ...(route.travel ? [] : COMMON_CAMPUS_LINES),
-      ...departVariants(route, destination),
+      ...(facesTheWay(route) ? departVariants(route, destination) : []),
     ],
   };
 }
