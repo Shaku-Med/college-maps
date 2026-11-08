@@ -25,6 +25,7 @@ const MATERIAL: Partial<Record<SFSymbol, AndroidSymbol>> = {
   bus: 'directions_bus',
   'bus.fill': 'directions_bus',
   calendar: 'calendar_month',
+  'camera.viewfinder': 'photo_camera',
   'car.fill': 'directions_car',
   chair: 'chair',
   checkmark: 'check',

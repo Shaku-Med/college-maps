@@ -120,6 +120,11 @@ export default function PrivacyPage() {
           on your device while the trip runs. They are never saved or sent anywhere. You can turn the
           switch off in Account.
         </p>
+        <p className="text-sm leading-relaxed text-muted">
+          While walking directions are on, the phone app can show the way as arrows on the ground through
+          your camera, if you turn it on and allow the camera. The picture is only shown on your screen. It
+          is never recorded, saved, or sent anywhere, and the camera stops as soon as you go back to the map.
+        </p>
       </section>
 
       <section className="flex flex-col gap-3">

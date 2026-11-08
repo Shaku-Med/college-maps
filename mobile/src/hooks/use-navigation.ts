@@ -62,7 +62,7 @@ const TRAVEL_SLACK: Record<TravelMode, number> = { walk: 1, bike: 2, drive: 4 };
 const FOLLOW_AGAIN_MS = 3_000;
 const COURSE_SPEED_MPS = 0.7;
 const MAX_SPEED_SLACK = 8;
-const WALK_FOLLOW_ZOOM = 18;
+export const WALK_FOLLOW_ZOOM = 18;
 // Arriving takes two fixes in a row, and "near the building" only counts on a fix this accurate.
 const ARRIVAL_FIXES = 2;
 const ARRIVAL_ACCURACY_METERS = 30;

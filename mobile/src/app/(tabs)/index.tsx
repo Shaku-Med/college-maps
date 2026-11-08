@@ -13,8 +13,10 @@ import {
   Map,
   Marker,
   type CameraRef,
+  type InitialViewState,
   type MapRef,
 } from '@maplibre/maplibre-react-native';
+import * as Haptics from 'expo-haptics';
 import * as Location from 'expo-location';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { router, useFocusEffect, usePathname } from 'expo-router';
@@ -35,6 +37,7 @@ import { MapButton } from '@/components/map-button';
 import { BreakCard, NavigationBanner, NavigationFooter, ParkingCard } from '@/components/navigation-hud';
 import { WalkShareSection } from '@/components/walk-share-section';
 import { PlaceDetails } from '@/components/place-details';
+import { CameraArrows } from '@/components/camera-arrows';
 import { CarPin } from '@/components/car-pin';
 import { PlaceMarker } from '@/components/place-marker';
 import { RoomMarker } from '@/components/room-marker';
@@ -48,7 +51,7 @@ import { useMeetupLive } from '@/hooks/use-meetup-live';
 import { useWalkShare } from '@/hooks/use-walk-share';
 import { useNow } from '@/hooks/use-now';
 import { mapCameraPadding, PANEL_WIDTH, useMapChromeBottom, useShortViewport, useTabRail, useWide } from '@/hooks/use-layout';
-import { useNavigation, type FollowTarget } from '@/hooks/use-navigation';
+import { FOLLOW_ZOOM, useNavigation, WALK_FOLLOW_ZOOM, type FollowTarget } from '@/hooks/use-navigation';
 import { useRoutePreview } from '@/hooks/use-route-preview';
 import { useVoiceGuidance } from '@/hooks/use-voice-guidance';
 import { holdVoice } from '@/lib/voice';
@@ -206,6 +209,11 @@ export default function MapScreen() {
   const [facingUp, setFacingUp] = useState(true);
   // The turn list at the top and the trip panel at the bottom: one open at a time, so the map stays in view.
   const [hudPanel, setHudPanel] = useState<'steps' | 'trip' | null>(null);
+  const [cameraWanted, setCameraWanted] = useState(false);
+  // End can't fly a map the camera has swapped out, so the map opens where that fly would have left it.
+  const [endedAt, setEndedAt] = useState<Coordinate | null>(null);
+  // MapLibre paints a fixed beige until its style loads, so a map coming back from the camera stays covered until then.
+  const [mapLoading, setMapLoading] = useState(false);
   // An offer to rest is made at most once a walk, and only when there is a time to be there by.
   const breakRef = useRef<{ asked: boolean; startedAt: number; arriveBy: number | null }>({ asked: true, startedAt: 0, arriveBy: null });
   const [breakOffer, setBreakOffer] = useState<BreakOffer | null>(null);
@@ -872,6 +880,8 @@ export default function MapScreen() {
     // A compass turn landing after End would otherwise swing the camera back to the last followed spot.
     lastFollow.current = null;
     setHudPanel(null);
+    setCameraWanted(false);
+    setEndedAt(destination?.coordinate ?? null);
     setFacingUp(true);
     setIsRotated(false);
     smoothHeading.stop();
@@ -1121,6 +1131,23 @@ export default function MapScreen() {
 
   const stepping = navigation.manualStep !== null;
   const navChrome = navigating && !navigation.hasArrived && !stepping;
+  // Arrows on the ground are for walking; arriving, driving or riding brings the map back.
+  const onFoot = !navigation.route?.travel || navigation.route.travel === 'walk';
+  const showCamera = cameraWanted && navChrome && onFoot && !navigation.isRiding;
+  // On Android the map's surface covers the camera's, so the map steps aside and reopens on the walker.
+  const walkerAt = navigating ? (navigation.shownAt ?? location.fix?.position) : undefined;
+  const mapStart: InitialViewState = walkerAt
+    ? {
+        center: toLngLat(walkerAt),
+        zoom: navigation.route?.travel ? FOLLOW_ZOOM[navigation.route.travel] : WALK_FOLLOW_ZOOM,
+        bearing: facingUp ? (currentCompass() ?? 0) : 0,
+        pitch: 40,
+        padding: mapCameraPadding(wide, 'follow', insets),
+      }
+    : endedAt
+      ? { center: toLngLat(endedAt), zoom: PLACE_ZOOM }
+      : { center: CAMPUS_CENTER, zoom };
+  if (showCamera && !mapLoading) setMapLoading(true);
 
   // Browse / planning keep the vertical capsule. During navigation the web-style row sits above the footer.
   const controls: MapControl[] = navigating
@@ -1144,8 +1171,27 @@ export default function MapScreen() {
         },
       ];
 
-  const navControls = navChrome ? (
+  const cameraToggle =
+    onFoot && !navigation.isRiding ? (
+      <MapButton
+        iconOnly
+        variant={showCamera ? 'primary' : 'secondary'}
+        symbol={showCamera ? 'map' : 'camera.viewfinder'}
+        label={showCamera ? 'Back to the map' : 'Show the way through the camera'}
+        onPress={() => {
+          void Haptics.selectionAsync();
+          setCameraWanted(!showCamera);
+        }}
+      />
+    ) : null;
+
+  const navControls = !navChrome ? null : showCamera ? (
     <View pointerEvents="box-none" className="flex-row items-center justify-end gap-2 px-3">
+      {cameraToggle}
+    </View>
+  ) : (
+    <View pointerEvents="box-none" className="flex-row items-center justify-end gap-2 px-3">
+      {cameraToggle}
       {!facingUp && isRotated ? (
         <MapButton iconOnly variant="secondary" symbol="location.north.fill" label="Point north" onPress={pointNorth} />
       ) : null}
@@ -1160,207 +1206,224 @@ export default function MapScreen() {
         <MapButton variant="secondary" symbol="location.fill" label="Recenter" onPress={navigation.recenter} />
       ) : null}
     </View>
-  ) : null;
+  );
 
   return (
     <View className="flex-1" style={{ backgroundColor: background }}>
-      <Map
-        ref={mapRef}
-        style={{ flex: 1 }}
-        mapStyle={scheme === 'dark' ? styles.dark : styles.light}
-        logo={false}
-        attribution={false}
-        compass={false}
-        touchPitch={navigating || buildingView}
-        light={BUILDING_LIGHTS[scheme === 'dark' ? 'dark' : 'light']}
-        onDidFinishLoadingMap={() => markReady('map')}
-        onRegionWillChange={(event) => {
-          // Our own follow/heading easeTo is often flagged as a finger pan on iOS; that was freezing the trip.
-          if (navigating && event.nativeEvent.userInteraction && !isProgrammaticCamera()) {
-            navigation.pauseFollowing();
-          }
-        }}
-        onRegionIsChanging={(event) => {
-          noteBearing(event.nativeEvent.bearing);
-          setBand(zoomBand(event.nativeEvent.zoom));
-        }}
-        onRegionDidChange={(event) => {
-          noteBearing(event.nativeEvent.bearing);
-          setBand(zoomBand(event.nativeEvent.zoom));
-          void layoutSafety(zoomBand(event.nativeEvent.zoom));
-          if (navigating && event.nativeEvent.userInteraction && !isProgrammaticCamera()) {
-            navigation.scheduleFollowAgain();
-          }
-        }}>
-        {buildingView ? (
-          <Layer
-            id="buildings-3d"
-            type="fill-extrusion"
-            source="openmaptiles"
-            source-layer="building"
-            minzoom={14}
-            // Over the roads and the flat buildings: the light style draws buildings under its labels, the dark one over its first.
-            {...(scheme === 'dark' ? { afterId: 'building' } : { beforeId: 'waterway_line_label' })}
-            paint={buildingsPaint}
-          />
-        ) : null}
-
-        <Camera ref={camera} initialViewState={{ center: CAMPUS_CENTER, zoom }} maxBounds={MAX_BOUNDS} minZoom={10} maxZoom={19.5} />
-        <Images images={MAP_ICONS} />
-
-        {activityHeat.features.length > 0 ? (
-          <GeoJSONSource id="campus-activity" data={activityHeat}>
-            {/* Campus events glow in the accent under their buildings; the badge on each chip says how many. */}
+      {showCamera ? null : (
+        <Map
+          ref={mapRef}
+          style={{ flex: 1 }}
+          mapStyle={scheme === 'dark' ? styles.dark : styles.light}
+          logo={false}
+          attribution={false}
+          compass={false}
+          touchPitch={navigating || buildingView}
+          light={BUILDING_LIGHTS[scheme === 'dark' ? 'dark' : 'light']}
+          onDidFinishLoadingMap={() => {
+            markReady('map');
+            setMapLoading(false);
+          }}
+          onDidFailLoadingMap={() => setMapLoading(false)}
+          onRegionWillChange={(event) => {
+            // Our own follow/heading easeTo is often flagged as a finger pan on iOS; that was freezing the trip.
+            if (navigating && event.nativeEvent.userInteraction && !isProgrammaticCamera()) {
+              navigation.pauseFollowing();
+            }
+          }}
+          onRegionIsChanging={(event) => {
+            noteBearing(event.nativeEvent.bearing);
+            setBand(zoomBand(event.nativeEvent.zoom));
+          }}
+          onRegionDidChange={(event) => {
+            noteBearing(event.nativeEvent.bearing);
+            setBand(zoomBand(event.nativeEvent.zoom));
+            void layoutSafety(zoomBand(event.nativeEvent.zoom));
+            if (navigating && event.nativeEvent.userInteraction && !isProgrammaticCamera()) {
+              navigation.scheduleFollowAgain();
+            }
+          }}>
+          {buildingView ? (
             <Layer
-              id="campus-activity-heat"
-              type="heatmap"
-              afterId="building"
-              maxzoom={19}
-              paint={{
-                'heatmap-weight': ['interpolate', ['linear'], ['get', 'weight'], 1, 0.6, 6, 1],
-                'heatmap-intensity': ['interpolate', ['linear'], ['zoom'], 14, 0.8, 18, 1.4],
-                'heatmap-color': heatColors(accent) as ExpressionSpecification,
-                'heatmap-radius': ['interpolate', ['linear'], ['zoom'], 14, 30, 18, 96],
-              }}
+              id="buildings-3d"
+              type="fill-extrusion"
+              source="openmaptiles"
+              source-layer="building"
+              minzoom={14}
+              // Over the roads and the flat buildings: the light style draws buildings under its labels, the dark one over its first.
+              {...(scheme === 'dark' ? { afterId: 'building' } : { beforeId: 'waterway_line_label' })}
+              paint={buildingsPaint}
             />
+          ) : null}
+
+          <Camera ref={camera} initialViewState={mapStart} maxBounds={MAX_BOUNDS} minZoom={10} maxZoom={19.5} />
+          <Images images={MAP_ICONS} />
+
+          {activityHeat.features.length > 0 ? (
+            <GeoJSONSource id="campus-activity" data={activityHeat}>
+              {/* Campus events glow in the accent under their buildings; the badge on each chip says how many. */}
+              <Layer
+                id="campus-activity-heat"
+                type="heatmap"
+                afterId="building"
+                maxzoom={19}
+                paint={{
+                  'heatmap-weight': ['interpolate', ['linear'], ['get', 'weight'], 1, 0.6, 6, 1],
+                  'heatmap-intensity': ['interpolate', ['linear'], ['zoom'], 14, 0.8, 18, 1.4],
+                  'heatmap-color': heatColors(accent) as ExpressionSpecification,
+                  'heatmap-radius': ['interpolate', ['linear'], ['zoom'], 14, 30, 18, 96],
+                }}
+              />
+            </GeoJSONSource>
+          ) : null}
+
+          {outline ? (
+            <GeoJSONSource id="place-outline" data={{ type: 'Feature', properties: {}, geometry: outline }}>
+              {/* Right above the style's own buildings, which in the dark style sit above its first label. */}
+              <Layer id="place-outline-fill" type="fill" afterId="building" paint={{ 'fill-color': accent, 'fill-opacity': 0.2 }} />
+              <Layer
+                id="place-outline-glow"
+                type="line"
+                afterId="place-outline-fill"
+                layout={{ 'line-join': 'round' }}
+                paint={{ 'line-color': accent, 'line-width': 7, 'line-blur': 5, 'line-opacity': 0.35 }}
+              />
+              <Layer
+                id="place-outline-edge"
+                type="line"
+                afterId="place-outline-glow"
+                layout={{ 'line-join': 'round' }}
+                paint={{
+                  'line-color': accent,
+                  'line-width': ['interpolate', ['linear'], ['zoom'], 15, 1, 18, 2.25],
+                  'line-opacity': 0.95,
+                }}
+              />
+            </GeoJSONSource>
+          ) : null}
+
+          <GeoJSONSource id="campus-amenities" data={AMENITY_POINTS}>
+            {/* SOS phones from a little way in, and the benches, trash cans, and the rest only close up, as on the web. */}
+            {amenities.map((layer) => (
+              <Layer
+                key={layer.id}
+                id={layer.id}
+                type="symbol"
+                minzoom={layer.minzoom}
+                filter={layer.filter as FilterSpecification}
+                layout={layer.layout as SymbolLayerSpecification['layout']}
+                paint={layer.paint as SymbolLayerSpecification['paint']}
+              />
+            ))}
           </GeoJSONSource>
-        ) : null}
 
-        {outline ? (
-          <GeoJSONSource id="place-outline" data={{ type: 'Feature', properties: {}, geometry: outline }}>
-            {/* Right above the style's own buildings, which in the dark style sit above its first label. */}
-            <Layer id="place-outline-fill" type="fill" afterId="building" paint={{ 'fill-color': accent, 'fill-opacity': 0.2 }} />
-            <Layer
-              id="place-outline-glow"
-              type="line"
-              afterId="place-outline-fill"
-              layout={{ 'line-join': 'round' }}
-              paint={{ 'line-color': accent, 'line-width': 7, 'line-blur': 5, 'line-opacity': 0.35 }}
-            />
-            <Layer
-              id="place-outline-edge"
-              type="line"
-              afterId="place-outline-glow"
-              layout={{ 'line-join': 'round' }}
-              paint={{
-                'line-color': accent,
-                'line-width': ['interpolate', ['linear'], ['zoom'], 15, 1, 18, 2.25],
-                'line-opacity': 0.95,
-              }}
-            />
-          </GeoJSONSource>
-        ) : null}
+          {previousLine ? (
+            <GeoJSONSource
+              id="previous-route"
+              data={previousLine}
+              onPress={() => {
+                if (!navigation.switchToPrevious()) toast.show({ variant: 'danger', label: 'Could not find a way to that route' });
+              }}>
+              {/* The route left behind stays as a faded dashed line, like the web, and tapping it goes back to it. */}
+              <Layer
+                id="previous-route-casing"
+                type="line"
+                layout={{ 'line-cap': 'round', 'line-join': 'round' }}
+                paint={{ 'line-color': casing, 'line-width': 9, 'line-opacity': 0.4 }}
+              />
+              <Layer
+                id="previous-route-line"
+                type="line"
+                layout={{ 'line-join': 'round' }}
+                paint={{ 'line-color': accent, 'line-width': 5, 'line-opacity': 0.6, 'line-dasharray': [1.2, 1.4] }}
+              />
+              <Layer id="previous-route-hit" type="line" paint={{ 'line-color': accent, 'line-width': 28, 'line-opacity': 0 }} />
+            </GeoJSONSource>
+          ) : null}
 
-        <GeoJSONSource id="campus-amenities" data={AMENITY_POINTS}>
-          {/* SOS phones from a little way in, and the benches, trash cans, and the rest only close up, as on the web. */}
-          {amenities.map((layer) => (
-            <Layer
-              key={layer.id}
-              id={layer.id}
-              type="symbol"
-              minzoom={layer.minzoom}
-              filter={layer.filter as FilterSpecification}
-              layout={layer.layout as SymbolLayerSpecification['layout']}
-              paint={layer.paint as SymbolLayerSpecification['paint']}
+          {routePath && routePath.length >= 2 ? (
+            <RouteLine path={routePath} track={routeTrack} color={routeColor} casing={casing} />
+          ) : null}
+
+          {routeEnd ? (
+            <GeoJSONSource id="route-end" data={{ type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: routeEnd } }}>
+              <Layer
+                id="route-end-dot"
+                type="circle"
+                paint={{
+                  'circle-radius': zoomed(4.5, 7.5),
+                  'circle-color': routeColor,
+                  'circle-stroke-width': zoomed(2, 3),
+                  'circle-stroke-color': casing,
+                }}
+              />
+            </GeoJSONSource>
+          ) : null}
+
+          {location.fix ? <UserPin fix={location.fix} at={navigating ? navigation.shownAt : null} track={routeTrack} /> : null}
+
+          {/* Before the place chips, so the building's own pin stays on top. */}
+          {safety.spots.map((spot) => (
+            <SafetyMarker key={spot.id} spot={spot} band={band} compact={compactSafety.has(spot.id)} />
+          ))}
+          {room ? <RoomMarker spot={room} band={band} /> : null}
+
+          {places.map((place) => (
+            <PlaceMarker
+              key={place.id}
+              place={place}
+              selected={place.id === destinationId}
+              origin={place.id === originPlace?.id}
+              stop={stopNumbers[place.id]}
+              activity={activityCounts[place.id] ?? 0}
+              band={band}
+              exit={safety.exits.has(place.id)}
+              onPress={openPlace}
             />
           ))}
-        </GeoJSONSource>
 
-        {previousLine ? (
-          <GeoJSONSource
-            id="previous-route"
-            data={previousLine}
-            onPress={() => {
-              if (!navigation.switchToPrevious()) toast.show({ variant: 'danger', label: 'Could not find a way to that route' });
-            }}>
-            {/* The route left behind stays as a faded dashed line, like the web, and tapping it goes back to it. */}
-            <Layer
-              id="previous-route-casing"
-              type="line"
-              layout={{ 'line-cap': 'round', 'line-join': 'round' }}
-              paint={{ 'line-color': casing, 'line-width': 9, 'line-opacity': 0.4 }}
-            />
-            <Layer
-              id="previous-route-line"
-              type="line"
-              layout={{ 'line-join': 'round' }}
-              paint={{ 'line-color': accent, 'line-width': 5, 'line-opacity': 0.6, 'line-dasharray': [1.2, 1.4] }}
-            />
-            <Layer id="previous-route-hit" type="line" paint={{ 'line-color': accent, 'line-width': 28, 'line-opacity': 0 }} />
-          </GeoJSONSource>
-        ) : null}
-
-        {routePath && routePath.length >= 2 ? (
-          <RouteLine path={routePath} track={routeTrack} color={routeColor} casing={casing} />
-        ) : null}
-
-        {routeEnd ? (
-          <GeoJSONSource id="route-end" data={{ type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: routeEnd } }}>
-            <Layer
-              id="route-end-dot"
-              type="circle"
-              paint={{
-                'circle-radius': zoomed(4.5, 7.5),
-                'circle-color': routeColor,
-                'circle-stroke-width': zoomed(2, 3),
-                'circle-stroke-color': casing,
-              }}
-            />
-          </GeoJSONSource>
-        ) : null}
-
-        {location.fix ? <UserPin fix={location.fix} at={navigating ? navigation.shownAt : null} track={routeTrack} /> : null}
-
-        {/* Before the place chips, so the building's own pin stays on top. */}
-        {safety.spots.map((spot) => (
-          <SafetyMarker key={spot.id} spot={spot} band={band} compact={compactSafety.has(spot.id)} />
-        ))}
-        {room ? <RoomMarker spot={room} band={band} /> : null}
-
-        {places.map((place) => (
-          <PlaceMarker
-            key={place.id}
-            place={place}
-            selected={place.id === destinationId}
-            origin={place.id === originPlace?.id}
-            stop={stopNumbers[place.id]}
-            activity={activityCounts[place.id] ?? 0}
-            band={band}
-            exit={safety.exits.has(place.id)}
-            onPress={openPlace}
-          />
-        ))}
-
-        {carPlace ? (
-          <Marker id="car-pin" lngLat={toLngLat(carPlace.coordinate)} anchor="bottom" offset={onLotLabel(carSpot) ? [0, -12] : undefined}>
-            <CarPin onPress={() => openPlace(carPlace)} />
-          </Marker>
-        ) : null}
-
-        {meetupSpot ? (
-          <Marker id="meetup-pin" lngLat={toLngLat(meetupSpot)} anchor="bottom">
-            <View className="items-center">
-              <Icon name="mappin.circle.fill" size={34} tintColor={accent} />
-            </View>
-          </Marker>
-        ) : null}
-
-        {others.map((position) => {
-          const member = meetup?.members.find((m) => m.liveId === position.member);
-          const name = member?.displayName || position.name;
-          return (
-            <Marker key={position.member} id={`person-${position.member}`} lngLat={toLngLat(position.coordinate)} anchor="bottom">
-              <PersonPin
-                label={initials(name, member?.username ?? '?')}
-                name={name}
-                isMeetingPoint={meetup?.destination?.kind === 'member' && meetup.destination.liveId === position.member}
-                isActive={activePerson === position.member}
-                onPress={() => setActivePerson((current) => (current === position.member ? null : position.member))}
-              />
+          {carPlace ? (
+            <Marker id="car-pin" lngLat={toLngLat(carPlace.coordinate)} anchor="bottom" offset={onLotLabel(carSpot) ? [0, -12] : undefined}>
+              <CarPin onPress={() => openPlace(carPlace)} />
             </Marker>
-          );
-        })}
-      </Map>
+          ) : null}
+
+          {meetupSpot ? (
+            <Marker id="meetup-pin" lngLat={toLngLat(meetupSpot)} anchor="bottom">
+              <View className="items-center">
+                <Icon name="mappin.circle.fill" size={34} tintColor={accent} />
+              </View>
+            </Marker>
+          ) : null}
+
+          {others.map((position) => {
+            const member = meetup?.members.find((m) => m.liveId === position.member);
+            const name = member?.displayName || position.name;
+            return (
+              <Marker key={position.member} id={`person-${position.member}`} lngLat={toLngLat(position.coordinate)} anchor="bottom">
+                <PersonPin
+                  label={initials(name, member?.username ?? '?')}
+                  name={name}
+                  isMeetingPoint={meetup?.destination?.kind === 'member' && meetup.destination.liveId === position.member}
+                  isActive={activePerson === position.member}
+                  onPress={() => setActivePerson((current) => (current === position.member ? null : position.member))}
+                />
+              </Marker>
+            );
+          })}
+        </Map>
+      )}
+      {mapLoading && !showCamera ? (
+        <View pointerEvents="none" className="absolute inset-0" style={{ backgroundColor: background }} />
+      ) : null}
+
+      {showCamera && navigation.route ? (
+        <CameraArrows
+          route={navigation.route}
+          along={navigation.progress?.distanceAlong}
+          at={navigation.shownAt ?? location.fix?.position ?? null}
+        />
+      ) : null}
 
       {navigating ? null : <TopScrim height={insets.top + 96} dark={scheme === 'dark'} />}
       {/* Android's tab bar is see through, so the map fades behind it to keep labels readable. */}

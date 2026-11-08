@@ -122,6 +122,15 @@
           "enableBackgroundPlayback": true
         }
       ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "CSI Map can show arrows on the ground ahead of you through the camera during walking directions. The picture stays on your phone and is never saved or sent.",
+          "microphonePermission": false,
+          "recordAudioAndroid": false,
+          "barcodeScannerEnabled": false
+        }
+      ],
       "expo-asset",
       [
         "expo-widgets",

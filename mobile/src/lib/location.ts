@@ -97,6 +97,8 @@ function dropCompass() {
   notifyCompass();
 }
 
+// How far magnetic north sits east of true north here, read off the compass's own two headings.
+let declination = 0;
 let headingWanted = false;
 let headingWatch: { remove: () => void } | null = null;
 let headingRun = 0;
@@ -123,6 +125,7 @@ async function startHeading() {
     (reading) => {
       if (run !== headingRun) return;
       const degrees = reading.trueHeading >= 0 ? reading.trueHeading : reading.magHeading;
+      if (reading.trueHeading >= 0 && reading.magHeading >= 0) declination = ((reading.trueHeading - reading.magHeading + 540) % 360) - 180;
       // Expo: 3 is high accuracy, and a negative number means the reading is not usable yet.
       if (Number.isFinite(degrees) && reading.accuracy >= 0) setCompass(degrees);
     },
@@ -360,3 +363,5 @@ export function onFix(listener: (fix: Fix) => void) {
 
 export const currentFix = () => snapshot.fix;
 export const currentCompass = () => compass;
+/** Degrees magnetic north sits east of true north, or 0 until the compass has said. */
+export const currentDeclination = () => declination;
