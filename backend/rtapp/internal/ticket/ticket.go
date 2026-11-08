@@ -37,6 +37,8 @@ type Claims struct {
 	Member  string `json:"sub"`
 	Name    string `json:"name"`
 	Expires int64  `json:"exp"`
+	// Watch passes can follow a shared walk but never send a position.
+	Watch bool `json:"w,omitempty"`
 }
 
 func (c Claims) ExpiresAt() time.Time {

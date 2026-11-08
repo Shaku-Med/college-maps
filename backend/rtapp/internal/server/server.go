@@ -238,6 +238,10 @@ func round(v float64, places int) float64 {
 }
 
 func (a *handlers) postPosition(w http.ResponseWriter, r *http.Request, claims ticket.Claims) {
+	if claims.Watch {
+		writeError(w, http.StatusForbidden, "this pass can only watch")
+		return
+	}
 	if !a.positions.allow(claims.Room + "|" + claims.Member) {
 		w.Header().Set("Retry-After", "5")
 		writeError(w, http.StatusTooManyRequests, "sending location too often")

@@ -20,3 +20,15 @@ func TestSharedVector(t *testing.T) {
 		t.Fatalf("verify: %+v %v", got, err)
 	}
 }
+
+func TestWatchClaimRoundTrips(t *testing.T) {
+	claims := Claims{Room: "meetup_abc123", Member: "member_xyz789", Name: "Jane Doe", Expires: 1_800_000_600, Watch: true}
+	secret := []byte(strings.Repeat("t", 40))
+	token, err := Sign(secret, claims)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := Verify(secret, token, time.Unix(1_800_000_000, 0)); err != nil || got != claims {
+		t.Fatalf("verify: %+v %v", got, err)
+	}
+}

@@ -197,6 +197,25 @@ func TestRejectsBadTicketsOriginsAndBodies(t *testing.T) {
 	}
 }
 
+func TestWatchPassCanStreamButNotShare(t *testing.T) {
+	srv := newTestServer(t)
+	watch, err := ticket.Sign(secret, ticket.Claims{Room: "meetup_walk01", Member: "member_watch1", Name: "Sam", Expires: time.Now().Add(10 * time.Minute).Unix(), Watch: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	events, done := openStream(t, srv, watch)
+	defer done()
+	expectEvent(t, events, "snapshot")
+	if res := post(t, srv, "/v1/position", watch, `{"lat":40.6,"lng":-74.15,"accuracy":8}`); res.StatusCode != http.StatusForbidden {
+		t.Fatalf("a watch pass shared a position: %d", res.StatusCode)
+	}
+	walker := sign(t, "meetup_walk01", "member_walker", "Ana")
+	if res := post(t, srv, "/v1/position", walker, `{"lat":40.6,"lng":-74.15,"accuracy":8}`); res.StatusCode != http.StatusNoContent {
+		t.Fatalf("walker post: %d", res.StatusCode)
+	}
+	expectEvent(t, events, "position")
+}
+
 func TestPositionRateLimit(t *testing.T) {
 	srv := newTestServer(t)
 	token := sign(t, "meetup_room01", "member_alice1", "Alice")
