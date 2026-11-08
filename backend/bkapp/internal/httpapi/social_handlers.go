@@ -261,7 +261,14 @@ func (h *socialHandlers) invite(w http.ResponseWriter, r *http.Request, me auth.
 }
 
 func (h *socialHandlers) end(w http.ResponseWriter, r *http.Request, me auth.User) {
-	m, err := h.service.EndMeetup(r.Context(), me, r.PathValue("id"))
+	// The body is optional, so older clients that send none still end the usual way.
+	var body struct {
+		Arrived bool `json:"arrived"`
+	}
+	if r.ContentLength != 0 && !decodeJSON(w, r, &body) {
+		return
+	}
+	m, err := h.service.EndMeetup(r.Context(), me, r.PathValue("id"), body.Arrived)
 	if err != nil {
 		h.fail(w, r, err)
 		return

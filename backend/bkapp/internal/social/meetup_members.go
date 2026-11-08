@@ -17,7 +17,7 @@ func (s *Service) busyElsewhere(ctx context.Context, tx pgx.Tx, userID, exceptPu
 	if err := tx.QueryRow(ctx,
 		`select exists (
 		   select 1 from meetups m join meetup_members mm on mm.meetup_id = m.id
-		   where mm.user_id = $1::uuid and mm.status = 'joined' and m.public_id <> $2
+		   where mm.user_id = $1::uuid and mm.status = 'joined' and m.public_id <> $2 and m.kind = 'meetup'
 		     and m.ended_at is null and m.expires_at > $3
 		     and coalesce(m.starts_at, m.created_at) < $5 and m.expires_at > $4)`,
 		userID, exceptPublicID, s.now(), from, until,
@@ -103,6 +103,9 @@ func (s *Service) InviteToMeetup(ctx context.Context, me auth.User, publicID str
 		}
 		if current.YourRole != "host" || current.Visibility != VisibilityPrivate {
 			return ErrNotHost
+		}
+		if current.Kind == KindWalk {
+			return invalid("Pick who sees your walk when you start sharing it.")
 		}
 		if !current.Active {
 			return ErrMeetupOver

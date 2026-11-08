@@ -225,7 +225,7 @@ func TestFriendsAndMeetups(t *testing.T) {
 	if lists, _ := s.ListMeetups(ctx, carol); len(lists) != 0 {
 		t.Fatal("declined meetups should leave the list")
 	}
-	if _, err := s.EndMeetup(ctx, bob, created.ID); !errors.Is(err, social.ErrNotHost) {
+	if _, err := s.EndMeetup(ctx, bob, created.ID, false); !errors.Is(err, social.ErrNotHost) {
 		t.Fatalf("guest ended meetup: %v", err)
 	}
 
@@ -244,7 +244,7 @@ func TestFriendsAndMeetups(t *testing.T) {
 		}
 	}
 
-	ended, err := s.EndMeetup(ctx, alice, created.ID)
+	ended, err := s.EndMeetup(ctx, alice, created.ID, false)
 	if err != nil || ended.Active {
 		t.Fatalf("end: %+v %v", ended, err)
 	}
@@ -456,7 +456,7 @@ func TestPublicMeetups(t *testing.T) {
 		}
 	}
 
-	if _, err := s.EndMeetup(ctx, host, later.ID); err != nil {
+	if _, err := s.EndMeetup(ctx, host, later.ID, false); err != nil {
 		t.Fatal(err)
 	}
 	// An ended public meetup drops off the campus list entirely, so it reads as gone.

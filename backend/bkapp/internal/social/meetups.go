@@ -32,6 +32,11 @@ const (
 	VisibilityPrivate = "private"
 	VisibilityPublic  = "public"
 
+	KindMeetup = "meetup"
+	KindWalk   = "walk"
+	// A walk is shared with a few close friends, not a group.
+	MaxWatchers = 3
+
 	StatusInvited  = "invited"
 	StatusJoined   = "joined"
 	StatusDeclined = "declined"
@@ -52,6 +57,7 @@ type DestinationInput struct {
 }
 
 type CreateMeetup struct {
+	Kind        string           `json:"kind,omitempty"`
 	Friends     []string         `json:"friends"`
 	Destination DestinationInput `json:"destination"`
 	Note        string           `json:"note"`
@@ -79,6 +85,7 @@ type Member struct {
 
 type Meetup struct {
 	ID          string       `json:"id"`
+	Kind        string       `json:"kind"`
 	Visibility  string       `json:"visibility"`
 	Title       string       `json:"title,omitempty"`
 	StartsAt    *time.Time   `json:"startsAt,omitempty"`
@@ -114,6 +121,13 @@ func cleanNote(raw string) (string, error) {
 }
 
 func (s *Service) validateCreate(me auth.User, in CreateMeetup) (guests []string, note string, minutes int, err error) {
+	walk := in.Kind == KindWalk
+	if in.Kind != "" && in.Kind != KindMeetup && !walk {
+		return nil, "", 0, invalid("That kind of meetup is not supported.")
+	}
+	if walk && (len(in.Friends) == 0 || len(in.Friends) > MaxWatchers) {
+		return nil, "", 0, invalid("Share your walk with 1 to %d friends.", MaxWatchers)
+	}
 	if len(in.Friends) == 0 || len(in.Friends) > MaxGuests {
 		return nil, "", 0, invalid("Invite between 1 and %d friends.", MaxGuests)
 	}
@@ -144,6 +158,9 @@ func (s *Service) validateCreate(me auth.User, in CreateMeetup) (guests []string
 	d := in.Destination
 	switch d.Kind {
 	case DestinationMember:
+		if walk {
+			return nil, "", 0, invalid("A walk goes to a place or a pin.")
+		}
 		handle, ok := normalizeUsername(d.Username)
 		if !ok || (handle != me.Username && !seen[handle]) {
 			return nil, "", 0, invalid("Pick yourself or one of the invited friends as the person to meet.")
@@ -181,6 +198,11 @@ func (s *Service) CreateMeetup(ctx context.Context, me auth.User, in CreateMeetu
 	if err != nil {
 		return Meetup{}, err
 	}
+	walk := in.Kind == KindWalk
+	kind := KindMeetup
+	if walk {
+		kind = KindWalk
+	}
 
 	now := s.now()
 	var created Meetup
@@ -188,6 +210,14 @@ func (s *Service) CreateMeetup(ctx context.Context, me auth.User, in CreateMeetu
 	err = db.WithScope(ctx, s.pool, db.Scope{UserID: me.ID}, func(tx pgx.Tx) error {
 		if err := lockUser(ctx, tx, me.ID); err != nil {
 			return err
+		}
+		// One walk at a time: starting another means the last one is over.
+		if walk {
+			if _, err := tx.Exec(ctx,
+				`update meetups set ended_at = $2 where host_id = $1::uuid and kind = 'walk' and ended_at is null and expires_at > $2`,
+				me.ID, now); err != nil {
+				return err
+			}
 		}
 		var today, active int
 		if err := tx.QueryRow(ctx,
@@ -219,8 +249,10 @@ func (s *Service) CreateMeetup(ctx context.Context, me auth.User, in CreateMeetu
 			invited = append(invited, id)
 		}
 
-		if err := s.busyElsewhere(ctx, tx, me.ID, "", now, now.Add(time.Duration(minutes)*time.Minute)); err != nil {
-			return err
+		if !walk {
+			if err := s.busyElsewhere(ctx, tx, me.ID, "", now, now.Add(time.Duration(minutes)*time.Minute)); err != nil {
+				return err
+			}
 		}
 
 		var destUser, destPlace *string
@@ -246,9 +278,9 @@ func (s *Service) CreateMeetup(ctx context.Context, me auth.User, in CreateMeetu
 		}
 		var meetupID string
 		if err := tx.QueryRow(ctx,
-			`insert into meetups (public_id, host_id, note, destination_kind, destination_user, destination_place, destination_lat, destination_lng, expires_at)
-			 values ($1, $2::uuid, $3, $4, $5::uuid, $6, $7, $8, $9) returning id::text`,
-			publicID, me.ID, notePtr, in.Destination.Kind, destUser, destPlace, lat, lng, now.Add(time.Duration(minutes)*time.Minute),
+			`insert into meetups (public_id, host_id, kind, note, destination_kind, destination_user, destination_place, destination_lat, destination_lng, expires_at)
+			 values ($1, $2::uuid, $3, $4, $5, $6::uuid, $7, $8, $9, $10) returning id::text`,
+			publicID, me.ID, kind, notePtr, in.Destination.Kind, destUser, destPlace, lat, lng, now.Add(time.Duration(minutes)*time.Minute),
 		).Scan(&meetupID); err != nil {
 			return err
 		}
@@ -270,11 +302,11 @@ func (s *Service) CreateMeetup(ctx context.Context, me auth.User, in CreateMeetu
 		return err
 	})
 	if err == nil && len(invited) > 0 {
-		name := me.DisplayName
-		if name == "" {
-			name = me.Username
+		line := displayName(me) + " invited you to walk together"
+		if walk {
+			line = displayName(me) + " is sharing their walk with you"
 		}
-		s.ping(NotifyInvite, me.ID, invited, s.site.AppName, name+" invited you to walk together", "/")
+		s.ping(NotifyInvite, me.ID, invited, s.site.AppName, line, "/")
 	}
 	return created, err
 }
@@ -287,14 +319,14 @@ func (s *Service) load(ctx context.Context, tx pgx.Tx, me auth.User, publicID st
 	var lat, lng *float64
 	var endedAt *time.Time
 	err := tx.QueryRow(ctx,
-		`select m.id::text, m.public_id, m.visibility, m.title, m.starts_at, coalesce(m.note, ''), m.destination_kind,
+		`select m.id::text, m.public_id, m.kind, m.visibility, m.title, m.starts_at, coalesce(m.note, ''), m.destination_kind,
 		        m.destination_user::text, dest.username, m.destination_place, m.destination_lat, m.destination_lng,
 		        m.created_at, m.expires_at, m.ended_at, host.username, coalesce(host.display_name, '')
 		 from meetups m
 		 join user_directory host on host.id = m.host_id
 		 left join user_directory dest on dest.id = m.destination_user
 		 where m.public_id = $1`, publicID,
-	).Scan(&meetupID, &m.ID, &m.Visibility, &title, &m.StartsAt, &m.Note, &destKind, &destUserID, &destUsername,
+	).Scan(&meetupID, &m.ID, &m.Kind, &m.Visibility, &title, &m.StartsAt, &m.Note, &destKind, &destUserID, &destUsername,
 		&destPlace, &lat, &lng, &m.CreatedAt, &m.ExpiresAt, &endedAt, &m.Host.Username, &m.Host.DisplayName)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Meetup{}, ErrMeetupNotFound
@@ -459,7 +491,8 @@ func (s *Service) setStatus(ctx context.Context, me auth.User, publicID, status 
 			return err
 		}
 		joining := status == StatusJoined && current.YourStatus != StatusJoined
-		if joining {
+		// Watching a friend's walk shares nothing, so it fits alongside a meetup.
+		if joining && current.Kind != KindWalk {
 			if err := s.busyElsewhere(ctx, tx, me.ID, publicID, meetupStart(current), current.ExpiresAt); err != nil {
 				return err
 			}
@@ -470,7 +503,8 @@ func (s *Service) setStatus(ctx context.Context, me auth.User, publicID, status 
 			publicID, me.ID, status, s.now(), stayOut && status != StatusJoined); err != nil {
 			return err
 		}
-		if joining {
+		// The walker is mid route, so a watcher joining does not buzz them; the trip card shows it.
+		if joining && current.Kind != KindWalk {
 			if tell, err = s.othersInMeetup(ctx, tx, me.ID, publicID); err != nil {
 				return err
 			}
@@ -497,11 +531,13 @@ func (s *Service) LeaveMeetup(ctx context.Context, me auth.User, publicID string
 	return s.setStatus(ctx, me, publicID, StatusLeft, stayOut)
 }
 
-func (s *Service) EndMeetup(ctx context.Context, me auth.User, publicID string) (Meetup, error) {
+// EndMeetup ends it for everyone. For a walk, arrived says the walker got there, and the friends watching hear which.
+func (s *Service) EndMeetup(ctx context.Context, me auth.User, publicID string, arrived bool) (Meetup, error) {
 	if !validPublicID(publicID) {
 		return Meetup{}, ErrMeetupNotFound
 	}
 	var m Meetup
+	var watching, unopened []string
 	err := db.WithScope(ctx, s.pool, db.Scope{UserID: me.ID}, func(tx pgx.Tx) error {
 		current, err := s.load(ctx, tx, me, publicID)
 		if err != nil {
@@ -514,11 +550,57 @@ func (s *Service) EndMeetup(ctx context.Context, me auth.User, publicID string) 
 			if _, err := tx.Exec(ctx, `update meetups set ended_at = $2 where public_id = $1`, publicID, s.now()); err != nil {
 				return err
 			}
+			if current.Kind == KindWalk {
+				type guest struct{ ID, Status string }
+				rows, err := tx.Query(ctx,
+					`select mm.user_id::text, mm.status from meetup_members mm join meetups m on m.id = mm.meetup_id
+					 where m.public_id = $1 and mm.role = 'guest' and mm.status in ('invited', 'joined')`, publicID)
+				if err != nil {
+					return err
+				}
+				guests, err := pgx.CollectRows(rows, pgx.RowToStructByPos[guest])
+				if err != nil {
+					return err
+				}
+				for _, g := range guests {
+					if g.Status == StatusJoined {
+						watching = append(watching, g.ID)
+					} else {
+						unopened = append(unopened, g.ID)
+					}
+				}
+			}
 		}
 		m, err = s.load(ctx, tx, me, publicID)
 		return err
 	})
+	if err == nil {
+		name := displayName(me)
+		if !arrived {
+			s.ping(NotifyInvite, me.ID, append(watching, unopened...), s.site.AppName, name+" stopped sharing their walk", "/")
+			return m, nil
+		}
+		// Where the walk went is only for friends who opened it, the same as while it runs.
+		there := name + " made it"
+		if place := s.placeName(m.Destination); place != "" {
+			there += " to " + place
+		}
+		s.ping(NotifyInvite, me.ID, watching, s.site.AppName, there, "/")
+		s.ping(NotifyInvite, me.ID, unopened, s.site.AppName, name+" made it", "/")
+	}
 	return m, err
+}
+
+func (s *Service) placeName(d *Destination) string {
+	if d == nil || d.Kind != DestinationPlace {
+		return ""
+	}
+	for _, p := range s.site.Places {
+		if p.ID == d.PlaceID {
+			return p.Name
+		}
+	}
+	return ""
 }
 
 // LiveTicket lets a joined member stream and share positions for a few minutes.
@@ -537,7 +619,13 @@ func (s *Service) LiveTicket(ctx context.Context, me auth.User, publicID string)
 	if m.ExpiresAt.Before(expires) {
 		expires = m.ExpiresAt
 	}
-	token, err := ticket.Sign(s.ticketSecret, ticket.Claims{Room: m.ID, Member: m.YourLiveID, Name: me.DisplayName, Expires: expires.Unix()})
+	token, err := ticket.Sign(s.ticketSecret, ticket.Claims{
+		Room:    m.ID,
+		Member:  m.YourLiveID,
+		Name:    me.DisplayName,
+		Expires: expires.Unix(),
+		Watch:   m.Kind == KindWalk && m.YourRole != "host",
+	})
 	if err != nil {
 		return Ticket{}, err
 	}
