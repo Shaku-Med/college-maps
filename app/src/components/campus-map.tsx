@@ -16,6 +16,7 @@ import {
   useState,
   type Ref,
 } from "react";
+import { Car } from "lucide-react";
 import { createPortal } from "react-dom";
 
 import { PlaceChip, type ChipState } from "@/components/place-chip";
@@ -72,6 +73,8 @@ const ROUTE_REVEAL_MS = 650;
 const NO_PADDING = { top: 0, right: 0, bottom: 0, left: 0 };
 
 export type CampusMapHandle = {
+  /** The spot under the middle of the map's box, whatever padding the camera is using. */
+  centerOfView: () => Coordinate | undefined;
   focus: (coordinate: Coordinate, padding?: Partial<PaddingOptions>) => void;
   follow: (coordinate: Coordinate, padding?: Partial<PaddingOptions>, zoom?: number) => void;
   fitPath: (path: Coordinate[], padding?: Partial<PaddingOptions>) => void;
@@ -104,6 +107,11 @@ type CampusMapProps = {
   userLocation?: Coordinate;
   people?: readonly MapPerson[];
   destinationPin?: Coordinate;
+  /** Where this browser remembers the car was parked. */
+  carSpot?: Coordinate;
+  /** The car sits on its lot's label, so the pin rests on top of the label instead of covering it. */
+  carOnLabel?: boolean;
+  onCarPress?: () => void;
   route?: Coordinate[];
   previousRoute?: Coordinate[];
   initialFocus?: Coordinate;
@@ -751,6 +759,9 @@ export function CampusMap({
   userLocation,
   people,
   destinationPin,
+  carSpot,
+  carOnLabel = false,
+  onCarPress,
   route,
   previousRoute,
   initialFocus,
@@ -779,6 +790,8 @@ export function CampusMap({
   const [safetyHosts, setSafetyHosts] = useState<ReadonlyMap<string, HTMLElement>>(() => new Map());
   const roomMarkerRef = useRef<{ marker: Marker; host: HTMLElement } | null>(null);
   const [roomHost, setRoomHost] = useState<HTMLElement | null>(null);
+  const carMarkerRef = useRef<{ marker: Marker; host: HTMLElement } | null>(null);
+  const [carHost, setCarHost] = useState<HTMLElement | null>(null);
   const [compactSafety, setCompactSafety] = useState<ReadonlySet<string>>(() => new Set());
   const layoutSafetyRef = useRef<() => void>(() => undefined);
   const [hovered, setHovered] = useState<string | null>(null);
@@ -869,6 +882,13 @@ export function CampusMap({
   };
 
   useImperativeHandle(ref, () => ({
+    centerOfView() {
+      const map = mapRef.current;
+      const box = containerRef.current?.getBoundingClientRect();
+      if (!map || !box) return undefined;
+      const { lng, lat } = map.unproject([box.width / 2, box.height / 2]);
+      return { latitude: lat, longitude: lng };
+    },
     focus(coordinate, padding) {
       mapRef.current?.flyTo({
         center: toLngLat(coordinate),
@@ -993,11 +1013,7 @@ export function CampusMap({
       map.keyboard.disableRotation();
       map.on("click", (event) => {
         const target = event.originalEvent.target as HTMLElement;
-        if (
-          !target.closest("[data-place-marker]") &&
-          !target.closest("[data-person-marker]") &&
-          !target.closest("[data-safety-marker]")
-        ) {
+        if (!target.closest("[data-place-marker], [data-person-marker], [data-safety-marker], [data-car-marker]")) {
           onSelectRef.current(undefined);
         }
       });
@@ -1271,6 +1287,29 @@ export function CampusMap({
     setRoomHost(roomMarkerRef.current?.host ?? null);
   }, [isReady, roomAt]);
 
+  const carAt = carSpot ? `${carSpot.latitude},${carSpot.longitude}` : null;
+  useEffect(() => {
+    const lib = libRef.current;
+    const map = mapRef.current;
+    if (!isReady || !lib || !map) return;
+    if (!carAt) {
+      carMarkerRef.current?.marker.remove();
+      carMarkerRef.current = null;
+    } else {
+      const [latitude, longitude] = carAt.split(",").map(Number);
+      const offset: [number, number] = [0, carOnLabel ? -10 : 4];
+      if (carMarkerRef.current) {
+        carMarkerRef.current.marker.setLngLat([longitude, latitude]).setOffset(offset);
+      } else {
+        const host = document.createElement("div");
+        const marker = new lib.Marker({ element: host, anchor: "bottom", offset }).setLngLat([longitude, latitude]).addTo(map);
+        marker.getElement().style.zIndex = "3";
+        carMarkerRef.current = { marker, host };
+      }
+    }
+    setCarHost(carMarkerRef.current?.host ?? null);
+  }, [isReady, carAt, carOnLabel]);
+
   const chipState = (id: string): ChipState =>
     id === selectedId ? "selected" : stopNumbers?.[id] !== undefined ? "stop" : id === originId ? "origin" : "idle";
   const placesById = new Map(places.map((place) => [place.id, place]));
@@ -1402,6 +1441,24 @@ export function CampusMap({
         return spot ? createPortal(<SafetyChip spot={spot} compact={compactSafety.has(id)} />, host, id) : null;
       })}
       {roomHost && room ? createPortal(<RoomChip spot={room} />, roomHost) : null}
+      {carHost
+        ? createPortal(
+            <button
+              type="button"
+              aria-label="Your car"
+              data-car-marker
+              onClick={onCarPress}
+              className="flex cursor-pointer flex-col items-center outline-none focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-focus">
+              <span className="rounded-full bg-overlay p-[3px] shadow-[0_2px_8px_rgba(15,23,42,0.35)] ring-2 ring-overlay">
+                <span className="flex size-7 items-center justify-center rounded-full bg-accent text-accent-foreground">
+                  <Car className="size-3.5" aria-hidden />
+                </span>
+              </span>
+              <span className="-mt-[5px] size-3 rotate-45 rounded-[3px] bg-overlay shadow-[0_2px_6px_rgba(15,23,42,0.28)]" />
+            </button>,
+            carHost,
+          )
+        : null}
     </div>
   );
 }

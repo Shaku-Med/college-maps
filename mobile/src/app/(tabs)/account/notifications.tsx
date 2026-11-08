@@ -1,10 +1,10 @@
 import type { SFSymbol } from 'expo-symbols';
-import { ListGroup, Separator, Switch, useThemeColor, useToast } from 'heroui-native';
+import { ListGroup, Separator, useToast } from 'heroui-native';
 import { useEffect, useState } from 'react';
 import { Linking, ScrollView, Text, View } from 'react-native';
 
-import { Icon } from '@/components/icon';
 import { SectionTitle } from '@/components/section';
+import { ToggleRow } from '@/components/toggle-row';
 import { useAccount } from '@/lib/account';
 import { settingsApi, type NotifyPrefs } from '@/lib/api';
 import { useReadableStyle } from '@/hooks/use-layout';
@@ -16,36 +16,7 @@ import {
   usePhonePrefs,
   type PhonePrefs,
 } from '@/lib/notifications';
-
-function ToggleRow({
-  symbol,
-  title,
-  description,
-  value,
-  disabled = false,
-  onChange,
-}: {
-  symbol: SFSymbol;
-  title: string;
-  description?: string;
-  value: boolean;
-  disabled?: boolean;
-  onChange: (next: boolean) => void;
-}) {
-  const muted = useThemeColor('muted');
-  return (
-    <ListGroup.Item disabled>
-      <ListGroup.ItemPrefix>
-        <Icon name={symbol} size={20} tintColor={muted} />
-      </ListGroup.ItemPrefix>
-      <ListGroup.ItemContent>
-        <ListGroup.ItemTitle>{title}</ListGroup.ItemTitle>
-        {description ? <ListGroup.ItemDescription>{description}</ListGroup.ItemDescription> : null}
-      </ListGroup.ItemContent>
-      <Switch isSelected={value} isDisabled={disabled} onSelectedChange={onChange} />
-    </ListGroup.Item>
-  );
-}
+import { ClassReminderToggle } from '@/components/class-reminders';
 
 const PHONE_ROWS: { key: keyof PhonePrefs; symbol: SFSymbol; title: string; description: string }[] = [
   { key: 'badge', symbol: 'app.badge', title: 'App icon badge', description: 'Count friend requests and invites waiting for you' },
@@ -141,6 +112,8 @@ export default function NotificationsScreen() {
               disabled={busy || !signedIn}
               onChange={(next) => void changeEnabled(next)}
             />
+            <Separator className="mx-4" />
+            <ClassReminderToggle />
             {PHONE_ROWS.map((row) => (
               <View key={row.key}>
                 <Separator className="mx-4" />

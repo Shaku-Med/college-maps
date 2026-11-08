@@ -10,11 +10,13 @@ import { Avatar, FriendRow } from '@/components/person';
 import { EmptyState, SectionTitle } from '@/components/section';
 import { StackLinkedItem } from '@/components/stack-linked-item';
 import { getPlace } from '@/data/campus';
+import { pinName } from '@/lib/amenity-search';
 import { useLinkedParam, useLinkedSuffix } from '@/hooks/use-linked-row-opacity';
 import { useReadableStyle } from '@/hooks/use-layout';
 import { useProfile } from '@/lib/account';
 import { refreshSocial, useSocial } from '@/lib/social';
-import { socialApi, type Meetup } from '@/lib/social-api';
+import { isWalk, socialApi, type Meetup } from '@/lib/social-api';
+import { walkTitle, watchLine } from '@/lib/walk-share';
 
 // Enough to find the people you see most; the rest are one tap away with search.
 const FRIENDS_SHOWN = 5;
@@ -33,7 +35,7 @@ function whereText(meetup: Meetup) {
     const member = meetup.members.find((m) => m.username === destination.username);
     return member ? `At ${member.displayName}` : 'At a friend';
   }
-  if (destination?.kind === 'pin') return 'At a pin on the map';
+  if (destination?.kind === 'pin') return pinName(destination.lat, destination.lng);
   return 'On campus';
 }
 
@@ -152,20 +154,23 @@ export default function FriendsScreen() {
                   gestureSync={false}
                   onPress={() => router.push({ pathname: '/meetup/[id]', params: { id: meetup.id } })}>
                   <ListGroup.ItemPrefix>
-                    <RowIcon symbol="person.2.fill" />
+                    <RowIcon symbol={isWalk(meetup) ? 'figure.walk' : 'person.2.fill'} />
                   </ListGroup.ItemPrefix>
                   <ListGroup.ItemContent>
                     <ListGroup.ItemTitle numberOfLines={1}>
-                      {meetup.title ??
-                        (meetup.note && !meetup.note.startsWith('seed:')
-                          ? meetup.note
-                          : meetup.yourRole === 'host'
-                            ? 'Your meetup'
-                            : `${meetup.host.displayName}'s meetup`)}
+                      {isWalk(meetup)
+                        ? walkTitle(meetup, whereText(meetup))
+                        : (meetup.title ??
+                          (meetup.note && !meetup.note.startsWith('seed:')
+                            ? meetup.note
+                            : meetup.yourRole === 'host'
+                              ? 'Your meetup'
+                              : `${meetup.host.displayName}'s meetup`))}
                     </ListGroup.ItemTitle>
                     <ListGroup.ItemDescription numberOfLines={1}>
-                      {meetup.yourStatus === 'invited' ? `${meetup.host.displayName} · ` : ''}
-                      {whereText(meetup)} · {timeLeft(meetup.expiresAt)}
+                      {isWalk(meetup)
+                        ? `${meetup.yourRole === 'host' ? watchLine(meetup) : 'Until they arrive'} · ${timeLeft(meetup.expiresAt)}`
+                        : `${meetup.yourStatus === 'invited' ? `${meetup.host.displayName} · ` : ''}${whereText(meetup)} · ${timeLeft(meetup.expiresAt)}`}
                     </ListGroup.ItemDescription>
                   </ListGroup.ItemContent>
                   {meetup.yourStatus === 'invited' ? (

@@ -1,6 +1,8 @@
 import { getPlace } from '@/data/campus';
+import { pinName } from '@/lib/amenity-search';
 import { classesOn, dayKey, type ClassEntry } from '@/lib/schedule';
-import type { Meetup } from '@/lib/social-api';
+import { isWalk, type Meetup } from '@/lib/social-api';
+import { walkTitle } from '@/lib/walk-share';
 import UpNext, { type UpNextItem, type UpNextProps } from '@/widgets/up-next';
 
 type Item = UpNextItem & { kind: 'meetup' | 'class' };
@@ -14,8 +16,8 @@ function meetupItem(meetup: Meetup): Item {
   const host = meetup.destination?.kind === 'member' ? meetup.members.find((m) => m.username === meetup.destination?.username) : undefined;
   return {
     kind: 'meetup',
-    title: meetup.title ?? (meetup.yourRole === 'host' ? 'Your meetup' : `${meetup.host.displayName}'s meetup`),
-    detail: place?.name ?? (host ? `Wherever ${host.displayName} is` : 'A pin on the map'),
+    title: isWalk(meetup) ? walkTitle(meetup) : (meetup.title ?? (meetup.yourRole === 'host' ? 'Your meetup' : `${meetup.host.displayName}'s meetup`)),
+    detail: place?.name ?? (host ? `Wherever ${host.displayName} is` : pinName(meetup.destination?.lat, meetup.destination?.lng)),
     startsAt: new Date(meetup.startsAt ?? meetup.createdAt).getTime(),
     endsAt: new Date(meetup.expiresAt).getTime(),
   };

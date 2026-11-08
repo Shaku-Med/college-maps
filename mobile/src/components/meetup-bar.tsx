@@ -5,7 +5,8 @@ import { Pressable, Text, View } from 'react-native';
 import { Glass } from '@/components/glass';
 import { Icon } from '@/components/icon';
 import type { LiveState } from '@/hooks/use-meetup-live';
-import type { Meetup } from '@/lib/social-api';
+import { isWalk, type Meetup } from '@/lib/social-api';
+import { walkTitle, watchLine } from '@/lib/walk-share';
 
 type MeetupBarProps = {
   meetup: Meetup;
@@ -25,8 +26,21 @@ type MeetupBarProps = {
 export function MeetupBar({ meetup, where, sharing, state, elsewhere, onTakeOver, onOpen, onDirections, onStop }: MeetupBarProps) {
   const [accent, muted] = useThemeColor(['accent', 'muted']);
   const others = meetup.members.filter((m) => m.status === 'joined').length - 1;
-  const title = meetup.title ?? (meetup.yourRole === 'host' ? 'Your meetup' : `${meetup.host.displayName}'s meetup`);
-  const status = elsewhere
+  const walk = isWalk(meetup);
+  const title = walk
+    ? walkTitle(meetup, where)
+    : (meetup.title ?? (meetup.yourRole === 'host' ? 'Your meetup' : `${meetup.host.displayName}'s meetup`));
+  const status = walk
+    ? state === 'live'
+      ? meetup.yourRole === 'host'
+        ? watchLine(meetup)
+        : sharing > 0
+          ? 'Live'
+          : 'Waiting for their location'
+      : state === 'connecting'
+        ? 'Connecting'
+        : 'Offline, trying again'
+    : elsewhere
     ? 'Sharing from your other device'
     : state === 'live'
       ? others <= 0
@@ -45,7 +59,7 @@ export function MeetupBar({ meetup, where, sharing, state, elsewhere, onTakeOver
           onPress={onOpen}
           className="min-w-0 flex-1 flex-row items-center gap-3 active:opacity-70">
           <View className="size-9 items-center justify-center rounded-full bg-accent-soft">
-            <Icon name="person.2.fill" size={15} tintColor={accent} />
+            <Icon name={walk ? 'figure.walk' : 'person.2.fill'} size={15} tintColor={accent} />
           </View>
           <View className="min-w-0 flex-1">
             <Text className="text-sm font-semibold text-foreground" numberOfLines={1}>
@@ -59,7 +73,7 @@ export function MeetupBar({ meetup, where, sharing, state, elsewhere, onTakeOver
             </View>
           </View>
         </Pressable>
-        {elsewhere ? (
+        {elsewhere && !walk ? (
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Share your location from this phone instead"

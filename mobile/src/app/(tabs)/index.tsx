@@ -33,7 +33,9 @@ import { PersonCard, PersonPin } from '@/components/person-pin';
 import { MapControls, type MapControl } from '@/components/map-controls';
 import { MapButton } from '@/components/map-button';
 import { BreakCard, NavigationBanner, NavigationFooter, ParkingCard } from '@/components/navigation-hud';
+import { WalkShareSection } from '@/components/walk-share-section';
 import { PlaceDetails } from '@/components/place-details';
+import { CarPin } from '@/components/car-pin';
 import { PlaceMarker } from '@/components/place-marker';
 import { RoomMarker } from '@/components/room-marker';
 import { SafetyMarker } from '@/components/safety-marker';
@@ -43,6 +45,7 @@ import { AMENITY_POINTS, isAmenity, placeCalled, type AmenityKind } from '@/data
 import { CAMPUS, PLACES, contains, getPlace, type Coordinate, type Place } from '@/data/campus';
 import { walkGraph } from '@/data/walk-graph';
 import { useMeetupLive } from '@/hooks/use-meetup-live';
+import { useWalkShare } from '@/hooks/use-walk-share';
 import { useNow } from '@/hooks/use-now';
 import { mapCameraPadding, PANEL_WIDTH, useMapChromeBottom, useShortViewport, useTabRail, useWide } from '@/hooks/use-layout';
 import { useNavigation, type FollowTarget } from '@/hooks/use-navigation';
@@ -56,12 +59,13 @@ import { useFocusedPlace } from '@/lib/focus';
 import { showPlace } from '@/lib/links';
 import { closePlacePanel, usePlacePanel } from '@/lib/place-panel';
 import { formatRouteTime, wayFromHere } from '@/lib/directions';
-import { distanceMeters, formatDistance } from '@/lib/geo';
+import { WALK_SPEED_MPS, distanceMeters, formatDistance } from '@/lib/geo';
 import { stepText } from '@/lib/instructions';
 import { endTrip, showTrip } from '@/lib/live-activity';
 import { currentCompass, currentFix, glideMs, onFix, subscribeCompass, useLocation } from '@/lib/location';
-import { QUICK_STOPS, amenityWhere, nearestAmenity } from '@/lib/amenity-search';
+import { QUICK_STOPS, amenityWhere, nearestAmenity, pinName } from '@/lib/amenity-search';
 import { arriveChoices, breakArrivalNote, classStartAt, findBreak, type BreakOffer } from '@/lib/breaks';
+import { CAR_ID, onLotLabel, useCarSpot } from '@/lib/car-spot';
 import { useClasses } from '@/lib/classes';
 import { parkingSpoken } from '@/lib/parking';
 import { watchSteps } from '@/lib/steps';
@@ -88,6 +92,7 @@ import { markReady } from '@/lib/splash';
 import { showMeetupOnMap, useShownMeetup } from '@/lib/meetup-focus';
 import { findRoute, remainingPath, type Route } from '@/lib/routing';
 import { useSocial } from '@/lib/social';
+import { isWalk } from '@/lib/social-api';
 import {
   MY_LOCATION,
   closeTrip,
@@ -513,7 +518,16 @@ export default function MapScreen() {
     if (navigation.parking) sayLine(parkingSpoken(navigation.parking));
   }, [navigation.parking, sayLine]);
   const live = meetup ? meetup.id : null;
-  const people = useMeetupLive(live, meetup ? location.fix : null);
+  // A walk is watched, never shared back: friends following it send nothing, and the walker shares through the trip.
+  const people = useMeetupLive(live, meetup && !isWalk(meetup) ? location.fix : null);
+  const walkShare = useWalkShare(social.meetups, location.fix);
+  const finalArrived = navigating && navigation.hasArrived && !nextTarget;
+  const { walk: sharedWalk, stop: stopWalkShare } = walkShare;
+  useEffect(() => {
+    if (!sharedWalk) return;
+    if (!navigating) void stopWalkShare(false);
+    else if (finalArrived) void stopWalkShare(true);
+  }, [sharedWalk, navigating, finalArrived, stopWalkShare]);
 
   // The Lock Screen and Dynamic Island follow the trip, including with the app in the background.
   const destinationName = target?.name;
@@ -800,6 +814,18 @@ export default function MapScreen() {
     toast.show({ variant: 'success', label: 'Stop removed', description: place.name });
   }
 
+  function walkSecondsLeft() {
+    const route = navigation.route;
+    if (!route) return 0;
+    let meters = navigation.progress?.remaining ?? route.distance;
+    for (let i = trip.leg; i < trip.legs.length - 1; i++) {
+      const from = getPlace(trip.legs[i]);
+      const to = getPlace(trip.legs[i + 1]);
+      if (from && to) meters += distanceMeters(from.coordinate, to.coordinate) * 1.3;
+    }
+    return meters / WALK_SPEED_MPS;
+  }
+
   function addStopKind(kind: AmenityKind) {
     const from = location.fix?.position ?? navigation.progress?.point ?? target?.coordinate;
     const match = from ? nearestAmenity(kind, from) : undefined;
@@ -1037,6 +1063,8 @@ export default function MapScreen() {
     : [];
   const shownPerson = activePerson ? others.find((position) => position.member === activePerson) : undefined;
   const shownPersonMember = shownPerson ? meetup?.members.find((m) => m.liveId === shownPerson.member) : undefined;
+  const carSpot = useCarSpot();
+  const carPlace = carSpot ? getPlace(CAR_ID) : undefined;
   const meetupPlace = meetup?.destination?.kind === 'place' ? getPlace(meetup.destination.placeId) : undefined;
   const meetupPin =
     meetup?.destination?.kind === 'pin' && meetup.destination.lat !== undefined && meetup.destination.lng !== undefined
@@ -1045,7 +1073,7 @@ export default function MapScreen() {
   const meetupHost =
     meetup?.destination?.kind === 'member' ? meetup.members.find((m) => m.username === meetup.destination?.username) : undefined;
   const meetupSpot = meetupPlace?.coordinate ?? meetupPin;
-  const meetupWhere = meetupPlace?.name ?? (meetupHost ? `Wherever ${meetupHost.displayName} is` : 'A pin on the map');
+  const meetupWhere = meetupPlace?.name ?? (meetupHost ? `Wherever ${meetupHost.displayName} is` : pinName(meetupPin?.latitude, meetupPin?.longitude));
 
   // Android can report no bottom inset inside a tab, though the map runs under the tab and system bars.
   const rail = useTabRail();
@@ -1303,6 +1331,12 @@ export default function MapScreen() {
           />
         ))}
 
+        {carPlace ? (
+          <Marker id="car-pin" lngLat={toLngLat(carPlace.coordinate)} anchor="bottom" offset={onLotLabel(carSpot) ? [0, -12] : undefined}>
+            <CarPin onPress={() => openPlace(carPlace)} />
+          </Marker>
+        ) : null}
+
         {meetupSpot ? (
           <Marker id="meetup-pin" lngLat={toLngLat(meetupSpot)} anchor="bottom">
             <View className="items-center">
@@ -1378,7 +1412,7 @@ export default function MapScreen() {
             elsewhere={people.elsewhere}
             onTakeOver={people.takeOver}
             onOpen={() => router.push({ pathname: '/meetup/[id]', params: { id: meetup.id } })}
-            onDirections={meetupPlace ? () => planTrip(meetupPlace.id) : undefined}
+            onDirections={meetupPlace && !isWalk(meetup) ? () => planTrip(meetupPlace.id) : undefined}
             onStop={() => showMeetupOnMap(null)}
           />
         ) : null}
@@ -1531,6 +1565,22 @@ export default function MapScreen() {
             quickStops={quickStops}
             onAddStopKind={addStopKind}
             onAnotherStop={() => router.push({ pathname: '/stop', params: { now: '1' } })}
+            isSharing={!!walkShare.walk}
+            walkShare={
+              profile && (!navigation.route.travel || navigation.route.travel === 'walk') ? (
+                <WalkShareSection
+                  friends={social.friends.friends}
+                  walk={walkShare.walk}
+                  isBusy={walkShare.isBusy}
+                  onStart={(friends) => {
+                    const destination = getPlace(trip.legs[trip.legs.length - 1]) ?? trip.destination;
+                    return destination ? walkShare.start(friends, destination, walkSecondsLeft()) : Promise.resolve(false);
+                  }}
+                  onStop={() => void walkShare.stop(false)}
+                  onSos={quickStops.includes('sos') ? () => addStopKind('sos') : undefined}
+                />
+              ) : undefined
+            }
           />
         ) : null}
       </View>

@@ -2,6 +2,7 @@ import { SymbolView, type AndroidSymbol, type SFSymbol, type SymbolViewProps } f
 
 // Android has no SF Symbols, so every symbol the app uses has its Material Symbol here.
 const MATERIAL: Partial<Record<SFSymbol, AndroidSymbol>> = {
+  alarm: 'alarm',
   'app.badge': 'app_badging',
   'arrow.right': 'arrow_forward',
   'arrow.triangle.2.circlepath': 'sync',

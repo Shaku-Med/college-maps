@@ -1,6 +1,7 @@
 import type { SFSymbol } from 'expo-symbols';
 import * as Haptics from 'expo-haptics';
 import { useThemeColor } from 'heroui-native';
+import type { ReactNode } from 'react';
 import { Platform, StyleSheet, Switch, Text, useWindowDimensions, View, type ViewStyle } from 'react-native';
 import { GestureDetector, Pressable, type PressableProps } from 'react-native-gesture-handler';
 import Animated, {
@@ -93,7 +94,7 @@ function PanelHandle({ color, style, className }: { color: string; style: Animat
 const DIMS_ON_PRESS = Platform.OS === 'ios' && !HAS_LIQUID_GLASS;
 
 /** Gesture handler's Pressable with its classes resolved, since Uniwind does not style it, and a native press. */
-function Press({ className = '', dim, ...props }: Omit<PressableProps, 'style'> & { className?: string; dim?: number }) {
+export function Press({ className = '', dim, ...props }: Omit<PressableProps, 'style'> & { className?: string; dim?: number }) {
   const base = useResolveClassNames(className);
   const pressedOpacity = dim ?? (DIMS_ON_PRESS ? 0.6 : undefined);
   return (
@@ -351,6 +352,10 @@ type BottomProps = {
   quickStops?: AmenityKind[];
   onAddStopKind?: (kind: AmenityKind) => void;
   onAnotherStop?: () => void;
+  /** Walk me there, shown in the trip panel when signed in and on foot. */
+  walkShare?: ReactNode;
+  /** Set while friends can see this walk, so it shows without opening the panel. */
+  isSharing?: boolean;
 };
 
 export type StopAhead = { index: number; place: Place; number: number };
@@ -413,6 +418,8 @@ export function NavigationFooter({
   quickStops = [],
   onAddStopKind,
   onAnotherStop,
+  walkShare,
+  isSharing = false,
 }: BottomProps) {
   const [foreground, accent] = useThemeColor(['foreground', 'accent']);
   const { height } = useWindowDimensions();
@@ -468,7 +475,7 @@ export function NavigationFooter({
                     </Text>
                     {/* One line beside the buttons: with a stop label it shrinks a little instead of wrapping. */}
                     <Text className="text-base text-muted" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>
-                      {hasArrived ? "You're here" : [formatDistance(remaining), arrive, stopLabel].filter(Boolean).join(' · ')}
+                      {hasArrived ? "You're here" : [formatDistance(remaining), arrive, stopLabel, isSharing ? 'Shared live' : undefined].filter(Boolean).join(' · ')}
                     </Text>
                   </Press>
                 </View>
@@ -522,6 +529,7 @@ export function NavigationFooter({
                       ) : null}
                       <Setting symbol="speaker.wave.2.fill" title="Spoken directions" value={voiceOn} onChange={() => onToggleVoice()} />
                       <Setting symbol="location.north.line.fill" title="Turn the map with me" value={facingUp} onChange={onFacingUp} />
+                      {hasArrived ? null : walkShare}
                       <View className="gap-2 pb-1 pt-2">
                         <Text className="text-xs font-semibold uppercase tracking-wide text-muted">
                           {stopsAhead.length > 0 ? 'Stops' : 'Add a stop'}

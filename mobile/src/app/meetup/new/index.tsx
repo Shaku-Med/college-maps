@@ -21,7 +21,8 @@ import { Icon } from '@/components/icon';
 import { ChoiceChips } from '@/components/choice-chips';
 import { getPlace } from '@/data/campus';
 import { useProfile } from '@/lib/account';
-import { choosePlace, useChosenPlace } from '@/lib/place-choice';
+import { pinName } from '@/lib/amenity-search';
+import { choosePlace, useChosenPin, useChosenPlace } from '@/lib/place-choice';
 import { updateMeetup, useSocial } from '@/lib/social';
 import { MAX_GUESTS, socialApi, type MeetupDestination } from '@/lib/social-api';
 
@@ -58,6 +59,7 @@ export default function NewMeetupSheet() {
   const [where, setWhere] = useState<Where>(isPublic ? 'place' : 'me');
   const [target, setTarget] = useState<string>();
   const placeId = useChosenPlace();
+  const pin = useChosenPin();
   const [minutes, setMinutes] = useState<(typeof DURATIONS)[number]['id']>('120');
   const [startsIn, setStartsIn] = useState<(typeof START_OPTIONS)[number]['id']>('60');
   const [title, setTitle] = useState('');
@@ -69,13 +71,15 @@ export default function NewMeetupSheet() {
 
   if (!profile) return null;
   const place = getPlace(placeId);
+  const spotName = pin ? pinName(pin.latitude, pin.longitude) : place?.name;
 
   async function create() {
     setError(null);
     let destination: MeetupDestination;
     if (where === 'place') {
-      if (!place) return setError('Pick where to meet.');
-      destination = { kind: 'place', placeId: place.id };
+      if (pin) destination = { kind: 'pin', lat: pin.latitude, lng: pin.longitude };
+      else if (place) destination = { kind: 'place', placeId: place.id };
+      else return setError('Pick where to meet.');
     } else {
       const username = where === 'me' ? profile!.username : target;
       if (!username) return setError('Pick who everyone meets at.');
@@ -185,12 +189,12 @@ export default function NewMeetupSheet() {
         {where === 'place' ? (
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={place ? `Meeting at ${place.name}. Change` : 'Choose a place'}
+            accessibilityLabel={spotName ? `Meeting at ${spotName}. Change` : 'Choose a place'}
             onPress={() => router.push('/meetup/new/place')}
             className="flex-row items-center gap-3 rounded-2xl bg-default px-4 py-3.5 active:opacity-70">
-            <Icon name="mappin.and.ellipse" size={16} tintColor={place ? accent : muted} />
-            <Text className={place ? 'flex-1 text-base text-foreground' : 'flex-1 text-base text-muted'} numberOfLines={1}>
-              {place?.name ?? 'Choose a place'}
+            <Icon name="mappin.and.ellipse" size={16} tintColor={spotName ? accent : muted} />
+            <Text className={spotName ? 'flex-1 text-base text-foreground' : 'flex-1 text-base text-muted'} numberOfLines={1}>
+              {spotName ?? 'Choose a place'}
             </Text>
             <Icon name="chevron.right" size={13} tintColor={muted} />
           </Pressable>

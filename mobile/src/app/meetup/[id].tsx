@@ -7,12 +7,14 @@ import { ScrollView, Text, View } from 'react-native';
 import { Icon } from '@/components/icon';
 import { NativeMenu } from '@/components/native-menu';
 import { getPlace } from '@/data/campus';
+import { pinName } from '@/lib/amenity-search';
 import { useProfile } from '@/lib/account';
 import { confirmDangerous } from '@/lib/confirm';
 import { showMeetupOnMap, useShownMeetup } from '@/lib/meetup-focus';
 import { reportMeetup } from '@/lib/moderation';
 import { updateMeetup, useSocial } from '@/lib/social';
-import { MAX_GUESTS, socialApi, type Meetup, type MeetupMember, type MeetupStatus } from '@/lib/social-api';
+import { MAX_GUESTS, isWalk, socialApi, type Meetup, type MeetupMember, type MeetupStatus } from '@/lib/social-api';
+import { walkTitle } from '@/lib/walk-share';
 import { planTrip } from '@/lib/trip';
 
 const STATUS_TEXT: Record<MeetupStatus, string> = {
@@ -64,9 +66,16 @@ export default function MeetupSheet() {
   const place = meetup.destination?.kind === 'place' ? getPlace(meetup.destination.placeId) : undefined;
   const destinationMember =
     meetup.destination?.kind === 'member' ? meetup.members.find((m) => m.username === meetup.destination?.username) : undefined;
-  const where = place?.name ?? (destinationMember ? `Wherever ${destinationMember.displayName} is` : 'A pin on the map');
+  const walk = isWalk(meetup);
+  const where = !meetup.destination
+    ? walk
+      ? 'Shown once you watch'
+      : 'Shown once you join'
+    : (place?.name ?? (destinationMember ? `Wherever ${destinationMember.displayName} is` : pinName(meetup.destination.lat, meetup.destination.lng)));
   const joined = meetup.yourStatus === 'joined';
   const host = meetup.yourRole === 'host';
+  const statusText = (member: MeetupMember) =>
+    walk ? (member.role === 'host' ? 'Walking' : member.status === 'joined' ? 'Watching' : member.status === 'invited' ? 'Sent' : 'Stopped') : STATUS_TEXT[member.status];
 
   async function act(action: Promise<{ ok: true; data: Meetup } | { ok: false; message: string }>, done?: () => void) {
     setBusy(true);
@@ -90,7 +99,7 @@ export default function MeetupSheet() {
     router.back();
   };
 
-  const canInvite = host && meetup.visibility === 'private' && meetup.active;
+  const canInvite = host && meetup.visibility === 'private' && meetup.active && !walk;
   const inMeetup = new Set(meetup.members.map((m) => m.username));
   const guests = meetup.members.filter((m) => m.role === 'guest' && (m.status === 'invited' || m.status === 'joined')).length;
   const moreFriends = canInvite ? social.friends.friends.filter((f) => !inMeetup.has(f.username)) : [];
@@ -103,10 +112,10 @@ export default function MeetupSheet() {
       <View className="flex-row items-start gap-3">
         <View className="min-w-0 flex-1 gap-1">
           <Text className="text-xs font-semibold uppercase tracking-wide text-muted">
-            {meetup.visibility === 'public' ? 'Campus event' : 'Meetup'} · {timeLeft(meetup.expiresAt)}
+            {meetup.visibility === 'public' ? 'Campus event' : walk ? 'Walk' : 'Meetup'} · {timeLeft(meetup.expiresAt)}
           </Text>
           <Text className="text-2xl font-bold text-foreground" numberOfLines={2}>
-            {meetup.title ?? (host ? 'Your meetup' : `${meetup.host.displayName}'s meetup`)}
+            {walk ? walkTitle(meetup, meetup.destination ? where : undefined) : (meetup.title ?? (host ? 'Your meetup' : `${meetup.host.displayName}'s meetup`))}
           </Text>
           <View className="flex-row items-center gap-1.5">
             <Icon name="mappin.and.ellipse" size={13} tintColor={muted} />
@@ -154,7 +163,21 @@ export default function MeetupSheet() {
 
       {meetup.note ? <Text className="text-base leading-6 text-foreground">{meetup.note}</Text> : null}
 
-      {meetup.yourStatus === 'invited' ? (
+      {meetup.yourStatus === 'invited' && walk ? (
+        <View className="gap-3">
+          <View className="flex-row gap-3">
+            <Button className="flex-1" variant="secondary" isDisabled={busy} onPress={() => void act(socialApi.respond(meetup.id, false), () => router.back())}>
+              <Button.Label>No thanks</Button.Label>
+            </Button>
+            <Button className="flex-1" isDisabled={busy} onPress={() => void act(socialApi.respond(meetup.id, true))}>
+              <Button.Label>Watch</Button.Label>
+            </Button>
+          </View>
+          <Text className="px-1 text-xs leading-5 text-muted">
+            You see {meetup.host.displayName} on the map until they arrive. Your location is not shared.
+          </Text>
+        </View>
+      ) : meetup.yourStatus === 'invited' ? (
         <View className="flex-row gap-3">
           <NativeMenu
             label="Decline options"
@@ -188,7 +211,7 @@ export default function MeetupSheet() {
               <Icon name="map.fill" size={15} tintColor={accentForeground} />
               <Button.Label>{shown === meetup.id ? 'On the map' : 'Show on map'}</Button.Label>
             </Button>
-            {place ? (
+            {place && !walk ? (
               <Button
                 className="flex-1"
                 variant="secondary"
@@ -204,14 +227,18 @@ export default function MeetupSheet() {
             ) : null}
           </View>
           <Text className="px-1 text-xs leading-5 text-muted">
-            While the meetup is on the map, people in it see where you are, and you see them. Nothing is saved.
+            {walk
+              ? host
+                ? 'Friends see you while you walk there, and it stops when you arrive. Nothing is saved.'
+                : `You see ${meetup.host.displayName} until they arrive. Your location is not shared.`
+              : 'While the meetup is on the map, people in it see where you are, and you see them. Nothing is saved.'}
           </Text>
         </View>
       ) : null}
 
       <View className="gap-2">
         <Text className="px-1 text-sm font-semibold text-muted">
-          {meetup.visibility === 'public' ? `${meetup.going} going` : 'People'}
+          {meetup.visibility === 'public' ? `${meetup.going} going` : walk ? 'Walker and watchers' : 'People'}
         </Text>
         <ListGroup>
           {meetup.members.map((member, index) => (
@@ -234,7 +261,7 @@ export default function MeetupSheet() {
                   </Button>
                 ) : (
                   <Chip size="sm" variant={member.status === 'joined' ? 'primary' : 'secondary'} color={member.status === 'joined' ? 'accent' : 'default'}>
-                    <Chip.Label>{member.staysOut ? 'Stays out' : STATUS_TEXT[member.status]}</Chip.Label>
+                    <Chip.Label>{member.staysOut && !walk ? 'Stays out' : statusText(member)}</Chip.Label>
                   </Chip>
                 )}
               </ListGroup.Item>
@@ -265,7 +292,14 @@ export default function MeetupSheet() {
         </View>
       ) : null}
 
-      {joined ? (
+      {joined && walk ? (
+        <Button
+          variant="danger-soft"
+          isDisabled={busy}
+          onPress={() => void act(host ? socialApi.endMeetup(meetup.id) : socialApi.leaveMeetup(meetup.id), closeAfter)}>
+          <Button.Label>{host ? 'Stop sharing' : 'Stop watching'}</Button.Label>
+        </Button>
+      ) : joined ? (
         host || meetup.visibility === 'public' ? (
           <Button
             variant="danger-soft"

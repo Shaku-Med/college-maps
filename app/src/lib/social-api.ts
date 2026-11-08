@@ -34,6 +34,8 @@ export type MeetupDestination = {
 
 export type Meetup = {
   id: string;
+  /** A walk is one person sharing their way somewhere with a few friends who only watch. Older servers leave it out. */
+  kind?: "meetup" | "walk";
   visibility: "private" | "public";
   title?: string;
   startsAt?: string;
@@ -51,6 +53,7 @@ export type Meetup = {
 };
 
 export type NewMeetup = {
+  kind?: "meetup" | "walk";
   friends: string[];
   destination: MeetupDestination;
   note?: string;
@@ -66,6 +69,10 @@ export type NewPublicMeetup = {
 };
 
 export type LivePass = { token: string; expiresAt: string };
+
+export const MAX_WATCHERS = 3;
+
+export const isWalk = (meetup?: Pick<Meetup, "kind"> | null) => meetup?.kind === "walk";
 
 const empty: FriendsOverview = { friends: [], incoming: [], outgoing: [], blocked: [] };
 
@@ -114,7 +121,9 @@ export const socialApi = {
   /** The host adds friends to a live private meetup, including anyone who left by mistake. */
   inviteToMeetup: async (id: string, friends: string[]) =>
     unwrapMeetup(await apiCall<{ meetup: Meetup }>(`/v1/meetups/${meetupPath(id)}/invite`, "POST", { friends })),
-  endMeetup: async (id: string) => unwrapMeetup(await apiCall<{ meetup: Meetup }>(`/v1/meetups/${meetupPath(id)}/end`, "POST")),
+  /** For a walk, arrived tells the friends watching that the walker got there. */
+  endMeetup: async (id: string, arrived = false) =>
+    unwrapMeetup(await apiCall<{ meetup: Meetup }>(`/v1/meetups/${meetupPath(id)}/end`, "POST", arrived ? { arrived } : undefined)),
   publicMeetups: async (): Promise<ApiResult<Meetup[]>> => {
     const res = await apiCall<{ meetups: Meetup[] }>("/v1/meetups/public", "GET");
     return res.ok ? { ok: true, data: res.data.meetups ?? [] } : res;

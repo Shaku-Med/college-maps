@@ -15,12 +15,14 @@ import { MeetupPeek, MeetupSheet } from "@/components/meetup-sheet";
 import { PeoplePanel, initialsFor } from "@/components/people-panel";
 import { PersonCard } from "@/components/person-card";
 import { PlacePickerModal } from "@/components/place-picker-modal";
+import { PinDropContext, type DropPin } from "@/components/pin-drop";
 import { PlaceSheet } from "@/components/place-sheet";
 import { SchedulePanel } from "@/components/schedule-panel";
+import { WalkShareSection } from "@/components/walk-share-section";
 import { SearchPanel } from "@/components/search-panel";
 import { SHEET_FULL_WRAP, SHEET_PEEK_WRAP, SheetLayer, SheetPeek } from "@/components/sheet-chrome";
 import { TabBar, type TabId } from "@/components/tab-bar";
-import { CAMPUS, CAMPUS_CENTER, CATEGORY_LABELS, PLACES, getPlace, type Coordinate, type Place } from "@/data/campus";
+import { CAMPUS, CAMPUS_CENTER, CATEGORY_LABELS, PLACES, contains, getPlace, type Coordinate, type Place } from "@/data/campus";
 import { useAccount } from "@/hooks/use-account";
 import { useGeolocation, type GeoFix } from "@/hooks/use-geolocation";
 import { useHeading } from "@/hooks/use-heading";
@@ -29,6 +31,7 @@ import { useSocial } from "@/hooks/use-social";
 import { useVoiceChoice } from "@/hooks/use-voice-choice";
 import { useVoiceGuidance } from "@/hooks/use-voice-guidance";
 import { useWakeLock } from "@/hooks/use-wake-lock";
+import { useWalkShare } from "@/hooks/use-walk-share";
 import { campusActivityByPlace, eventsAtPlace } from "@/lib/campus-activity";
 import { isAmenity, placeCalled, type AmenityKind } from "@/data/amenities";
 import { useNow } from "@/hooks/use-now";
@@ -38,10 +41,12 @@ import { MAP_FILTERS, type MapFilter } from "@/lib/categories";
 import { fetchTripRoute, wayFromHere } from "@/lib/directions";
 import { roomSpot, safetyBuildingHere, safetyBuildings } from "@/lib/building-safety";
 import { metersFromBuilding } from "@/lib/buildings";
+import { CAR_ID, createCarWatch, leavingCar, onLotLabel } from "@/lib/car-spot";
+import { useCarSpot } from "@/hooks/use-car-spot";
 import { autoTravelOn } from "@/lib/travel-prefs";
 import { canSwitchTravel, createTravelSwitch, type SwitchableTravel } from "@/lib/travel-switch";
 import { TRAVEL_SWITCH_LINES, lowerFirst } from "@/lib/voice-lines";
-import { bearingDegrees, distanceMeters, turnAngle } from "@/lib/geo";
+import { WALK_SPEED_MPS, bearingDegrees, distanceMeters, turnAngle } from "@/lib/geo";
 import { ON_FOOT_MAX_MPS, RIDING_MAX_MPS, createMotionTracker, isOnFoot, type MotionState } from "@/lib/motion";
 import {
   PARKING_PROMPT_MS,
@@ -53,6 +58,7 @@ import {
   type ParkingPrompt,
 } from "@/lib/parking";
 import { loadSchedule, saveSchedule, type ClassEntry } from "@/lib/schedule";
+import { isWalk } from "@/lib/social-api";
 import { roomDirections } from "@/lib/search";
 import {
   MY_LOCATION,
@@ -263,6 +269,8 @@ export function MapApp({ initialPlaceId, initialRoom, initialAccountOpen = false
   const [isMeetupSheetOpen, setIsMeetupSheetOpen] = useState(true);
   const [isScheduleExpanded, setIsScheduleExpanded] = useState(true);
   const [isPeopleExpanded, setIsPeopleExpanded] = useState(true);
+  const [isDroppingPin, setIsDroppingPin] = useState(false);
+  const pinDropRef = useRef<((at: Coordinate | null) => void) | null>(null);
   const [isAccountExpanded, setIsAccountExpanded] = useState(true);
   const [isPlaceExpanded, setIsPlaceExpanded] = useState(true);
   const [isDirectionsExpanded, setIsDirectionsExpanded] = useState(true);
@@ -381,6 +389,8 @@ export function MapApp({ initialPlaceId, initialRoom, initialAccountOpen = false
   const parkingTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const parkingOfferedRef = useRef(false);
   const missedLotsRef = useRef(createMissedLotWatch());
+  const carWatchRef = useRef(createCarWatch());
+  const carSpot = useCarSpot();
   // After driving right up to the place, the trip to the offered lot, started if the driver says yes.
   const parkingTripRef = useRef<Route | null>(null);
   const stopNowRef = useRef(0);
@@ -402,6 +412,7 @@ export function MapApp({ initialPlaceId, initialRoom, initialAccountOpen = false
     setParking(null);
     parkingOfferedRef.current = false;
     missedLotsRef.current.reset();
+    carWatchRef.current.reset();
     parkingTripRef.current = null;
   }, []);
   useEffect(() => () => clearTimeout(followAgainRef.current), []);
@@ -424,6 +435,7 @@ export function MapApp({ initialPlaceId, initialRoom, initialAccountOpen = false
     const next = trackProgress(chosen, position, 0);
     // A new route that only leads back onto the old one is a quiet handover too, with nothing left behind or announced.
     const notice = kind && !sameWayAhead(chosen, next, leaving, leftAt) ? kind : undefined;
+    carWatchRef.current.switched(leaving, chosen, position);
     progressHintRef.current = next.segmentIndex;
     maxAlongRef.current = next.distanceAlong;
     offRouteCountRef.current = 0;
@@ -650,6 +662,7 @@ export function MapApp({ initialPlaceId, initialRoom, initialAccountOpen = false
         isOnFoot(motionState.motion) &&
         next.distanceAlong >= route.campusFrom - PARKED_METERS;
       const onFoot = (travel === "walk" || travel === "bike") && !holding;
+      if (trusted) carWatchRef.current.update(travel, parked, position);
       if (graph && (onFoot || parked) && trusted && onCampusPaths(position)) {
         const onPath = matchWalkway(graph, position, { avoidStairs: nav.avoidStairs });
         onCampusCountRef.current = onPath && onPath.distance <= ON_CAMPUS_WALKWAY_METERS ? onCampusCountRef.current + 1 : 0;
@@ -945,7 +958,8 @@ export function MapApp({ initialPlaceId, initialRoom, initialAccountOpen = false
   useEffect(() => {
     const url = new URL(window.location.href);
     url.search = "";
-    if (selectedId) url.searchParams.set("place", selectedId);
+    // The car only exists in this browser, so a link to it would lead nowhere.
+    if (selectedId && selectedId !== CAR_ID) url.searchParams.set("place", selectedId);
     if (selectedId && room) url.searchParams.set("room", room);
     window.history.replaceState(null, "", url);
   }, [selectedId, room]);
@@ -1110,14 +1124,17 @@ export function MapApp({ initialPlaceId, initialRoom, initialAccountOpen = false
 
   const myUsername = account.state.status === "signed-in" ? account.state.user.username : "";
   const meetup = social.meetups.find((m) => m.id === meetupId && m.active && m.yourStatus === "joined") ?? null;
-  const live = useMeetupLive(meetup ? meetup.id : null, geo.position ? { position: geo.position, accuracy: geo.accuracy ?? 0 } : undefined);
+  const fix = geo.position ? { position: geo.position, accuracy: geo.accuracy ?? 0 } : undefined;
+  // A walk is watched, never shared back: friends following it send nothing, and the walker shares through the trip.
+  const live = useMeetupLive(meetup ? meetup.id : null, isWalk(meetup) ? undefined : fix);
+  const walkShare = useWalkShare(social.meetups, social.updateMeetup, fix);
   const meetupSheetOpen = Boolean(meetup && isMeetupSheetOpen);
   const scheduleExpanded = isScheduleOpen && isScheduleExpanded;
   const peopleExpanded = isPeopleOpen && isPeopleExpanded;
   const accountExpanded = isAccountOpen && isAccountExpanded;
   const mapChromeOpen = mode === "browse" && !scheduleExpanded && !peopleExpanded && !accountExpanded && !meetupSheetOpen;
   // Directions and navigation take the whole screen, so the tab bar steps aside for them, as it does in the app.
-  const showTabBar = mode === "browse" && !meetupSheetOpen;
+  const showTabBar = mode === "browse" && !meetupSheetOpen && !isDroppingPin;
   const selectedTab: TabId = isSearchOpen
     ? "search"
     : isScheduleOpen
@@ -1171,6 +1188,42 @@ export function MapApp({ initialPlaceId, initialRoom, initialAccountOpen = false
     meetup?.destination?.kind === "pin" && meetup.destination.lat !== undefined && meetup.destination.lng !== undefined
       ? { latitude: meetup.destination.lat, longitude: meetup.destination.lng }
       : undefined;
+
+  const dropPin = useCallback<DropPin>(
+    (start) =>
+      new Promise((resolve) => {
+        pinDropRef.current?.(null);
+        pinDropRef.current = resolve;
+        const here = geo.position && contains(CAMPUS.map.walkingArea, geo.position) ? geo.position : undefined;
+        mapRef.current?.focus(start ?? here ?? CAMPUS_CENTER);
+        setIsDroppingPin(true);
+      }),
+    [geo.position],
+  );
+
+  const finishPinDrop = useCallback((at: Coordinate | null) => {
+    pinDropRef.current?.(at);
+    pinDropRef.current = null;
+    setIsDroppingPin(false);
+  }, []);
+
+  function confirmPin() {
+    const at = mapRef.current?.centerOfView();
+    if (!at || !contains(CAMPUS.map.walkingArea, at)) {
+      toast.info("Move the map until the pin is on campus.");
+      return;
+    }
+    finishPinDrop(at);
+  }
+
+  useEffect(() => {
+    if (!isDroppingPin) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") finishPinDrop(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [isDroppingPin, finishPinDrop]);
 
   function openPeople() {
     setIsSearchOpen(false);
@@ -1285,6 +1338,7 @@ export function MapApp({ initialPlaceId, initialRoom, initialAccountOpen = false
   // Guides along one leg: live from `from`, or step by step by hand without a location.
   function beginRoute(route: Route, from: Coordinate | undefined) {
     resetParking();
+    if (from && route.travel === "drive") leavingCar(from);
     if (!from) {
       manualRef.current = true;
       setManualStep(0);
@@ -1574,6 +1628,25 @@ export function MapApp({ initialPlaceId, initialRoom, initialAccountOpen = false
     return current && [...current, ...legsAhead.flatMap((next) => next.path)];
   }, [navRoute, progress, legsAhead]);
 
+  const finalArrived = mode === "navigate" && hasArrived && leg >= legs.length - 1;
+  const { walk: sharedWalk, stop: stopWalkShare } = walkShare;
+  useEffect(() => {
+    if (!sharedWalk) return;
+    if (mode !== "navigate") void stopWalkShare(false);
+    else if (finalArrived) void stopWalkShare(true);
+  }, [sharedWalk, mode, finalArrived, stopWalkShare]);
+
+  function walkSecondsLeft() {
+    if (!navRoute) return 0;
+    let meters = progress?.remaining ?? navRoute.distance;
+    for (let i = leg; i < legs.length - 1; i++) {
+      const from = getPlace(legs[i]);
+      const to = getPlace(legs[i + 1]);
+      if (from && to) meters += distanceMeters(from.coordinate, to.coordinate) * 1.3;
+    }
+    return meters / WALK_SPEED_MPS;
+  }
+
   const quickStops = useMemo(() => {
     const here = geo.position;
     if (mode !== "navigate" || !here) return [];
@@ -1635,6 +1708,9 @@ export function MapApp({ initialPlaceId, initialRoom, initialAccountOpen = false
         route={mapRoute}
         people={meetupPeople}
         destinationPin={meetupPin}
+        carSpot={carSpot?.coordinate}
+        carOnLabel={onLotLabel(carSpot)}
+        onCarPress={() => selectPlace(getPlace(CAR_ID))}
         previousRoute={mode === "navigate" ? previousRoute?.path : undefined}
         onPreviousRoutePress={switchToPreviousRoute}
         initialFocus={selected?.coordinate}
@@ -1702,7 +1778,9 @@ export function MapApp({ initialPlaceId, initialRoom, initialAccountOpen = false
 
       <Presence show={Boolean(mode === "browse" && peopleExpanded)}>
       {mode === "browse" && peopleExpanded ? (
-        <SheetLayer wrapClassName={SHEET_FULL_WRAP} onCollapse={() => setIsPeopleExpanded(false)}>
+        // Hidden rather than closed while a pin is placed, so the form keeps what was typed.
+        <SheetLayer wrapClassName={isDroppingPin ? `${SHEET_FULL_WRAP} invisible` : SHEET_FULL_WRAP} onCollapse={() => setIsPeopleExpanded(false)}>
+          <PinDropContext value={dropPin}>
           <PeoplePanel
             myUsername={myUsername}
             friends={social.friends}
@@ -1715,9 +1793,40 @@ export function MapApp({ initialPlaceId, initialRoom, initialAccountOpen = false
             onCollapse={() => setIsPeopleExpanded(false)}
             onClose={() => setIsPeopleOpen(false)}
           />
+          </PinDropContext>
         </SheetLayer>
       ) : null}
       </Presence>
+
+      {isDroppingPin && mode === "browse" && peopleExpanded ? (
+        <>
+          <div className="pointer-events-none absolute left-1/2 top-1/2 z-30" aria-hidden>
+            <div className="absolute bottom-0 left-0 flex -translate-x-1/2 flex-col items-center">
+              <span className="flex size-9 items-center justify-center rounded-full bg-accent shadow-lg ring-2 ring-background">
+                <span className="size-3 rounded-full bg-accent-foreground" />
+              </span>
+              <span className="h-4 w-0.5 rounded-b-full bg-accent" />
+            </div>
+            <span className="absolute size-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-foreground/30" />
+          </div>
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 z-40 flex justify-center pb-[var(--map-safe-bottom)] pl-[var(--map-safe-left)] pr-[var(--map-safe-right)] md:pb-4">
+            <Surface className="glass-chrome animate-fade-in pointer-events-auto flex w-full max-w-sm flex-col gap-3 rounded-3xl p-4 shadow-lg">
+              <div>
+                <p className="text-sm font-medium">Drop a pin</p>
+                <p className="text-xs text-muted">Move the map until the pin sits where you want to meet.</p>
+              </div>
+              <div className="flex gap-2">
+                <Button variant="secondary" onPress={() => finishPinDrop(null)} className="flex-1">
+                  Cancel
+                </Button>
+                <Button onPress={confirmPin} className="flex-1" autoFocus>
+                  Meet here
+                </Button>
+              </div>
+            </Surface>
+          </div>
+        </>
+      ) : null}
 
       <Presence show={Boolean(mode === "browse" && !isPeopleOpen && meetup && isMeetupSheetOpen)}>
       {mode === "browse" && !isPeopleOpen && meetup && isMeetupSheetOpen ? (
@@ -1975,6 +2084,7 @@ export function MapApp({ initialPlaceId, initialRoom, initialAccountOpen = false
                 }}
                 onCollapse={() => setIsPlaceExpanded(false)}
                 onClose={() => selectPlace(undefined)}
+                userPosition={geo.position}
               />
             </SheetLayer>
           ) : null}
@@ -2112,6 +2222,22 @@ export function MapApp({ initialPlaceId, initialRoom, initialAccountOpen = false
           quickStops={quickStops}
           onAddStopKind={addStopKind}
           onAddStopSearch={() => setPicker("stopNow")}
+          isSharing={Boolean(walkShare.walk)}
+          walkShare={
+            social.signedIn && (!navRoute.travel || navRoute.travel === "walk") ? (
+              <WalkShareSection
+                friends={social.friends.friends}
+                walk={walkShare.walk}
+                isBusy={walkShare.isBusy}
+                onStart={(friends) => {
+                  const destination = getPlace(legs[legs.length - 1]) ?? target;
+                  return destination ? walkShare.start(friends, destination, walkSecondsLeft()) : Promise.resolve(false);
+                }}
+                onStop={() => void walkShare.stop(false)}
+                onSos={quickStops.includes("sos") ? () => addStopKind("sos") : undefined}
+              />
+            ) : undefined
+          }
           parking={parking}
           onParkingPrimary={() => {
             const trip = parkingTripRef.current;

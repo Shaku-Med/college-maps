@@ -14,17 +14,19 @@ import {
   ToggleButtonGroup,
   toast,
 } from "@heroui/react";
-import { Ban, CalendarDays, Check, ChevronLeft, ChevronRight, Copy, Flag, MapPin, MoreHorizontal, Plus, Send, UserMinus, UserPlus, Users } from "lucide-react";
+import { Ban, CalendarDays, Check, ChevronLeft, ChevronRight, Copy, Flag, Footprints, MapPin, MoreHorizontal, Plus, Send, UserMinus, UserPlus, Users } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { CampusTab } from "@/components/campus-tab";
 import { useConfirmDialog } from "@/components/confirm-dialog";
-import { PlaceSearchList } from "@/components/place-search-list";
+import { MeetupSpotField, spotDestination, type MeetupSpot } from "@/components/meetup-spot-field";
 import { useReportFlow } from "@/components/report-flow";
 import { CollapseButton, SheetGrabber } from "@/components/sheet-chrome";
 import { getPlace } from "@/data/campus";
+import { pinName } from "@/lib/amenity-search";
+import { walkTitle, watchLine } from "@/lib/walk-share";
 import { MAX_USERNAME_LENGTH, normalizeUsername } from "@/lib/api";
-import { MAX_GUESTS, socialApi, type Friend, type FriendsOverview, type Meetup, type Person } from "@/lib/social-api";
+import { MAX_GUESTS, socialApi, type Friend, type FriendsOverview, type Meetup, type MeetupDestination, type Person, isWalk } from "@/lib/social-api";
 
 type PeoplePanelProps = {
   myUsername: string;
@@ -267,6 +269,7 @@ function PeopleHome({
           {ordered.map((meetup) => {
             const joined = meetup.members.filter((m) => m.status === "joined").length;
             const invited = meetup.yourStatus === "invited";
+            const walk = isWalk(meetup);
             return (
               <div key={meetup.id} className={invited ? "rounded-2xl border border-separator p-2" : "-mx-2"}>
                 <button
@@ -274,13 +277,14 @@ function PeopleHome({
                   onClick={() => onOpenMeetup(meetup.id)}
                   className="flex w-full items-center gap-3 rounded-xl px-2 py-2 text-left outline-none transition-colors hover:bg-surface-secondary focus-visible:ring-2 focus-visible:ring-accent">
                   <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-surface-secondary text-muted">
-                    <MapPin className="size-4" aria-hidden />
+                    {walk ? <Footprints className="size-4" aria-hidden /> : <MapPin className="size-4" aria-hidden />}
                   </span>
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-medium">{meetup.note || meetupWhere(meetup, myUsername)}</span>
+                    <span className="block truncate text-sm font-medium">{meetupTitle(meetup, myUsername)}</span>
                     <span className="block truncate text-xs text-muted">
-                      {meetup.yourRole === "host" ? "You started this" : `${meetup.host.displayName} invited you`} · {joined} in ·{" "}
-                      {timeLeft(meetup.expiresAt)}
+                      {walk
+                        ? `${meetup.yourRole === "host" ? watchLine(meetup) : "Until they arrive"} · ${timeLeft(meetup.expiresAt)}`
+                        : `${meetup.yourRole === "host" ? "You started this" : `${meetup.host.displayName} invited you`} · ${joined} in · ${timeLeft(meetup.expiresAt)}`}
                     </span>
                   </span>
                   {invited ? null : <ChevronRight className="size-4 shrink-0 text-muted" aria-hidden />}
@@ -288,19 +292,19 @@ function PeopleHome({
                 {invited ? (
                   <div className="flex flex-wrap gap-2 px-2 pb-1 pt-1">
                     <Button size="sm" isDisabled={isResponding} onPress={() => void respond(meetup, true)}>
-                      Join
+                      {walk ? "Watch" : "Join"}
                     </Button>
                     <Button size="sm" variant="secondary" isDisabled={isResponding} onPress={() => void respond(meetup, false)}>
                       No thanks
                     </Button>
-                    <Button
+                    {walk ? null : <Button
                       size="sm"
                       variant="ghost"
                       isDisabled={isResponding}
                       aria-label="Decline and don't invite me again"
                       onPress={() => void respond(meetup, false, true)}>
                       Don&apos;t ask again
-                    </Button>
+                    </Button>}
                   </div>
                 ) : null}
               </div>
@@ -695,6 +699,10 @@ function BlockedPage({
   );
 }
 
+export function meetupTitle(meetup: Meetup, myUsername: string) {
+  return isWalk(meetup) ? walkTitle(meetup, meetupWhere(meetup, myUsername)) : meetup.note || meetupWhere(meetup, myUsername);
+}
+
 export function meetupWhere(meetup: Meetup, myUsername?: string) {
   const destination = meetup.destination;
   if (!destination) return "Somewhere on campus";
@@ -704,7 +712,7 @@ export function meetupWhere(meetup: Meetup, myUsername?: string) {
     return `Wherever ${person?.displayName ?? "@" + destination.username} is`;
   }
   if (destination.kind === "place") return getPlace(destination.placeId)?.name ?? "A campus building";
-  return "A dropped pin";
+  return pinName(destination.lat, destination.lng);
 }
 
 function timeLeft(expiresAt: string) {
@@ -735,19 +743,17 @@ function NewMeetupForm({
   const [picked, setPicked] = useState<string[]>([]);
   const [where, setWhere] = useState<"me" | "friend" | "place">("me");
   const [target, setTarget] = useState<string>();
-  const [placeId, setPlaceId] = useState<string>();
-  const [placeQuery, setPlaceQuery] = useState("");
+  const [spot, setSpot] = useState<MeetupSpot>();
   const [minutes, setMinutes] = useState("120");
   const [note, setNote] = useState("");
   const [isBusy, setIsBusy] = useState(false);
 
-  const place = getPlace(placeId);
-
   async function create() {
-    const destination =
-      where === "place"
-        ? { kind: "place" as const, placeId: placeId ?? "" }
-        : { kind: "member" as const, username: where === "me" ? myUsername : (target ?? "") };
+    if (where === "place" && !spot) return;
+    const destination: MeetupDestination =
+      where === "place" && spot
+        ? spotDestination(spot)
+        : { kind: "member", username: where === "me" ? myUsername : (target ?? "") };
 
     setIsBusy(true);
     const res = await socialApi.createMeetup({
@@ -765,7 +771,7 @@ function NewMeetupForm({
     onCreated(res.data);
   }
 
-  const ready = picked.length > 0 && (where !== "friend" || target) && (where !== "place" || placeId);
+  const ready = picked.length > 0 && (where !== "friend" || target) && (where !== "place" || spot);
 
   return (
     <form
@@ -856,34 +862,7 @@ function NewMeetupForm({
         )
       ) : null}
 
-      {where === "place" ? (
-        <div className="flex flex-col gap-2">
-          {place ? (
-            <div className="flex items-center gap-2 rounded-2xl bg-surface-secondary px-4 py-3">
-              <MapPin className="size-4 shrink-0 text-muted" aria-hidden />
-              <p className="min-w-0 flex-1 truncate text-sm">{place.name}</p>
-              <Button size="sm" variant="ghost" onPress={() => setPlaceId(undefined)}>
-                Change
-              </Button>
-            </div>
-          ) : (
-            <>
-              <SearchField value={placeQuery} onChange={setPlaceQuery} aria-label="Find a place">
-                <Input variant="secondary" placeholder="Search buildings" />
-              </SearchField>
-              <PlaceSearchList
-                query={placeQuery}
-                browse={false}
-                limit={8}
-                onSelect={(picked) => {
-                  setPlaceId(picked.id);
-                  setPlaceQuery("");
-                }}
-              />
-            </>
-          )}
-        </div>
-      ) : null}
+      {where === "place" ? <MeetupSpotField value={spot} onChange={setSpot} /> : null}
 
       <div className="flex flex-col gap-2">
         <span className="text-sm font-medium">Ends in</span>

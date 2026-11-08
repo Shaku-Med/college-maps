@@ -1,14 +1,16 @@
 import * as Haptics from 'expo-haptics';
 import { router } from 'expo-router';
-import { Button, CloseButton, Description, FieldError, Label, ListGroup, Separator, TextField, useThemeColor } from 'heroui-native';
+import { Button, CloseButton, Description, FieldError, Label, ListGroup, Separator, TextField, useThemeColor, useToast } from 'heroui-native';
 import { Fragment, useEffect, useState } from 'react';
 import { Text, View } from 'react-native';
 
 import { GlassInput } from '@/components/glass-field';
 import { Icon } from '@/components/icon';
 import { isAmenity } from '@/data/amenities';
-import type { Place } from '@/data/campus';
+import { getPlace, type Place } from '@/data/campus';
 import { useProfile } from '@/lib/account';
+import { CAR_ID, forgetCar, parkInLot, useCarSpot } from '@/lib/car-spot';
+import { currentFix } from '@/lib/location';
 import { eventsAtPlace } from '@/lib/campus-activity';
 import { amenityWhere, reportPlaceId } from '@/lib/amenity-search';
 import { categoryLabel, placeSymbol } from '@/lib/categories';
@@ -19,6 +21,12 @@ import { roomSpot } from '@/lib/building-safety';
 import { EXAMPLE_ROOM, MAX_ROOM_INPUT, floorForRoom, floorLabel, roomInBuilding } from '@/lib/search';
 import { useSocial } from '@/lib/social';
 import { planTrip } from '@/lib/trip';
+
+function parkedLabel(at: number, lotId?: string) {
+  const time = new Date(at).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  const lot = lotId ? getPlace(lotId)?.name : undefined;
+  return lot ? `${lot} · parked at ${time}` : `Parked at ${time}`;
+}
 
 function whenLabel(startsAt?: string) {
   if (!startsAt) return 'Happening now';
@@ -40,6 +48,17 @@ export function PlaceDetails({ place, room, onDone }: { place: Place; room?: str
   const typedRoom = askRoom ? roomInBuilding(roomText, place) : undefined;
   const typedFloor = typedRoom ? floorLabel(floorForRoom(typedRoom)) : undefined;
   const typedLandmark = roomSpot(place.id, typedRoom)?.landmark;
+  const car = useCarSpot();
+  const isCar = place.id === CAR_ID;
+  const isLot = place.category === 'parking' && !isCar;
+  const parkedHere = isLot && car?.lotId === place.id;
+  const { toast } = useToast();
+
+  function parkHere() {
+    if (!parkInLot(place, currentFix()?.position)) return;
+    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    toast.show({ label: 'Saved where you parked', description: 'Your car is on the map until tomorrow.' });
+  }
 
   function startDirections() {
     if (askRoom && roomText.trim() && !typedRoom) {
@@ -53,7 +72,7 @@ export function PlaceDetails({ place, room, onDone }: { place: Place; room?: str
 
   useEffect(() => {
     focusPlace(place.id);
-    rememberPlace(place.id);
+    if (place.id !== CAR_ID) rememberPlace(place.id);
     return () => focusPlace(null);
   }, [place]);
 
@@ -61,7 +80,9 @@ export function PlaceDetails({ place, room, onDone }: { place: Place; room?: str
     <View className="gap-5">
       <View className="flex-row items-start gap-3.5">
         <View className="size-12 items-center justify-center rounded-2xl bg-accent">
-          {isAmenity(place) ? (
+          {isCar ? (
+            <Icon name="car.fill" size={22} tintColor={accentForeground} />
+          ) : isAmenity(place) ? (
             <Icon name={placeSymbol(place)} size={22} tintColor={accentForeground} />
           ) : (
             <Text className="text-base font-bold text-accent-foreground">{place.label ?? place.id}</Text>
@@ -76,9 +97,11 @@ export function PlaceDetails({ place, room, onDone }: { place: Place; room?: str
             <Text className="text-sm text-muted" numberOfLines={1}>
               {room
                 ? [place.name, floor].filter(Boolean).join(' · ')
-                : isAmenity(place)
-                  ? amenityWhere(place)
-                  : categoryLabel(place.category)}
+                : isCar && car
+                  ? parkedLabel(car.at, car.lotId)
+                  : isAmenity(place)
+                    ? amenityWhere(place)
+                    : categoryLabel(place.category)}
             </Text>
           </View>
         </View>
@@ -120,11 +143,40 @@ export function PlaceDetails({ place, room, onDone }: { place: Place; room?: str
           <Icon name="figure.walk" size={16} weight="semibold" tintColor={accentForeground} />
           <Button.Label>Directions</Button.Label>
         </Button>
-        <Button className="flex-1" variant="secondary" onPress={() => void sharePlace(place, room)}>
-          <Icon name="square.and.arrow.up" size={16} weight="semibold" tintColor={muted} />
-          <Button.Label>Share</Button.Label>
-        </Button>
+        {isCar ? (
+          <Button
+            className="flex-1"
+            variant="secondary"
+            onPress={() => {
+              forgetCar();
+              onDone();
+            }}>
+            <Icon name="xmark" size={16} weight="semibold" tintColor={muted} />
+            <Button.Label>Forget</Button.Label>
+          </Button>
+        ) : (
+          <Button className="flex-1" variant="secondary" onPress={() => void sharePlace(place, room)}>
+            <Icon name="square.and.arrow.up" size={16} weight="semibold" tintColor={muted} />
+            <Button.Label>Share</Button.Label>
+          </Button>
+        )}
       </View>
+
+      {isLot ? (
+        <ListGroup>
+          <ListGroup.Item onPress={parkedHere ? undefined : parkHere} disabled={parkedHere}>
+            <ListGroup.ItemPrefix>
+              <Icon name={parkedHere ? 'checkmark' : 'car.fill'} size={20} tintColor={muted} />
+            </ListGroup.ItemPrefix>
+            <ListGroup.ItemContent>
+              <ListGroup.ItemTitle>{parkedHere ? 'Your car is here' : 'I parked here'}</ListGroup.ItemTitle>
+              <ListGroup.ItemDescription>
+                {parkedHere ? 'Find it again from the car on the map' : 'Puts your car on the map, on this phone only'}
+              </ListGroup.ItemDescription>
+            </ListGroup.ItemContent>
+          </ListGroup.Item>
+        </ListGroup>
+      ) : null}
 
       {events.length > 0 ? (
         <View className="gap-2">
@@ -158,8 +210,9 @@ export function PlaceDetails({ place, room, onDone }: { place: Place; room?: str
         </View>
       ) : null}
 
-      {place.details ? <Text className="text-base leading-6 text-foreground">{place.details}</Text> : null}
+      {place.details && !isCar ? <Text className="text-base leading-6 text-foreground">{place.details}</Text> : null}
 
+      {isCar ? null : (
       <ListGroup>
         <ListGroup.Item onPress={() => void openWeb(`/?place=${encodeURIComponent(place.id)}`)}>
           <ListGroup.ItemPrefix>
@@ -201,6 +254,7 @@ export function PlaceDetails({ place, room, onDone }: { place: Place; room?: str
           </>
         )}
       </ListGroup>
+      )}
     </View>
   );
 }

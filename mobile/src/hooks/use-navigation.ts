@@ -5,6 +5,7 @@ import { walkGraph } from '@/data/walk-graph';
 import type { RouteNotice } from '@/hooks/use-voice-guidance';
 import { fetchTripRoute } from '@/lib/directions';
 import { metersFromBuilding } from '@/lib/buildings';
+import { createCarWatch, leavingCar } from '@/lib/car-spot';
 import { getDevicePrefs } from '@/lib/device-prefs';
 import { bearingDegrees, distanceMeters, turnAngle } from '@/lib/geo';
 import { currentCompass, onFix, type Fix } from '@/lib/location';
@@ -148,6 +149,7 @@ export function useNavigation({ destination, avoidStairs, follow, facingUp }: Op
   const parkingTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const parkingOffered = useRef(false);
   const missedLots = useRef(createMissedLotWatch());
+  const carWatch = useRef(createCarWatch());
   // After driving right up to the place, the trip to the offered lot, started if the driver says yes.
   const parkingTrip = useRef<Route | null>(null);
   const arrivalCount = useRef(0);
@@ -213,6 +215,7 @@ export function useNavigation({ destination, avoidStairs, follow, facingUp }: Op
       const next = trackProgress(chosen, position, 0);
       // A new route that only leads back onto the old one is a quiet handover too, with nothing left behind or announced.
       const kind = asked && !sameWayAhead(chosen, next, leaving, leftAt) ? asked : undefined;
+      carWatch.current.switched(leaving, chosen, position);
       hint.current = next.segmentIndex;
       maxAlong.current = next.distanceAlong;
       offRouteCount.current = 0;
@@ -399,6 +402,7 @@ export function useNavigation({ destination, avoidStairs, follow, facingUp }: Op
         active.campusFrom !== undefined &&
         isOnFoot(state.motion) &&
         next.distanceAlong >= active.campusFrom - PARKED_METERS;
+      if (trusted) carWatch.current.update(travel, parked, position);
       const onFoot = (travel === 'walk' || travel === 'bike') && !holding;
       if ((onFoot || parked) && trusted && contains(CAMPUS.map.walkingArea, position)) {
         const onPath = matchWalkway(walkGraph(), position, { avoidStairs: current.avoidStairs });
@@ -586,6 +590,7 @@ export function useNavigation({ destination, avoidStairs, follow, facingUp }: Op
     setParking(null);
     parkingOffered.current = false;
     missedLots.current.reset();
+    carWatch.current.reset();
     parkingTrip.current = null;
     riding.current = false;
     arrivalCount.current = 0;
@@ -609,6 +614,7 @@ export function useNavigation({ destination, avoidStairs, follow, facingUp }: Op
   const start = useCallback(
     (chosen: Route, from: Coordinate | null) => {
       reset();
+      if (from && chosen.travel === 'drive') leavingCar(from);
       lastPoint.current = from ?? chosen.path[0];
       nav.current = {
         ...nav.current,

@@ -6,6 +6,7 @@ export default function NewMeetupLayout() {
     <Stack screenOptions={{ headerShadowVisible: false }}>
       <Stack.Screen name="index" options={{ headerShown: false }} />
       <Stack.Screen name="place" options={{ title: 'Where' }} />
+      <Stack.Screen name="pin" options={{ title: 'Drop a pin' }} />
     </Stack>
   );
 }

@@ -5,6 +5,7 @@ import { useEffect, useState, useSyncExternalStore } from 'react';
 import { Platform } from 'react-native';
 
 import { apiCall } from '@/lib/api';
+import { handleAppLink } from '@/lib/app-links';
 
 // Push through Expo, matching the web's browser notifications; the server only ever holds the token.
 const PREFERENCE_KEY = 'csimap.notifications';
@@ -159,11 +160,18 @@ export function useNotificationsEnabled() {
   return [enabled, setEnabled] as const;
 }
 
-/** Opens Friends when a friend request or meetup invite notification is tapped, including from a cold start. */
+/** A class reminder opens directions to the class; anything else opens Friends. Works from a cold start too. */
 export function useNotificationTaps() {
   const last = Notifications.useLastNotificationResponse();
   useEffect(() => {
     if (!last || Platform.OS === 'web') return;
+    const data = last.notification.request.content.data as Record<string, unknown> | undefined;
+    if (data?.kind === 'class') {
+      const placeId = typeof data.placeId === 'string' ? data.placeId : '';
+      const room = typeof data.room === 'string' ? data.room : '';
+      router.navigate((handleAppLink(`directions/${placeId}?room=${encodeURIComponent(room)}`) ?? '/classes') as never);
+      return;
+    }
     router.navigate('/friends');
   }, [last]);
 }

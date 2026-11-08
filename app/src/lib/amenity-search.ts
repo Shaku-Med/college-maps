@@ -44,6 +44,12 @@ export function nearestBuilding(at: Coordinate): Place | undefined {
   return best?.place;
 }
 
+/** A dropped meetup pin named by the building beside it, like "A pin near 1N". */
+export function pinName(lat?: number, lng?: number): string {
+  const near = lat === undefined || lng === undefined ? undefined : nearestBuilding({ latitude: lat, longitude: lng });
+  return near ? `A pin near ${near.name}` : "A pin on the map";
+}
+
 /** Where an SOS phone or bench is, like "Outside 1N". */
 export function amenityWhere(place: AmenityPlace): string {
   const by = nearestBuilding(place.coordinate);

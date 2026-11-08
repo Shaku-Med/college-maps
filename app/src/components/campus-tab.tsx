@@ -1,15 +1,16 @@
 "use client";
 
 import { Button, Dropdown, Input, Label, SearchField, TextField, ToggleButton, ToggleButtonGroup, toast } from "@heroui/react";
-import { Ban, CalendarPlus, Clock, Flag, MapPin, MoreHorizontal } from "lucide-react";
+import { Ban, CalendarPlus, Clock, Flag, MoreHorizontal } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { useConfirmDialog } from "@/components/confirm-dialog";
-import { PlaceSearchList } from "@/components/place-search-list";
+import { MeetupSpotField, spotDestination, type MeetupSpot } from "@/components/meetup-spot-field";
 import { useReportFlow } from "@/components/report-flow";
 import { getPlace } from "@/data/campus";
+import { pinName } from "@/lib/amenity-search";
 import { matchesCampusEvent } from "@/lib/campus-search";
-import { socialApi, type Meetup, type MeetupDestination } from "@/lib/social-api";
+import { socialApi, type Meetup } from "@/lib/social-api";
 
 const START_OPTIONS = [
   { id: "0", label: "Now" },
@@ -189,7 +190,7 @@ export function CampusTab({
                     {place
                       ? place.name
                       : meetup.destination
-                        ? "A dropped pin"
+                        ? pinName(meetup.destination.lat, meetup.destination.lng)
                         : going
                           ? "Spot shows when it starts"
                           : "Say you are going to see the spot"}
@@ -239,16 +240,14 @@ export function CampusTab({
 function NewPublicMeetupForm({ onCancel, onCreated }: { onCancel: () => void; onCreated: (meetup: Meetup) => void }) {
   const [title, setTitle] = useState("");
   const [note, setNote] = useState("");
-  const [placeId, setPlaceId] = useState<string>();
-  const [placeQuery, setPlaceQuery] = useState("");
+  const [spot, setSpot] = useState<MeetupSpot>();
   const [startsIn, setStartsIn] = useState("60");
   const [minutes, setMinutes] = useState("120");
   const [isBusy, setIsBusy] = useState(false);
 
-  const place = getPlace(placeId);
-
   async function create() {
-    const destination: MeetupDestination = { kind: "place", placeId: placeId ?? "" };
+    if (!spot) return;
+    const destination = spotDestination(spot);
     setIsBusy(true);
     const res = await socialApi.createPublicMeetup({
       title,
@@ -280,30 +279,7 @@ function NewPublicMeetupForm({ onCancel, onCreated }: { onCancel: () => void; on
 
       <div className="flex flex-col gap-2">
         <span className="text-sm font-medium">Where</span>
-        {place ? (
-          <div className="flex items-center gap-2 rounded-2xl bg-surface-secondary px-4 py-3">
-            <MapPin className="size-4 shrink-0 text-muted" aria-hidden />
-            <p className="min-w-0 flex-1 truncate text-sm">{place.name}</p>
-            <Button size="sm" variant="ghost" onPress={() => setPlaceId(undefined)}>
-              Change
-            </Button>
-          </div>
-        ) : (
-          <>
-            <SearchField value={placeQuery} onChange={setPlaceQuery} aria-label="Find a place">
-              <Input variant="secondary" placeholder="Search buildings" />
-            </SearchField>
-            <PlaceSearchList
-              query={placeQuery}
-              browse={false}
-              limit={8}
-              onSelect={(picked) => {
-                setPlaceId(picked.id);
-                setPlaceQuery("");
-              }}
-            />
-          </>
-        )}
+        <MeetupSpotField value={spot} onChange={setSpot} />
       </div>
 
       <div className="flex flex-col gap-2">
@@ -367,7 +343,7 @@ function NewPublicMeetupForm({ onCancel, onCreated }: { onCancel: () => void; on
         <Button variant="secondary" onPress={onCancel} className="flex-1">
           Cancel
         </Button>
-        <Button type="submit" isPending={isBusy} isDisabled={title.trim().length < 3 || !placeId} className="flex-1">
+        <Button type="submit" isPending={isBusy} isDisabled={title.trim().length < 3 || !spot} className="flex-1">
           Post
         </Button>
       </div>

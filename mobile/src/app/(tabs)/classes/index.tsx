@@ -5,6 +5,7 @@ import { Fragment, useEffect, useMemo, useState } from 'react';
 import { ScrollView, Text, View } from 'react-native';
 
 import { ActionRow } from '@/components/action-row';
+import { ClassReminders } from '@/components/class-reminders';
 import { DayStrip } from '@/components/day-strip';
 import { Icon } from '@/components/icon';
 import { EmptyState, SectionTitle } from '@/components/section';
@@ -166,6 +167,7 @@ export default function ClassesScreen() {
               </View>
             </View>
 
+            <ClassReminders />
             {actions}
           </>
         )}

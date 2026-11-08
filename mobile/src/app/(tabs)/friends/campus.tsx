@@ -8,6 +8,7 @@ import { Icon } from '@/components/icon';
 import { NativeMenu } from '@/components/native-menu';
 import { EmptyState } from '@/components/section';
 import { getPlace } from '@/data/campus';
+import { pinName } from '@/lib/amenity-search';
 import { useReadableStyle } from '@/hooks/use-layout';
 import { useProfile } from '@/lib/account';
 import { matchesCampusEvent } from '@/lib/campus-search';
@@ -34,7 +35,7 @@ function startsText(startsAt?: string) {
 function whereText(meetup: Meetup) {
   const destination = meetup.destination;
   if (destination?.kind === 'place') return getPlace(destination.placeId)?.name ?? 'On campus';
-  if (destination?.kind === 'pin') return 'At a pin on the map';
+  if (destination?.kind === 'pin') return pinName(destination.lat, destination.lng);
   return 'On campus';
 }
 

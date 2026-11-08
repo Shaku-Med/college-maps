@@ -372,9 +372,16 @@ export const MAP_ORIGINS = [
 ];
 
 const PLACE_BY_ID = new Map(PLACES.map((place) => [place.id, place]));
+const DEVICE_PLACES = new Map<string, Place>();
+
+/** A place only this device knows about, like where the car was left, so trips can be planned to it by id. */
+export function setDevicePlace(id: string, place: Place | undefined) {
+  if (place) DEVICE_PLACES.set(id, place);
+  else DEVICE_PLACES.delete(id);
+}
 
 export function getPlace(id: unknown): Place | undefined {
   if (typeof id !== "string" || id.length > 16) return undefined;
   const key = id.toUpperCase();
-  return PLACE_BY_ID.get(key) ?? getAmenityPlace(key);
+  return PLACE_BY_ID.get(key) ?? getAmenityPlace(key) ?? DEVICE_PLACES.get(key);
 }

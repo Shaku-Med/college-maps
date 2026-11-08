@@ -53,6 +53,10 @@ export default function PrivacyPage() {
             meetup posts the title to the public board for signed-in students.
           </li>
           <li>
+            Walks you share, while they run: which friends you picked and where you are headed. Friends
+            watching never share their own location back, and the walk ends when you arrive or stop it.
+          </li>
+          <li>
             Notification subscriptions for this browser or installed app, if you turn notifications on. Sign out
             removes this device. Wiping your account removes every device.
           </li>
@@ -71,14 +75,19 @@ export default function PrivacyPage() {
         <h2 className="text-lg font-semibold">What we never keep</h2>
         <ul className="list-disc space-y-2 pl-5 text-sm leading-relaxed text-muted">
           <li>
-            Live location. During a private meetup, your position is streamed in memory and expires
-            in minutes. It is never written to a database. Campus public meetups do not share live
-            location.
+            Live location. During a private meetup or a walk you share, your position is streamed in
+            memory and expires in minutes. It is never written to a database. Campus public meetups do
+            not share live location.
+          </li>
+          <li>
+            Where you parked. The spot is saved on your device only, is forgotten within a day or when you
+            drive off, and never reaches our servers.
           </li>
           <li>
             Your class list. Classes you save
             {CAMPUS.schedule.portalName ? ` from ${CAMPUS.schedule.portalName}` : ""} stay in this
-            browser only.
+            browser only. In the phone app, class reminders are scheduled on the phone itself, so your
+            timetable is never sent anywhere.
           </li>
           <li>Passwords. There are none. Sign in is an email code.</li>
         </ul>

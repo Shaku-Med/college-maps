@@ -4,7 +4,7 @@ import { Button, CloseButton, Dropdown, Label, Separator, Surface, toast } from 
 import { Ban, Flag, LogOut, MapPin, MoreHorizontal, Navigation, Radio, Square, UserPlus } from "lucide-react";
 import { useState } from "react";
 
-import { Avatar, meetupWhere } from "@/components/people-panel";
+import { Avatar, meetupTitle, meetupWhere } from "@/components/people-panel";
 import { useConfirmDialog } from "@/components/confirm-dialog";
 import { useReportFlow } from "@/components/report-flow";
 import { CollapseButton, SheetGrabber, SheetPeek } from "@/components/sheet-chrome";
@@ -12,7 +12,7 @@ import { getPlace, type Coordinate, type Place } from "@/data/campus";
 import type { LiveState } from "@/hooks/use-meetup-live";
 import { distanceMeters, formatDistance } from "@/lib/geo";
 import type { LivePosition } from "@/lib/realtime";
-import { socialApi, type Meetup } from "@/lib/social-api";
+import { isWalk, socialApi, type Meetup } from "@/lib/social-api";
 
 type MeetupSheetProps = {
   meetup: Meetup;
@@ -34,6 +34,13 @@ const stateLabel: Record<LiveState, string> = {
   connecting: "Connecting",
   live: "Sharing your location",
   offline: "Not sharing",
+};
+
+// Watching a walk shares nothing back, so its status only says whether the view is live.
+const watchLabel: Record<LiveState, string> = {
+  connecting: "Connecting",
+  live: "Watching live",
+  offline: "Not connected",
 };
 
 export function MeetupSheet({
@@ -91,7 +98,9 @@ export function MeetupSheet({
     onMeetupChange(res.data);
   }
 
-  const canInvite = meetup.yourRole === "host" && meetup.visibility === "private" && meetup.active;
+  const walk = isWalk(meetup);
+  const labels = walk ? watchLabel : stateLabel;
+  const canInvite = meetup.yourRole === "host" && meetup.visibility === "private" && meetup.active && !walk;
   const canModerate = meetup.yourRole !== "host" && meetup.host.username !== myUsername;
 
   async function blockHost() {
@@ -120,10 +129,10 @@ export function MeetupSheet({
           <MapPin className="size-4" aria-hidden />
         </span>
         <div className="min-w-0 flex-1">
-          <h2 className="truncate text-base font-semibold leading-tight">{meetup.note || meetupWhere(meetup, myUsername)}</h2>
+          <h2 className="truncate text-base font-semibold leading-tight">{meetupTitle(meetup, myUsername)}</h2>
           <p className="flex items-center gap-1.5 truncate text-xs text-muted">
             <Radio className={state === "live" && !elsewhere ? "size-3 text-accent" : "size-3"} aria-hidden />
-            {elsewhere ? "Sharing from your other device" : stateLabel[state]}
+            {elsewhere && !walk ? "Sharing from your other device" : labels[state]}
           </p>
         </div>
         {canModerate ? (
@@ -164,7 +173,7 @@ export function MeetupSheet({
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-[max(1.25rem,var(--map-safe-bottom))] pt-1">
-        {elsewhere ? (
+        {elsewhere && !walk ? (
           <div className="mb-3 flex items-center gap-3 rounded-2xl bg-surface-secondary px-4 py-3">
             <p className="min-w-0 flex-1 text-sm text-muted">
               You&apos;re signed in on another device that is sharing your location for this meetup.
@@ -192,12 +201,26 @@ export function MeetupSheet({
         </div>
         {away ? <p className="px-1 pt-2 text-xs text-muted">{away} away</p> : null}
 
-        <h3 className="pb-1 pt-4 text-[11px] font-semibold uppercase tracking-wider text-muted">Who&apos;s here</h3>
+        <h3 className="pb-1 pt-4 text-[11px] font-semibold uppercase tracking-wider text-muted">{walk ? "Walker and watchers" : "Who's here"}</h3>
         {meetup.members.map((member) => {
           const isYou = member.username === myUsername;
           const live = isYou ? undefined : positions.find((p) => p.member === member.liveId);
           const distance = live && youAt ? formatDistance(distanceMeters(youAt, live.coordinate)) : undefined;
-          const status = isYou
+          const status = walk
+            ? member.role === "host"
+              ? isYou
+                ? "sharing while you walk"
+                : live
+                  ? (distance ? `${distance} away` : "sharing location")
+                  : "not sharing yet"
+              : isYou
+                ? "watching, your location is not shared"
+                : member.status === "joined"
+                  ? "watching"
+                  : member.status === "invited"
+                    ? "hasn't opened it yet"
+                    : "stopped watching"
+            : isYou
             ? state === "live"
               ? "sharing your location"
               : stateLabel[state].toLowerCase()
@@ -240,10 +263,27 @@ export function MeetupSheet({
 
         <Separator className="my-3" />
         <p className="pb-3 text-xs text-muted">
-          Your location is shared with this group while you&apos;re in the meetup, and never saved. Close to stop sharing.
+          {walk
+            ? meetup.yourRole === "host"
+              ? "Friends see you while you walk there, and it stops when you arrive. Nothing is saved."
+              : `You see ${meetup.host.displayName || meetup.host.username} until they arrive. Your location is not shared.`
+            : "Your location is shared with this group while you're in the meetup, and never saved. Close to stop sharing."}
         </p>
 
-        {meetup.yourRole === "host" ? (
+        {walk ? (
+          <Button
+            variant="secondary"
+            isPending={isBusy}
+            onPress={() =>
+              meetup.yourRole === "host"
+                ? void run(() => socialApi.endMeetup(meetup.id), "Stopped sharing your walk")
+                : void run(() => socialApi.leaveMeetup(meetup.id), "Stopped watching")
+            }
+            fullWidth>
+            {meetup.yourRole === "host" ? <Square aria-hidden /> : <LogOut aria-hidden />}
+            {meetup.yourRole === "host" ? "Stop sharing" : "Stop watching"}
+          </Button>
+        ) : meetup.yourRole === "host" ? (
           <Button
             variant="secondary"
             isPending={isBusy}
@@ -309,8 +349,8 @@ export function MeetupPeek({
   return (
     <SheetPeek
       icon={<Radio className={state === "live" ? "size-4 text-accent" : "size-4"} aria-hidden />}
-      title={meetup.note || meetupWhere(meetup, myUsername)}
-      subtitle={`${stateLabel[state]} · tap to open`}
+      title={meetupTitle(meetup, myUsername)}
+      subtitle={`${(isWalk(meetup) ? watchLabel : stateLabel)[state]} · tap to open`}
       label="Open meetup"
       onExpand={onExpand}
     />

@@ -1,16 +1,18 @@
 "use client";
 
 import { Button, CloseButton, Description, Input, Label, Surface, TextField, toast } from "@heroui/react";
-import { CalendarClock, MessageSquareWarning, Navigation, Share2 } from "lucide-react";
+import { CalendarClock, Car, Check, MessageSquareWarning, Navigation, Share2, X } from "lucide-react";
 import Link from "next/link";
 import { useState, type FormEvent } from "react";
 
 import { PlaceIcon } from "@/components/place-icon";
 import { CollapseButton, SheetGrabber } from "@/components/sheet-chrome";
 import { isAmenity } from "@/data/amenities";
-import { CATEGORY_LABELS, type Place } from "@/data/campus";
+import { CATEGORY_LABELS, getPlace, type Coordinate, type Place } from "@/data/campus";
 import { amenityWhere, reportPlaceId } from "@/lib/amenity-search";
 import { roomSpot } from "@/lib/building-safety";
+import { CAR_ID, forgetCar, parkInLot } from "@/lib/car-spot";
+import { useCarSpot } from "@/hooks/use-car-spot";
 import type { Meetup } from "@/lib/social-api";
 import { placeUrl } from "@/lib/share-url";
 import { EXAMPLE_ROOM, MAX_ROOM_INPUT, floorForRoom, floorLabel, roomInBuilding } from "@/lib/search";
@@ -24,7 +26,15 @@ type PlaceSheetProps = {
   onDirections: (room?: string) => void;
   onCollapse: () => void;
   onClose: () => void;
+  /** Where the person is, so "I parked here" can use the exact spot inside a lot. */
+  userPosition?: Coordinate;
 };
+
+function parkedLabel(at: number, lotId?: string) {
+  const time = new Date(at).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  const lot = lotId ? getPlace(lotId)?.name : undefined;
+  return lot ? `${lot} · parked at ${time}` : `Parked at ${time}`;
+}
 
 function whenLabel(meetup: Meetup) {
   if (!meetup.startsAt) return "Happening now";
@@ -41,7 +51,12 @@ export function PlaceSheet({
   onDirections,
   onCollapse,
   onClose,
+  userPosition,
 }: PlaceSheetProps) {
+  const car = useCarSpot();
+  const isCar = place.id === CAR_ID;
+  const isLot = place.category === "parking" && !isCar;
+  const parkedHere = isLot && car?.lotId === place.id;
   const floor = room ? floorLabel(floorForRoom(room)) : undefined;
   const landmark = roomSpot(place.id, room)?.landmark;
   const askRoom = place.isBuilding && !room;
@@ -85,21 +100,23 @@ export function PlaceSheet({
 
       <div className="flex items-start gap-3 pt-3 md:pt-0">
         <span className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-accent-soft text-accent-soft-foreground">
-          <PlaceIcon place={place} className="size-5" />
+          {isCar ? <Car className="size-5" aria-hidden /> : <PlaceIcon place={place} className="size-5" />}
         </span>
         <div className="min-w-0 flex-1 pt-0.5">
           <h2 className="text-lg font-semibold leading-snug tracking-tight">{place.name}</h2>
           <p className="text-sm text-muted">
-            {isAmenity(place)
-              ? amenityWhere(place)
-              : `${place.isBuilding ? `Building ${place.id} · ` : ""}${CATEGORY_LABELS[place.category]}`}
+            {isCar && car
+              ? parkedLabel(car.at, car.lotId)
+              : isAmenity(place)
+                ? amenityWhere(place)
+                : `${place.isBuilding ? `Building ${place.id} · ` : ""}${CATEGORY_LABELS[place.category]}`}
           </p>
         </div>
         <CollapseButton onCollapse={onCollapse} />
         <CloseButton aria-label="Close" onPress={onClose} />
       </div>
 
-      {place.details ? <p className="mt-3 text-sm text-muted">{place.details}</p> : null}
+      {place.details && !isCar ? <p className="mt-3 text-sm text-muted">{place.details}</p> : null}
 
       {room ? (
         <div className="mt-4 rounded-2xl bg-surface-secondary px-4 py-3">
@@ -175,19 +192,52 @@ export function PlaceSheet({
             <Navigation aria-hidden />
             Directions
           </Button>
-          <Button variant="secondary" size="lg" onPress={handleShare} aria-label="Share this place">
-            <Share2 aria-hidden />
-            <span className="max-sm:hidden">Share</span>
-          </Button>
+          {isCar ? (
+            <Button
+              variant="secondary"
+              size="lg"
+              onPress={() => {
+                forgetCar();
+                onClose();
+              }}>
+              <X aria-hidden />
+              Forget
+            </Button>
+          ) : (
+            <Button variant="secondary" size="lg" onPress={handleShare} aria-label="Share this place">
+              <Share2 aria-hidden />
+              <span className="max-sm:hidden">Share</span>
+            </Button>
+          )}
         </div>
       </form>
 
+      {isLot ? (
+        <button
+          type="button"
+          disabled={parkedHere}
+          onClick={() => {
+            if (parkInLot(place, userPosition)) toast.success("Saved where you parked");
+          }}
+          className="mt-3 flex w-full items-center gap-3 rounded-2xl bg-surface-secondary px-4 py-3 text-left outline-none transition-colors hover:bg-accent-soft focus-visible:ring-2 focus-visible:ring-accent disabled:hover:bg-surface-secondary">
+          {parkedHere ? <Check className="size-4 shrink-0 text-muted" aria-hidden /> : <Car className="size-4 shrink-0 text-muted" aria-hidden />}
+          <span className="min-w-0 flex-1">
+            <span className="block text-sm font-semibold">{parkedHere ? "Your car is here" : "I parked here"}</span>
+            <span className="block text-xs text-muted">
+              {parkedHere ? "Find it again from the car on the map" : "Puts your car on the map, in this browser only"}
+            </span>
+          </span>
+        </button>
+      ) : null}
+
+      {isCar ? null : (
       <Link
         href={`/report-problem?${reportAbout ? `place=${encodeURIComponent(reportAbout)}&` : ""}kind=map`}
         className="mx-auto mt-3 flex w-fit items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium text-muted outline-none transition-colors hover:bg-surface-secondary focus-visible:ring-2 focus-visible:ring-accent">
         <MessageSquareWarning className="size-3.5" aria-hidden />
         Report a problem with this place
       </Link>
+      )}
     </Surface>
   );
 }

@@ -20,7 +20,7 @@ import {
   Zap,
 } from "lucide-react";
 
-import { useState, type KeyboardEvent } from "react";
+import { useState, type KeyboardEvent, type ReactNode } from "react";
 
 import { Presence } from "@/components/presence";
 import { StepIcon } from "@/components/step-icon";
@@ -92,6 +92,10 @@ type NavigationHudProps = {
   onAddStopKind?: (kind: AmenityKind) => void;
   /** Opens the search to pick any place as the next stop. */
   onAddStopSearch?: () => void;
+  /** Walk me there, shown in the trip panel when signed in and on foot. */
+  walkShare?: ReactNode;
+  /** Set while friends can see this walk, so it shows without opening the panel. */
+  isSharing?: boolean;
 };
 
 export type StopAhead = { index: number; place: Place; number: number };
@@ -259,6 +263,8 @@ export function NavigationHud({
   quickStops = [],
   onAddStopKind,
   onAddStopSearch,
+  walkShare,
+  isSharing = false,
 }: NavigationHudProps) {
   // The turns ahead at the top and the trip settings at the bottom: one open at a time, so the map stays in view.
   const [panel, setPanel] = useState<"steps" | "trip" | null>(null);
@@ -504,7 +510,7 @@ export function NavigationHud({
                     <>
                       <span className="block text-2xl font-bold leading-tight tracking-tight tabular-nums">{formatRouteTime(route, remaining)}</span>
                       <span className="block truncate text-sm text-muted tabular-nums">
-                        {[formatDistance(remaining), arrive, stopLabel].filter(Boolean).join(" · ")}
+                        {[formatDistance(remaining), arrive, stopLabel, isSharing ? "Shared live" : undefined].filter(Boolean).join(" · ")}
                       </span>
                     </>
                   )}
@@ -568,6 +574,7 @@ export function NavigationHud({
                     ) : null}
                     <TripSetting label="Spoken directions" isSelected={voiceOn} onChange={() => onToggleVoice()} />
                     <TripSetting label="Turn the map with me" isSelected={facingUp} onChange={() => onToggleFacing()} />
+                    {hasArrived ? null : walkShare}
                     <TripStops
                       ahead={stopsAhead}
                       onRemove={onRemoveStop}
