@@ -507,11 +507,10 @@ export function useNavigation({ destination, avoidStairs, follow, facingUp }: Op
       const walkingOpposite =
         course.current !== undefined &&
         Math.abs(turnAngle(bearingDegrees(segmentStart, segmentEnd), course.current)) > OPPOSITE_DEGREES;
+      // A backward jump smaller than the GPS error says nothing about which way you walked.
+      const wentBack = (meters: number) => backtracked > Math.max(meters * slack, accuracy);
       const wrongWay =
-        trusted &&
-        !holding &&
-        !isOff &&
-        (backtracked > WRONG_WAY_WARN_METERS * slack || (walkingOpposite && backtracked > COURSE_MIN_METERS * slack));
+        trusted && !holding && !isOff && (wentBack(WRONG_WAY_WARN_METERS) || (walkingOpposite && wentBack(COURSE_MIN_METERS)));
 
       const lost =
         offRouteCount.current >= 2 ||

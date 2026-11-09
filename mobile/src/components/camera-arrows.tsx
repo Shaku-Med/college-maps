@@ -11,18 +11,20 @@ import Animated, {
   useAnimatedReaction,
   useAnimatedSensor,
   useDerivedValue,
+  useFrameCallback,
   useSharedValue,
   withTiming,
 } from 'react-native-reanimated';
 import Svg, { Path } from 'react-native-svg';
-import { scheduleOnRN } from 'react-native-worklets';
+import { scheduleOnRN, scheduleOnUI } from 'react-native-worklets';
 
 import { Glass } from '@/components/glass';
 import { Icon } from '@/components/icon';
 import { MapButton } from '@/components/map-button';
 import type { Coordinate } from '@/data/campus';
-import { cameraAxes, floorShapes, type FloorShapes, type Vec3 } from '@/lib/floor-arrows';
-import { currentDeclination, glideMs } from '@/lib/location';
+import { cameraAxes, floorShapes, LOCK_SETTLED, NO_LOCK, stepLock, stepNorth, type FloorShapes, type Lock, type Vec3 } from '@/lib/floor-arrows';
+import { bearingDegrees, distanceMeters, turnAngle } from '@/lib/geo';
+import { currentDeclination, currentFix, glideMs } from '@/lib/location';
 import { pointAtDistance, type Route } from '@/lib/routing';
 
 const AnimatedPath = Animated.createAnimatedComponent(Path);
@@ -33,11 +35,25 @@ const AHEAD = 45;
 const METERS_PER_DEGREE = 111_320;
 // The compass shakes as you walk, so each reading only moves it part of the way.
 const FIELD_SMOOTHING = 0.2;
+// GPS wobbles by more than a stride, so walking only counts over a few seconds of progress.
+const WALK_WINDOW_MS = 2500;
+const WALK_MIN_GAIN = 1.5;
+const WALK_MIN_PACE = 0.5;
+const WALK_MIN_SPEED = 0.6;
+const LOCK_EVERY_MS = 700;
+const ON_ROUTE_METERS = 3;
+const STRAIGHT_BEHIND = 3;
+const STRAIGHT_STEP = 5;
+const STRAIGHT_DEGREES = 20;
+const NUDGE_MS = 8000;
+// Beyond this you really are facing elsewhere, however far off the compass is.
+const UNSURE_TURN = (70 * Math.PI) / 180;
 
-type Hint = 'finding' | FloorShapes['look'];
+type Hint = 'finding' | 'align' | FloorShapes['look'];
 
 const HINTS: Record<Exclude<Hint, null>, string> = {
   finding: 'Finding which way you face',
+  align: 'Walk a few steps to line up the arrows',
   left: 'The way is to your left',
   right: 'The way is to your right',
   down: 'Tilt the phone down to see the way',
@@ -60,6 +76,30 @@ function slice(route: Route, from: number, to: number): Coordinate[] {
   });
   points.push(pointAtDistance(route.path, route.cumulative, end));
   return points;
+}
+
+/** The direction of the route here in degrees, or null when it bends close by and so can't say which way you are walking. */
+function straightHeading(route: Route, along: number): number | null {
+  if (along + STRAIGHT_STEP * 2 > route.distance) return null;
+  const point = (distance: number) => pointAtDistance(route.path, route.cumulative, distance);
+  const behind = point(Math.max(0, along - STRAIGHT_BEHIND));
+  const here = point(along);
+  const near = point(along + STRAIGHT_STEP);
+  const far = point(along + STRAIGHT_STEP * 2);
+  const ahead = bearingDegrees(here, near);
+  if (Math.abs(turnAngle(ahead, bearingDegrees(near, far))) > STRAIGHT_DEGREES) return null;
+  if (along >= 1 && Math.abs(turnAngle(bearingDegrees(behind, here), ahead)) > STRAIGHT_DEGREES) return null;
+  return bearingDegrees(behind, far);
+}
+
+type Step = { time: number; along: number };
+
+function walkingForward(trail: Step[], now: number, speed: number | undefined) {
+  const seconds = (now - trail[0].time) / 1000;
+  const gained = trail[trail.length - 1].along - trail[0].along;
+  if (seconds * 1000 < WALK_WINDOW_MS || gained < WALK_MIN_GAIN || gained / seconds < WALK_MIN_PACE) return false;
+  // Android reports 0 when it has no speed at all, so only a real but slow reading counts against walking.
+  return !speed || speed >= WALK_MIN_SPEED;
 }
 
 type Props = {
@@ -87,7 +127,11 @@ function Floor({ route, along, at }: Props) {
   const { width, height } = useWindowDimensions();
   const [accent, accentForeground] = useThemeColor(['accent', 'accent-foreground']);
   const gravity = useAnimatedSensor(SensorType.GRAVITY, { interval: 'auto', adjustToInterfaceOrientation: false });
+  const gyroscope = useAnimatedSensor(SensorType.GYROSCOPE, { interval: 'auto', adjustToInterfaceOrientation: false });
   const field = useSharedValue<Vec3 | null>(null);
+  const north = useSharedValue<Vec3 | null>(null);
+  const lock = useSharedValue<Lock>(NO_LOCK);
+  const nudging = useSharedValue(true);
   const declination = useSharedValue(0);
   const path = useSharedValue<number[]>([]);
   const startAlong = useSharedValue(0);
@@ -99,6 +143,19 @@ function Floor({ route, along, at }: Props) {
   const sentHint = useSharedValue<Hint>('finding');
   const [hasCompass, setHasCompass] = useState(true);
   const shownRoute = useRef<Route | null>(null);
+  const trail = useRef<Step[]>([]);
+  const lockedAt = useRef(0);
+
+  useFrameCallback((frame) => {
+    'worklet';
+    const seconds = Math.min(0.1, (frame.timeSincePreviousFrame ?? 16) / 1000);
+    north.set(stepNorth(north.get(), gravity.sensor.get(), field.get(), gyroscope.sensor.get(), seconds));
+  });
+
+  useEffect(() => {
+    const timer = setTimeout(() => nudging.set(false), NUDGE_MS);
+    return () => clearTimeout(timer);
+  }, [nudging]);
 
   useEffect(() => {
     let live = true;
@@ -129,6 +186,7 @@ function Floor({ route, along, at }: Props) {
     const [e, n] = toLocal(anchor, at);
     // Along one route the camera glides between fixes like the dot on the map; a new route starts fresh.
     const duration = shownRoute.current === route ? glideMs() : 0;
+    if (shownRoute.current !== route) trail.current = [];
     shownRoute.current = route;
     camE.set(duration ? withTiming(e, { duration, easing: Easing.linear }) : e);
     camN.set(duration ? withTiming(n, { duration, easing: Easing.linear }) : n);
@@ -138,18 +196,37 @@ function Floor({ route, along, at }: Props) {
     camAlong.set(mine);
     finish.set(mine + AHEAD >= route.distance);
     declination.set((currentDeclination() * Math.PI) / 180);
-  }, [route, along, at, camE, camN, path, startAlong, camAlong, finish, declination]);
+
+    const now = Date.now();
+    trail.current.push({ time: now, along: mine });
+    while (trail.current.length > 1 && now - trail.current[1].time >= WALK_WINDOW_MS) trail.current.shift();
+    const onRoute = distanceMeters(at, pointAtDistance(route.path, route.cumulative, mine)) <= ON_ROUTE_METERS;
+    if (!onRoute || now - lockedAt.current < LOCK_EVERY_MS || !walkingForward(trail.current, now, currentFix()?.speed)) return;
+    const heading = straightHeading(route, mine);
+    if (heading === null) return;
+    lockedAt.current = now;
+    scheduleOnUI((routeHeading: number) => {
+      'worklet';
+      const facing = north.get();
+      const axes = facing ? cameraAxes(gravity.sensor.get(), facing, declination.get() + lock.get().offset) : null;
+      if (axes) lock.set(stepLock(lock.get(), axes, routeHeading));
+    }, (heading * Math.PI) / 180);
+  }, [route, along, at, camE, camN, path, startAlong, camAlong, finish, declination, north, gravity, lock]);
 
   const shapes = useDerivedValue(() => {
-    const compass = field.get();
-    const axes = compass ? cameraAxes(gravity.sensor.get(), compass, declination.get()) : null;
+    const facing = north.get();
+    const axes = facing ? cameraAxes(gravity.sensor.get(), facing, declination.get() + lock.get().offset) : null;
     return floorShapes(axes, path.get(), startAlong.get(), camAlong.get(), camE.get(), camN.get(), width, height, finish.get());
   }, [width, height]);
 
   useAnimatedReaction(
     (): Hint => {
       const now = shapes.get();
-      return now.ready ? now.look : 'finding';
+      if (!now.ready) return 'finding';
+      // Until walking has lined it up the compass may be well off, so a near miss gets the honest answer rather than a direction.
+      const unsure = lock.get().samples < LOCK_SETTLED && Math.abs(now.turn) < UNSURE_TURN;
+      if (unsure && (nudging.get() || now.look === 'left' || now.look === 'right')) return 'align';
+      return now.look;
     },
     (next) => {
       if (next === sentHint.get()) return;

@@ -10,7 +10,16 @@ export type FloorShapes = {
   look: 'left' | 'right' | 'down' | 'up' | null;
   /** False until the phone knows which way it faces. */
   ready: boolean;
+  /** How far the way ahead sits clockwise of where the phone faces, in radians. */
+  turn: number;
 };
+
+/** What walking has taught about the compass: how far to correct it and how many times it has been checked. */
+export type Lock = { offset: number; samples: number; heading: number | null };
+
+export const NO_LOCK: Lock = { offset: 0, samples: 0, heading: null };
+/** Checks against the route before the heading is worth trusting. */
+export const LOCK_SETTLED = 3;
 
 /** About how high a phone is held when walking with it out. */
 const EYE_HEIGHT = 1.4;
@@ -27,29 +36,126 @@ const CHEVRON = [0.32, 0, -0.08, 0.38, -0.34, 0.38, 0.06, 0, -0.34, -0.38, -0.08
 const FINISH_RADIUS = 0.8;
 const FINISH_SIDES = 20;
 
-const EMPTY: FloorShapes = { ribbon: '', chevrons: '', finish: '', look: null, ready: false };
+// Earth's field is 25 to 65 microtesla everywhere, so a reading far outside that is steel or a magnet by the phone.
+const EARTH_FIELD_MIN = 20;
+const EARTH_FIELD_MAX = 80;
+// Share of the gap to the compass closed each second; the gyroscope does the rest, so a bent reading can only lean on it.
+const COMPASS_PULL = 0.25;
+const COMPASS_ONLY_PULL = 8;
+const LOCK_EAGER_GAIN = 0.35;
+const LOCK_GAIN = 0.15;
+const LOCK_EAGER_SAMPLES = 4;
+// Further off than this and the phone is probably looking at something else, not at where you are walking.
+const LOCK_WIDEST = (75 * Math.PI) / 180;
+const LOCK_SWING = (20 * Math.PI) / 180;
+const LOCK_LIMIT = (90 * Math.PI) / 180;
+const LEVEL_ENOUGH = 0.3;
+
+const EMPTY: FloorShapes = { ribbon: '', chevrons: '', finish: '', look: null, ready: false, turn: 0 };
 
 function focalLength(height: number) {
   'worklet';
   return height / 2 / Math.tan(VERTICAL_FOV / 2);
 }
 
+function wrapAngle(angle: number) {
+  'worklet';
+  return Math.atan2(Math.sin(angle), Math.cos(angle));
+}
+
 /**
- * East, north and up as seen by the phone, nine numbers in its own axes (x right, y to the top, z out of the screen).
- * `down` is gravity, `field` the calibrated compass, and `declination` how far magnetic north sits east of true north.
+ * Magnetic north in the phone's own axes, one step on: `rate` turns it with the phone and `field` slowly pulls it to the compass.
+ * Starts from the compass alone. A `rate` of exactly zero means the phone has no gyroscope.
  */
-export function cameraAxes(down: Vec3, field: Vec3, declination: number): number[] | null {
+export function stepNorth(north: Vec3 | null, down: Vec3, field: Vec3 | null, rate: Vec3, seconds: number): Vec3 | null {
   'worklet';
   const g = Math.hypot(down.x, down.y, down.z);
-  if (g < 3 || Math.hypot(field.x, field.y, field.z) < 5) return null;
+  if (g < 3) return north;
   const ux = -down.x / g;
   const uy = -down.y / g;
   const uz = -down.z / g;
-  let ex = field.y * uz - field.z * uy;
-  let ey = field.z * ux - field.x * uz;
-  let ez = field.x * uy - field.y * ux;
+
+  let mx = 0;
+  let my = 0;
+  let mz = 0;
+  let level = 0;
+  const total = field ? Math.hypot(field.x, field.y, field.z) : 0;
+  if (field) {
+    const rise = field.x * ux + field.y * uy + field.z * uz;
+    mx = field.x - rise * ux;
+    my = field.y - rise * uy;
+    mz = field.z - rise * uz;
+    level = Math.hypot(mx, my, mz);
+  }
+
+  if (!north) {
+    if (total < 5 || level < 1) return null;
+    return { x: mx / level, y: my / level, z: mz / level };
+  }
+
+  const hasGyro = rate.x !== 0 || rate.y !== 0 || rate.z !== 0;
+  let nx = north.x;
+  let ny = north.y;
+  let nz = north.z;
+  if (hasGyro) {
+    // A fixed direction seen from a turning phone moves against the turn.
+    nx -= seconds * (rate.y * north.z - rate.z * north.y);
+    ny -= seconds * (rate.z * north.x - rate.x * north.z);
+    nz -= seconds * (rate.x * north.y - rate.y * north.x);
+  }
+  if (level >= 1 && total >= EARTH_FIELD_MIN && total <= EARTH_FIELD_MAX) {
+    const pull = Math.min(1, (hasGyro ? COMPASS_PULL : COMPASS_ONLY_PULL) * seconds);
+    nx += (mx / level - nx) * pull;
+    ny += (my / level - ny) * pull;
+    nz += (mz / level - nz) * pull;
+  }
+
+  const tilt = nx * ux + ny * uy + nz * uz;
+  nx -= tilt * ux;
+  ny -= tilt * uy;
+  nz -= tilt * uz;
+  const length = Math.hypot(nx, ny, nz);
+  if (length < 0.1) return north;
+  return { x: nx / length, y: ny / length, z: nz / length };
+}
+
+/**
+ * Eases the compass correction toward `routeHeading`, the true direction of the straight stretch being walked, in radians.
+ * Call it once per GPS fix, only while walking forward along the route, with `axes` built using the current offset.
+ */
+export function stepLock(lock: Lock, axes: number[], routeHeading: number): Lock {
+  'worklet';
+  const fe = -axes[2];
+  const fn = -axes[5];
+  if (Math.hypot(fe, fn) < LEVEL_ENOUGH) return lock;
+  const heading = Math.atan2(fe, fn);
+  const swung = lock.heading !== null && Math.abs(wrapAngle(heading - lock.heading)) > LOCK_SWING;
+  const error = wrapAngle(routeHeading - heading);
+  if (swung || Math.abs(error) > LOCK_WIDEST) return { ...lock, heading };
+  const step = error * (lock.samples < LOCK_EAGER_SAMPLES ? LOCK_EAGER_GAIN : LOCK_GAIN);
+  return {
+    offset: Math.max(-LOCK_LIMIT, Math.min(LOCK_LIMIT, lock.offset + step)),
+    samples: lock.samples + 1,
+    heading: heading + step,
+  };
+}
+
+/**
+ * East, north and up as seen by the phone, nine numbers in its own axes (x right, y to the top, z out of the screen).
+ * `down` is gravity, `north` any vector toward magnetic north, and `declination` how far that sits east of true north.
+ */
+export function cameraAxes(down: Vec3, north: Vec3, declination: number): number[] | null {
+  'worklet';
+  const g = Math.hypot(down.x, down.y, down.z);
+  if (g < 3) return null;
+  const ux = -down.x / g;
+  const uy = -down.y / g;
+  const uz = -down.z / g;
+  let ex = north.y * uz - north.z * uy;
+  let ey = north.z * ux - north.x * uz;
+  let ez = north.x * uy - north.y * ux;
   const e = Math.hypot(ex, ey, ez);
-  if (e < 1) return null;
+  if (e < 0.1) return null;
   ex /= e;
   ey /= e;
   ez /= e;
@@ -215,6 +321,16 @@ export function floorShapes(
     return [es[k - 1] + (es[k] - es[k - 1]) * share, ns[k - 1] + (ns[k] - ns[k - 1]) * share];
   };
 
+  // Which way the route goes a few steps on, against where the camera looks, or the top of a phone held flat.
+  const [te, tn] = pointAt(Math.min(at[at.length - 1], camAlong + LOOK_AHEAD));
+  let fe = -axes[2];
+  let fn = -axes[5];
+  if (Math.hypot(fe, fn) < LEVEL_ENOUGH) {
+    fe = axes[1];
+    fn = axes[4];
+  }
+  const turn = Math.atan2(fn * te - fe * tn, fe * te + fn * tn);
+
   // A hint only helps when none of the way ahead is on screen; with some in view it would argue with the arrows.
   let inView = false;
   const end = Math.min(at[at.length - 1], camAlong + CHEVRON_REACH);
@@ -224,19 +340,10 @@ export function floorShapes(
     const [x, y] = project(e, n);
     inView = x >= 0 && x <= width && y >= 0 && y <= height;
   }
-  if (inView) return { ribbon, chevrons, finish: finishRing, look: null, ready: true };
+  if (inView) return { ribbon, chevrons, finish: finishRing, look: null, ready: true, turn };
 
-  // Which way the route goes a few steps on, against where the camera looks, or the top of a phone held flat.
-  const [te, tn] = pointAt(Math.min(at[at.length - 1], camAlong + LOOK_AHEAD));
-  let fe = -axes[2];
-  let fn = -axes[5];
-  if (Math.hypot(fe, fn) < 0.3) {
-    fe = axes[1];
-    fn = axes[4];
-  }
-  const turn = Math.atan2(fn * te - fe * tn, fe * te + fn * tn);
   const half = Math.atan(width / 2 / f);
   const look =
     turn < -half ? 'left' : turn > half ? 'right' : pitch > -Math.atan(EYE_HEIGHT / LOOK_AHEAD) ? 'down' : 'up';
-  return { ribbon, chevrons, finish: finishRing, look, ready: true };
+  return { ribbon, chevrons, finish: finishRing, look, ready: true, turn };
 }
