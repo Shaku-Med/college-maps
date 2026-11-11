@@ -25,6 +25,8 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
+  // The Docker image ships only the traced server files; Vercel builds stay as they were.
+  output: process.env.NEXT_OUTPUT_STANDALONE === "true" ? "standalone" : undefined,
   // Lets a phone on the same Wi-Fi load the dev server by this computer's local address.
   allowedDevOrigins: ["10.*.*.*", "192.168.*.*", ...Array.from({ length: 16 }, (_, i) => `172.${16 + i}.*.*`)],
   async rewrites() {

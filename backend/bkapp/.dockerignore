@@ -1,0 +1,7 @@
+.env
+.env.*
+tmp
+vercel.json
+Dockerfile
+.dockerignore
+**/*_test.go

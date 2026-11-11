@@ -1,0 +1,8 @@
+.env
+.env.*
+node_modules
+.next
+tsconfig.tsbuildinfo
+netlify.toml
+Dockerfile
+.dockerignore

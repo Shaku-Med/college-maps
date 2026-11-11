@@ -43,6 +43,9 @@ export function apiUpstream(): string | null {
     return upstream;
   }
 
+  // On the VPS, nginx sends /v1 straight to the API before the site sees it.
+  if (process.env.API_PROXIED_BY_HOST === "true") return null;
+
   // Vercel does not have netlify.toml. Without an explicit upstream, a website-valued
   // NEXT_PUBLIC_API_URL rewrites /v1 back onto this deployment (508 INFINITE_LOOP_DETECTED).
   if (process.env.VERCEL) {
