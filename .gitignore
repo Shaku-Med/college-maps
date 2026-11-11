@@ -4,6 +4,7 @@
 !.env.example
 !.env.*.example
 !.env.notification.example
+*.env
 
 # OS
 .DS_Store

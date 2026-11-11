@@ -1,4 +1,5 @@
-# CSI Map on the VPS. From the repo root: docker compose -f deploy/compose.yaml up -d --build
+# CSI Map on the VPS, run from /opt/csimap by csimap-compose.sh.
+# CI writes .env (the pinned image tags) and the two service env files; nothing is built on the box.
 # Ports bind to 127.0.0.1 only, so nothing but the host's nginx can reach them.
 name: csimap
 
@@ -20,9 +21,9 @@ x-hardened: &hardened
 services:
   api:
     <<: *hardened
-    build: ../backend/bkapp
-    image: csimap-api
-    env_file: .env.api
+    image: ${API_IMAGE:?API_IMAGE missing from .env}
+    container_name: csimap-api
+    env_file: ./api.env
     environment:
       APP_ENV: production
       PORT: "8080"
@@ -37,9 +38,9 @@ services:
 
   realtime:
     <<: *hardened
-    build: ../backend/rtapp
-    image: csimap-realtime
-    env_file: .env.realtime
+    image: ${REALTIME_IMAGE:?REALTIME_IMAGE missing from .env}
+    container_name: csimap-realtime
+    env_file: ./realtime.env
     environment:
       APP_ENV: production
       PORT: "8090"
@@ -54,12 +55,8 @@ services:
 
   web:
     <<: *hardened
-    build:
-      context: ../app
-      args:
-        NEXT_PUBLIC_API_URL: ${SITE_ORIGIN:?set SITE_ORIGIN in deploy/.env}
-        NEXT_PUBLIC_REALTIME_URL: ${REALTIME_ORIGIN:?set REALTIME_ORIGIN in deploy/.env}
-    image: csimap-web
+    image: ${WEB_IMAGE:?WEB_IMAGE missing from .env}
+    container_name: csimap-web
     tmpfs:
       - /tmp
       - /app/.next/cache:uid=1000,gid=1000
