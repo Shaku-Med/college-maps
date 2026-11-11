@@ -54,7 +54,7 @@ while in use permission only: background updates start from the tap on Start, ne
 ## Natural voices
 
 Spoken directions use the phone's own voice until someone picks a natural voice in Account, Directions voice.
-The natural voices are the website's Kokoro voices. The app opens `https://csimap.vercel.app/voice-engine` in a
+The natural voices are the website's Kokoro voices. The app opens `https://csimap.app/voice-engine` in a
 hidden web view (`@expo/dom-webview`, already part of `expo`, so no new native code), which downloads the model
 once (about 90 MB) and turns each line into a WAV clip. The app saves the clips under
 `voice-clips/kokoro-82m-q8/<voice>` in its documents folder and plays them with expo-audio
@@ -116,7 +116,7 @@ Before submitting:
 2. On the API host, set `REVIEW_EMAIL` (a school address that is nobody's real inbox), `REVIEW_CODE`
    (8 digits, new for every submission) and `REVIEW_UNTIL` (a date a few weeks out), then redeploy. The code
    stops working on its own after that date. Use the same account details in Play Console under App access.
-3. In App Store Connect, give the privacy policy URL `https://csimap.vercel.app/privacy`, and paste this into
+3. In App Store Connect, give the privacy policy URL `https://csimap.app/privacy`, and paste this into
    App Review notes:
 
    > Sign in is only needed for friends and meetups; the map, search, classes, and directions work without it.

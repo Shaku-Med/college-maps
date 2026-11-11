@@ -5,7 +5,7 @@ import type { Place } from '@/data/campus';
 import { usesTabRail } from '@/hooks/use-layout';
 import { openPlacePanel } from '@/lib/place-panel';
 
-export const WEB_ORIGIN = 'https://csimap.vercel.app';
+export const WEB_ORIGIN = 'https://csimap.app';
 
 /** The web link for a place, the same one the web app shares, so it opens anywhere. */
 export function placeLink(place: Place, room?: string) {
