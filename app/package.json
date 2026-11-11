@@ -9,7 +9,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "next typegen && tsc --noEmit",
     "campus:places": "node scripts/import-osm-places.mjs",
     "campus:paths": "node scripts/build-walk-graph.mjs",
     "campus:sync": "node scripts/sync-backend-campus.mjs",
