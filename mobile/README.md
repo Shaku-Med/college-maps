@@ -111,12 +111,10 @@ without the native side, and there it simply stays off.
 
 Before submitting:
 
-1. Set `EXPO_PUBLIC_SUPPORT_EMAIL` in each build profile's `env` in `eas.json`, so people can report other
-   students' events. Apple requires a report option and a way to reach you when users can post content.
-2. On the API host, set `REVIEW_EMAIL` (a school address that is nobody's real inbox), `REVIEW_CODE`
+1. On the API host, set `REVIEW_EMAIL` (a school address that is nobody's real inbox), `REVIEW_CODE`
    (8 digits, new for every submission) and `REVIEW_UNTIL` (a date a few weeks out), then redeploy. The code
    stops working on its own after that date. Use the same account details in Play Console under App access.
-3. In App Store Connect, give the privacy policy URL `https://csimap.app/privacy`, and paste this into
+2. In App Store Connect, give the privacy policy URL `https://csimap.app/privacy`, and paste this into
    App Review notes:
 
    > Sign in is only needed for friends and meetups; the map, search, classes, and directions work without it.
@@ -138,13 +136,13 @@ Before submitting:
    > The off campus driving and cycling routes come from OpenStreetMap data. This is an unofficial student
    > project and is not affiliated with the College of Staten Island.
 
-4. App Privacy answers: email address and user id (linked to the user, for app functionality), precise
+3. App Privacy answers: email address and user id (linked to the user, for app functionality), precise
    location (not stored, used for app functionality and shared live only inside meetups), other user content
    (event titles and notes). No tracking. Siri requests stay on the phone and send nothing to the server.
    Step counts (Motion & Fitness) are read on the phone during a street trip to switch between driving and
    walking, and never leave it, so they are not "collected" data.
 
-5. On the App Store page, the "Supports" details come from the build on their own. Say what Siri can do in the
+4. On the App Store page, the "Supports" details come from the build on their own. Say what Siri can do in the
    description, so people know to ask:
 
    > Ask Siri. "Directions to the library in CSI Map" opens walking directions, "Take me to class with
