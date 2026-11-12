@@ -36,9 +36,11 @@ type Message struct {
 	URL   string `json:"url"`
 }
 
+// Subscription is one device in the owner's data export. The endpoint is a delivery address that works like a
+// token, so the export names the push service instead of including it.
 type Subscription struct {
-	Endpoint  string
-	CreatedAt string
+	Service   string `json:"service"`
+	CreatedAt string `json:"createdAt"`
 }
 
 type Service struct {
@@ -131,7 +133,7 @@ func (s *Service) Export(ctx context.Context, me auth.User) ([]Subscription, err
 	if me.ID == "" {
 		return nil, auth.ErrUnauthorized
 	}
-	var out []Subscription
+	out := []Subscription{}
 	err := db.WithScope(ctx, s.pool, db.Scope{UserID: me.ID}, func(tx pgx.Tx) error {
 		rows, err := tx.Query(ctx, `select endpoint, created_at from push_subscriptions where user_id = $1::uuid order by created_at`, me.ID)
 		if err != nil {
@@ -139,13 +141,12 @@ func (s *Service) Export(ctx context.Context, me auth.User) ([]Subscription, err
 		}
 		defer rows.Close()
 		for rows.Next() {
-			var item Subscription
+			var endpoint string
 			var created time.Time
-			if err := rows.Scan(&item.Endpoint, &created); err != nil {
+			if err := rows.Scan(&endpoint, &created); err != nil {
 				return err
 			}
-			item.CreatedAt = created.UTC().Format(time.RFC3339)
-			out = append(out, item)
+			out = append(out, Subscription{Service: serviceName(endpoint), CreatedAt: created.UTC().Format(time.RFC3339)})
 		}
 		return rows.Err()
 	})
@@ -261,6 +262,28 @@ var pushHosts = map[string]bool{
 	"fcm.googleapis.com":                true, // Chrome, Android, and other Chromium browsers
 	"updates.push.services.mozilla.com": true, // Firefox
 	"web.push.apple.com":                true, // Safari and installed iPhone web apps
+}
+
+// serviceName says which push service a device uses, in words, without its address.
+func serviceName(endpoint string) string {
+	parsed, err := url.Parse(endpoint)
+	if err != nil {
+		return "Unknown"
+	}
+	host := strings.ToLower(parsed.Hostname())
+	switch {
+	case host == "fcm.googleapis.com":
+		return "Chrome, Android and other Chromium browsers"
+	case host == "updates.push.services.mozilla.com":
+		return "Firefox"
+	case host == "web.push.apple.com":
+		return "Safari or an iPhone home screen app"
+	case strings.HasSuffix(host, windowsPushSuffix):
+		return "Edge or another Windows browser"
+	case isLocalPushHost(host):
+		return "Local development"
+	}
+	return "Unknown"
 }
 
 // Edge and other Windows browsers get an endpoint on a numbered Windows push host.

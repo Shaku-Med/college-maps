@@ -18,7 +18,7 @@ export type AccountExport = {
     blocked?: { username: string; displayName: string }[];
   };
   meetups: unknown[];
-  notifications?: { endpoint: string; createdAt: string }[];
+  notifications?: { service: string; createdAt: string }[];
   notStored: string[];
   classes?: { name: string; place: string; room: string; days: string; start: string; end: string }[];
 };
@@ -34,20 +34,39 @@ function fileBase(exportedAt: string) {
   return `${name}-data-${fileStamp(exportedAt)}`;
 }
 
-export function withLocalClasses(data: AccountExport): AccountExport {
+type Fields = Record<string, unknown>;
+
+// The export is read field by field, so a missing or renamed field shows as a dash instead of "undefined".
+const text = (value: unknown) => (typeof value === "string" ? value : "");
+const shown = (value: string | undefined) => value || "—";
+const fields = (value: unknown): Fields => (typeof value === "object" && value !== null && !Array.isArray(value) ? (value as Fields) : {});
+const rows = (value: unknown): Fields[] => (Array.isArray(value) ? value.map(fields) : []);
+const who = (p: Fields) => ({ username: text(p.username), displayName: text(p.displayName) });
+
+export function withLocalClasses(raw: AccountExport): AccountExport {
+  const data = fields(raw);
+  const account = fields(data.account);
+  const friends = fields(data.friends);
   return {
-    ...data,
-    exportedAt: data.exportedAt || new Date().toISOString(),
-    friends: {
-      friends: data.friends?.friends ?? [],
-      incoming: data.friends?.incoming ?? [],
-      outgoing: data.friends?.outgoing ?? [],
-      blocked: data.friends?.blocked ?? [],
+    ...raw,
+    exportedAt: text(data.exportedAt) || new Date().toISOString(),
+    account: {
+      email: text(account.email),
+      username: text(account.username),
+      displayName: text(account.displayName),
+      createdAt: text(account.createdAt) || undefined,
+      lastLoginAt: text(account.lastLoginAt) || undefined,
     },
-    sessions: data.sessions ?? [],
-    meetups: data.meetups ?? [],
-    notifications: data.notifications ?? [],
-    notStored: data.notStored ?? [],
+    sessions: rows(data.sessions).map((s) => ({ createdAt: text(s.createdAt), lastSeenAt: text(s.lastSeenAt), expiresAt: text(s.expiresAt) })),
+    friends: {
+      friends: rows(friends.friends).map((f) => ({ ...who(f), since: text(f.since) })),
+      incoming: rows(friends.incoming).map((f) => ({ ...who(f), sentAt: text(f.sentAt) })),
+      outgoing: rows(friends.outgoing).map((f) => ({ ...who(f), sentAt: text(f.sentAt) })),
+      blocked: rows(friends.blocked).map(who),
+    },
+    meetups: rows(data.meetups),
+    notifications: rows(data.notifications).map((n) => ({ service: text(n.service), createdAt: text(n.createdAt) })),
+    notStored: Array.isArray(data.notStored) ? data.notStored.filter((line): line is string => typeof line === "string") : [],
     classes: loadSchedule().map((entry) => classLine(entry)),
   };
 }
@@ -85,7 +104,7 @@ function escapeHtml(value: string) {
 }
 
 function person(p: { username: string; displayName: string }) {
-  return `${p.displayName} (@${p.username})`;
+  return p.username ? `${shown(p.displayName)} (@${p.username})` : shown(p.displayName);
 }
 
 function list(items: string[]) {
@@ -101,7 +120,7 @@ export function exportHtml(data: AccountExport) {
   const blocked = data.friends?.blocked ?? [];
   const classes = data.classes ?? [];
   const sessions = data.sessions ?? [];
-  const meetups = (data.meetups ?? []) as { id?: string; note?: string; title?: string; yourRole?: string; yourStatus?: string }[];
+  const meetups = rows(data.meetups);
   const notifications = data.notifications ?? [];
   return `<!DOCTYPE html>
 <html lang="en">
@@ -118,34 +137,36 @@ export function exportHtml(data: AccountExport) {
 </head>
 <body>
   <h1>${escapeHtml(title)}</h1>
-  <p class="meta">Exported ${escapeHtml(data.exportedAt)}</p>
+  <p class="meta">Exported ${escapeHtml(shown(data.exportedAt))}</p>
   <h2>Account</h2>
   <ul>
-    <li>Email: ${escapeHtml(data.account.email)}</li>
+    <li>Email: ${escapeHtml(shown(data.account.email))}</li>
     <li>Name: ${escapeHtml(data.account.displayName || "—")}</li>
     <li>Username: ${escapeHtml(data.account.username ? `@${data.account.username}` : "—")}</li>
     ${data.account.createdAt ? `<li>Created: ${escapeHtml(data.account.createdAt)}</li>` : ""}
     ${data.account.lastLoginAt ? `<li>Last sign in: ${escapeHtml(data.account.lastLoginAt)}</li>` : ""}
   </ul>
   <h2>Sessions on your devices</h2>
-  ${list(sessions.map((s) => `Signed in ${s.createdAt}, last seen ${s.lastSeenAt}, expires ${s.expiresAt}`))}
+  ${list(sessions.map((s) => `Signed in ${shown(s.createdAt)}, last seen ${shown(s.lastSeenAt)}, expires ${shown(s.expiresAt)}`))}
   <h2>Friends</h2>
-  ${list(friends.map((f) => `${person(f)}, friends since ${f.since}`))}
+  ${list(friends.map((f) => `${person(f)}, friends since ${shown(f.since)}`))}
   <h2>Friend requests you received</h2>
-  ${list(incoming.map((f) => `${person(f)}, ${f.sentAt}`))}
+  ${list(incoming.map((f) => `${person(f)}, ${shown(f.sentAt)}`))}
   <h2>Friend requests you sent</h2>
-  ${list(outgoing.map((f) => `${person(f)}, ${f.sentAt}`))}
+  ${list(outgoing.map((f) => `${person(f)}, ${shown(f.sentAt)}`))}
   <h2>People you blocked</h2>
   ${list(blocked.map(person))}
   <h2>Meetups</h2>
   ${list(meetups.map((m) => {
-    const label = m.title || m.note || m.id || "Meetup";
-    return `${label}${m.yourRole ? ` · ${m.yourRole}` : ""}${m.yourStatus ? ` · ${m.yourStatus}` : ""}`;
+    const label = text(m.title) || text(m.note) || "Meetup";
+    const role = text(m.yourRole);
+    const status = text(m.yourStatus);
+    return `${label}${role ? ` · ${role}` : ""}${status ? ` · ${status}` : ""}`;
   }))}
   <h2>Notification devices</h2>
-  ${list(notifications.map((n) => `${n.endpoint} · added ${n.createdAt}`))}
+  ${list(notifications.map((n) => `${shown(n.service)} · added ${shown(n.createdAt)}`))}
   <h2>Classes on this device</h2>
-  ${list(classes.map((c) => `${c.name} · ${c.place} ${c.room} · ${c.days} ${c.start}–${c.end}`))}
+  ${list(classes.map((c) => `${shown(c.name)} · ${shown(c.place)} ${c.room} · ${c.days} ${c.start}–${c.end}`))}
   <h2>What we never store</h2>
   ${list(data.notStored ?? [])}
 </body>
