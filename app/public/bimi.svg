@@ -1,0 +1,13 @@
+<svg version="1.2" baseProfile="tiny-ps" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <title>CSI Map</title>
+  <rect width="512" height="512" fill="#1268D2"/>
+  <g transform="translate(256 256) scale(1.3) translate(-256 -214)">
+    <path d="M256 70 C 188 70 134 124 134 192 C 134 268 220 334 251 357 C 254 359.3 258 359.3 261 357 C 292 334 378 268 378 192 C 378 124 324 70 256 70 Z" fill="#FFFFFF"/>
+    <g fill="none" stroke="#1268D2" stroke-width="14">
+      <path d="M206 40 L 206 380"/>
+      <path d="M292 40 L 292 380"/>
+      <path d="M206 96 C 250 190 320 250 410 276"/>
+      <path d="M206 150 C 246 230 316 286 410 312"/>
+    </g>
+  </g>
+</svg>
