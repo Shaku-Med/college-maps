@@ -10,6 +10,7 @@ import { SectionTitle } from '@/components/section';
 import { SignIn } from '@/components/sign-in';
 import { StackLinkedItem } from '@/components/stack-linked-item';
 import { UpdatesSection } from '@/components/updates-section';
+import { IS_TEST_BUILD } from '@/lib/install-source';
 import { CAMPUS } from '@/data/campus';
 import { useLinkedSuffix } from '@/hooks/use-linked-row-opacity';
 import { useNow } from '@/hooks/use-now';
@@ -309,10 +310,12 @@ export default function AccountScreen() {
           </ListGroup>
         </View>
 
-        <View>
-          <SectionTitle>App updates</SectionTitle>
-          <UpdatesSection />
-        </View>
+        {IS_TEST_BUILD ? (
+          <View>
+            <SectionTitle>App updates</SectionTitle>
+            <UpdatesSection />
+          </View>
+        ) : null}
 
         {/* Like the system Settings app: your data, then signing out and deleting the account, come last. */}
         {account.status === 'signed-in' && !account.user.needsProfile ? (

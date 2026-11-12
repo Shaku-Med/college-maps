@@ -1,0 +1,9 @@
+{
+  "name": "install-source",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Tells a TestFlight or sideloaded build from one installed from the App Store or Google Play",
+  "license": "UNLICENSED",
+  "author": "CSI Map",
+  "homepage": "https://github.com/Shaku-Med/college-maps"
+}
