@@ -29,6 +29,7 @@ func New(
 	pushService *push.Service,
 	settingsService *settings.Service,
 	issueService *issues.Service,
+	human humanCheck,
 ) *Server {
 	ip := clientIPFunc(cfg.ClientIPHeader)
 	general := newRateLimiter(20_000, time.Minute)
@@ -56,6 +57,8 @@ func New(
 		social:   socialService,
 		push:     pushService,
 		settings: settingsService,
+		human:    human,
+		clientIP: ip,
 		logger:   logger,
 		cookie:   sessionCookie(cfg.IsProduction()),
 	}

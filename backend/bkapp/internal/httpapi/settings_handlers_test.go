@@ -31,7 +31,7 @@ func settingsServer(t *testing.T) (*httptest.Server, *authtest.CapturedMail) {
 		t.Fatal(err)
 	}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	srv := httptest.NewServer(New(cfg, logger, site, svc, nil, nil, settings.NewService(nil), nil).Handler())
+	srv := httptest.NewServer(New(cfg, logger, site, svc, nil, nil, settings.NewService(nil), nil, fakeHuman{}).Handler())
 	t.Cleanup(srv.Close)
 	return srv, mail
 }
@@ -65,7 +65,7 @@ func TestSettingsRefuseBadInput(t *testing.T) {
 	srv, mail := settingsServer(t)
 	jar, _ := cookiejar.New(nil)
 	client := &http.Client{Jar: jar}
-	if status, _ := settingsCall(t, client, http.MethodPost, srv.URL+"/v1/auth/code", `{"email":"`+student+`"}`); status != http.StatusAccepted {
+	if status, _ := settingsCall(t, client, http.MethodPost, srv.URL+"/v1/auth/code", `{"email":"`+student+`","turnstile":"human"}`); status != http.StatusAccepted {
 		t.Fatalf("code = %d", status)
 	}
 	if status, _ := settingsCall(t, client, http.MethodPost, srv.URL+"/v1/auth/verify", `{"email":"`+student+`","code":"`+mail.Last(student)+`"}`); status != http.StatusOK {

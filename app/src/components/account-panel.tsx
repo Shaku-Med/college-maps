@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 
 import { CAMPUS } from "@/data/campus";
+import { HumanCheck } from "@/components/human-check";
 import { CollapseButton, SheetGrabber } from "@/components/sheet-chrome";
 import { VoicePicker } from "@/components/voice-picker";
 import type { AccountState } from "@/hooks/use-account";
@@ -191,6 +192,8 @@ function SignIn({ onUser, settingRows }: { onUser: (user: AccountUser) => void; 
   const [error, setError] = useState<string>();
   const [isBusy, setIsBusy] = useState(false);
   const [cooldown, setCooldown] = useState(0);
+  const [human, setHuman] = useState<string | null>(null);
+  const [humanRound, setHumanRound] = useState(0);
 
   useEffect(() => {
     if (cooldown <= 0) return;
@@ -202,10 +205,15 @@ function SignIn({ onUser, settingRows }: { onUser: (user: AccountUser) => void; 
     const problem = schoolEmailProblem(target);
     if (problem) return setError(problem);
 
+    if (!human) return setError("One moment, we're still checking that you're a person.");
+
     setIsBusy(true);
     setError(undefined);
-    const res = await accountApi.requestCode(target);
+    const res = await accountApi.requestCode(target, human);
     setIsBusy(false);
+    // A token works once, so the next send needs a new one either way.
+    setHuman(null);
+    setHumanRound((round) => round + 1);
 
     if (res.ok) {
       setSentTo(target);
@@ -256,6 +264,8 @@ function SignIn({ onUser, settingRows }: { onUser: (user: AccountUser) => void; 
             }}
             isRequired
             isInvalid={Boolean(error)}
+            // Native validity would block the form after any error, even a server one, until the email is edited.
+            validationBehavior="aria"
             fullWidth>
             <Label>School email</Label>
             <Input
@@ -269,8 +279,9 @@ function SignIn({ onUser, settingRows }: { onUser: (user: AccountUser) => void; 
               placeholder={`you@${CAMPUS.college.emailDomains[0]}`}
             />
           </TextField>
+          <HumanCheck round={humanRound} onToken={setHuman} />
           <ErrorText message={error} />
-          <Button type="submit" isPending={isBusy} isDisabled={!email.trim()} fullWidth>
+          <Button type="submit" isPending={isBusy} isDisabled={!email.trim() || !human} fullWidth>
             <Mail aria-hidden />
             Email me a code
           </Button>
@@ -330,6 +341,7 @@ function SignIn({ onUser, settingRows }: { onUser: (user: AccountUser) => void; 
       </InputOTP>
 
       <ErrorText message={error} />
+      <HumanCheck round={humanRound} onToken={setHuman} />
 
       <Button type="submit" isPending={isBusy} isDisabled={code.length !== CODE_LENGTH} fullWidth>
         Sign in
@@ -347,7 +359,7 @@ function SignIn({ onUser, settingRows }: { onUser: (user: AccountUser) => void; 
           <ArrowLeft aria-hidden />
           Different email
         </Button>
-        <Button variant="ghost" size="sm" isDisabled={cooldown > 0 || isBusy} onPress={() => void sendCode(sentTo)}>
+        <Button variant="ghost" size="sm" isDisabled={cooldown > 0 || isBusy || !human} onPress={() => void sendCode(sentTo)}>
           {cooldown > 0 ? `Resend in ${cooldown}s` : "Resend code"}
         </Button>
       </div>

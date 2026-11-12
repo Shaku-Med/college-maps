@@ -8,14 +8,16 @@ WORKDIR /app
 # Baked into the browser code at build time, so they are build arguments, not runtime settings.
 ARG NEXT_PUBLIC_API_URL
 ARG NEXT_PUBLIC_REALTIME_URL
+ARG NEXT_PUBLIC_TURNSTILE_SITE_KEY
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL \
     NEXT_PUBLIC_REALTIME_URL=$NEXT_PUBLIC_REALTIME_URL \
+    NEXT_PUBLIC_TURNSTILE_SITE_KEY=$NEXT_PUBLIC_TURNSTILE_SITE_KEY \
     API_PROXIED_BY_HOST=true \
     NEXT_OUTPUT_STANDALONE=true \
     NEXT_TELEMETRY_DISABLED=1
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-RUN test -n "$NEXT_PUBLIC_API_URL" && test -n "$NEXT_PUBLIC_REALTIME_URL" && npm run build
+RUN test -n "$NEXT_PUBLIC_API_URL" && test -n "$NEXT_PUBLIC_REALTIME_URL" && test -n "$NEXT_PUBLIC_TURNSTILE_SITE_KEY" && npm run build
 
 FROM node:24-alpine
 WORKDIR /app

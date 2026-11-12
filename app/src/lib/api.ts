@@ -138,7 +138,8 @@ export function schoolEmailProblem(email: string): string | null {
 
 export const accountApi = {
   me: () => withUser(apiCall("/v1/me", "GET")),
-  requestCode: (email: string) => apiCall<{ sent: boolean }>("/v1/auth/code", "POST", { email }),
+  requestCode: (email: string, turnstile: string) =>
+    apiCall<{ sent: boolean }>("/v1/auth/code", "POST", { email, turnstile }),
   verifyCode: (email: string, code: string) => withUser(apiCall("/v1/auth/verify", "POST", { email, code })),
   updateProfile: (profile: { displayName?: string; username?: string }) => withUser(apiCall("/v1/me", "PATCH", profile)),
   signOut: () => apiCall<void>("/v1/auth/signout", "POST"),

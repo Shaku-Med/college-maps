@@ -83,7 +83,8 @@ async function withUser(result: Promise<ApiResult<unknown>>): Promise<ApiResult<
 
 export const accountApi = {
   me: () => withUser(apiCall('/v1/me', 'GET')),
-  requestCode: (email: string) => apiCall<{ sent: boolean }>('/v1/auth/code', 'POST', { email }),
+  requestCode: (email: string, turnstile: string) =>
+    apiCall<{ sent: boolean }>('/v1/auth/code', 'POST', { email, turnstile }),
   // The app's own verify route answers with the session token instead of setting a cookie.
   verifyCode: async (email: string, code: string): Promise<ApiResult<{ user: AccountUser; token: string }>> => {
     const res = await apiCall<{ user?: unknown; token?: unknown }>('/v1/app/auth/verify', 'POST', { email, code });

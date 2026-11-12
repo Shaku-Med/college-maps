@@ -5,6 +5,7 @@ import { Pressable, Text, View } from 'react-native';
 
 import { CAMPUS } from '@/data/campus';
 import { GlassInput } from '@/components/glass-field';
+import { HUMAN_CHECK_AVAILABLE, HumanCheck } from '@/components/human-check';
 import { completeSignIn } from '@/lib/account';
 import { CODE_LENGTH, MAX_EMAIL_LENGTH, accountApi, normalizeEmail, schoolEmailProblem } from '@/lib/api';
 import { openWeb } from '@/lib/links';
@@ -17,6 +18,8 @@ export function SignIn() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [wait, setWait] = useState(0);
+  const [human, setHuman] = useState<string | null>(null);
+  const [humanRound, setHumanRound] = useState(0);
 
   useEffect(() => {
     if (wait <= 0) return;
@@ -28,10 +31,17 @@ export function SignIn() {
     const address = normalizeEmail(email);
     const problem = schoolEmailProblem(address);
     if (problem) return setError(problem);
+    if (!human) {
+      setError('One moment, we are still checking that you are a person.');
+      return;
+    }
     setBusy(true);
     setError(null);
-    const res = await accountApi.requestCode(address);
+    const res = await accountApi.requestCode(address, human);
     setBusy(false);
+    // The server spends each token once, whatever the answer.
+    setHuman(null);
+    setHumanRound((round) => round + 1);
     if (!res.ok) {
       setError(res.message);
       if (res.retryAfter) setWait(res.retryAfter);
@@ -97,12 +107,13 @@ export function SignIn() {
           <Pressable onPress={() => setStep('email')} hitSlop={8} className="active:opacity-60">
             <Text className="text-sm font-medium text-accent">Use another email</Text>
           </Pressable>
-          <Pressable disabled={wait > 0 || busy} onPress={() => void sendCode()} hitSlop={8} className="active:opacity-60">
-            <Text className={wait > 0 ? 'text-sm text-muted' : 'text-sm font-medium text-accent'}>
+          <Pressable disabled={wait > 0 || busy || !human} onPress={() => void sendCode()} hitSlop={8} className="active:opacity-60">
+            <Text className={wait > 0 || !human ? 'text-sm text-muted' : 'text-sm font-medium text-accent'}>
               {wait > 0 ? `New code in ${wait}s` : 'Send a new code'}
             </Text>
           </Pressable>
         </View>
+        <HumanCheck round={humanRound} onToken={setHuman} />
       </View>
     );
   }
@@ -131,7 +142,8 @@ export function SignIn() {
         />
         {error ? <FieldError>{error}</FieldError> : <Description>Your email stays private. Friends only see your name.</Description>}
       </TextField>
-      <Button size="lg" isDisabled={busy || wait > 0} onPress={() => void sendCode()}>
+      <HumanCheck round={humanRound} onToken={setHuman} />
+      <Button size="lg" isDisabled={busy || wait > 0 || !HUMAN_CHECK_AVAILABLE} onPress={() => void sendCode()}>
         <Button.Label>{busy ? 'Sending' : wait > 0 ? `Try again in ${wait}s` : 'Email me a code'}</Button.Label>
       </Button>
       <View className="flex-row items-center justify-center gap-4">

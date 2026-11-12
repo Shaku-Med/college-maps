@@ -28,6 +28,9 @@ var (
 	opaqueSecret   = regexp.MustCompile(`^[A-Za-z0-9._~+/=-]{20,512}$`)
 	reviewCode     = regexp.MustCompile(`^[0-9]{8}$`)
 	resendKey      = regexp.MustCompile(`^re_[A-Za-z0-9_]{20,100}$`)
+	turnstileKey   = regexp.MustCompile(`^[0-9]x[A-Za-z0-9_-]{20,100}$`)
+	// Cloudflare's published test secrets pass or fail every token, so production must never run on one.
+	turnstileTestKey = regexp.MustCompile(`^[0-9]x0+AA$`)
 	// The fixed review code is for one store review at a time, so it cannot be left on for good.
 	maxReviewWindow = 60 * 24 * time.Hour
 )
@@ -51,6 +54,8 @@ type Config struct {
 	EmailFrom      string
 	CronSecret     string
 	ClientIPHeader string
+	// Proves a person asked for a sign in code, so scripts cannot fill school inboxes.
+	TurnstileSecret string
 	// App Store review: one account whose sign in code is fixed, because a reviewer cannot receive a school email.
 	ReviewEmail string
 	ReviewCode  string
@@ -166,6 +171,14 @@ func Load() (Config, error) {
 			add(fmt.Errorf("CRON_SECRET must be at least %d characters of random text, or left unset", minSecretLength))
 		}
 		cfg.CronSecret = cron
+	}
+
+	cfg.TurnstileSecret = strings.TrimSpace(os.Getenv("TURNSTILE_SECRET"))
+	switch {
+	case !turnstileKey.MatchString(cfg.TurnstileSecret):
+		add(errors.New("TURNSTILE_SECRET is required: the secret key from Cloudflare Turnstile, or 1x0000000000000000000000000000000AA in development"))
+	case production && turnstileTestKey.MatchString(cfg.TurnstileSecret):
+		add(errors.New("TURNSTILE_SECRET is one of Cloudflare's test keys, which pass every token; production needs the real one"))
 	}
 
 	// The review sign in is optional, so a mistake in it turns it off with a warning instead of taking the whole API down.

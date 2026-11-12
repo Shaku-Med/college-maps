@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -38,9 +39,18 @@ type authHandlers struct {
 	social   *social.Service
 	push     *push.Service
 	settings *settings.Service
+	human    humanCheck
+	clientIP func(*http.Request) string
 	logger   *slog.Logger
 	cookie   cookieSettings
 }
+
+// humanCheck is Cloudflare Turnstile in production; tests swap in their own.
+type humanCheck interface {
+	Verify(ctx context.Context, token, action, remoteIP string) error
+}
+
+const signInAction = "signin"
 
 // userResponse is only ever sent to the account owner; anything shown to others needs a type without the email.
 type userResponse struct {
@@ -76,9 +86,17 @@ func decodeJSONUpTo(w http.ResponseWriter, r *http.Request, dst any, maxBytes in
 
 func (a *authHandlers) requestCode(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Email string `json:"email"`
+		Email     string `json:"email"`
+		Turnstile string `json:"turnstile"`
 	}
-	if !decodeJSON(w, r, &body) {
+	// Room for a full length Turnstile token next to the email.
+	if !decodeJSONUpTo(w, r, &body, 4<<10) {
+		return
+	}
+	// Checked before anything else, so a script cannot even learn how the email rules behave.
+	if err := a.human.Verify(r.Context(), body.Turnstile, signInAction, a.clientIP(r)); err != nil {
+		a.logger.Warn("sign-in code refused: human check failed", "error", err)
+		writeError(w, http.StatusForbidden, "We couldn't confirm you're a person. Wait for the check to finish, then try again.")
 		return
 	}
 

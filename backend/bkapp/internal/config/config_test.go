@@ -18,6 +18,7 @@ func setValid(t *testing.T) {
 	t.Setenv("RESEND_API_KEY", "")
 	t.Setenv("EMAIL_FROM", "")
 	t.Setenv("CLIENT_IP_HEADER", "")
+	t.Setenv("TURNSTILE_SECRET", "0x4AAAAAAAkTestOnlyNotARealSecret01")
 }
 
 func TestLoadValidDevelopment(t *testing.T) {
@@ -53,6 +54,17 @@ func TestLoadFailsClosed(t *testing.T) {
 		"http origin not local":   func(t *testing.T) { t.Setenv("ALLOWED_ORIGINS", "http://csimap.example.com") },
 		"origin with path":        func(t *testing.T) { t.Setenv("ALLOWED_ORIGINS", "https://csimap.example.com/app") },
 		"log email in production": func(t *testing.T) { t.Setenv("APP_ENV", "production") },
+		"no turnstile secret":     func(t *testing.T) { t.Setenv("TURNSTILE_SECRET", "") },
+		"malformed turnstile":     func(t *testing.T) { t.Setenv("TURNSTILE_SECRET", "not a key") },
+		"turnstile test key in production": func(t *testing.T) {
+			t.Setenv("APP_ENV", "production")
+			t.Setenv("EMAIL_MODE", "resend")
+			t.Setenv("RESEND_API_KEY", "re_test_0123456789abcdefghij")
+			t.Setenv("EMAIL_FROM", "CSI Map <signin@example.com>")
+			t.Setenv("ALLOWED_ORIGINS", "https://csimap.example.com")
+			t.Setenv("DATABASE_URL", "postgres://u:p@ep-x.neon.tech/db?sslmode=verify-full")
+			t.Setenv("TURNSTILE_SECRET", "1x0000000000000000000000000000000AA")
+		},
 		"production without ssl": func(t *testing.T) {
 			t.Setenv("APP_ENV", "production")
 			t.Setenv("EMAIL_MODE", "resend")

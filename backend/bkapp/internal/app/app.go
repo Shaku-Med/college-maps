@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"time"
 
 	"csimap/bkapp/internal/auth"
@@ -18,6 +19,7 @@ import (
 	"csimap/bkapp/internal/push"
 	"csimap/bkapp/internal/settings"
 	"csimap/bkapp/internal/social"
+	"csimap/bkapp/internal/turnstile"
 )
 
 type App struct {
@@ -43,6 +45,11 @@ func Build(ctx context.Context, logger *slog.Logger, migrate bool) (*App, error)
 	site, err := campus.Load()
 	if err != nil {
 		return nil, fmt.Errorf("campus: %w", err)
+	}
+
+	human, err := humanCheck(cfg)
+	if err != nil {
+		return nil, err
 	}
 
 	openCtx, cancelOpen := context.WithTimeout(ctx, 30*time.Second)
@@ -113,7 +120,7 @@ func Build(ctx context.Context, logger *slog.Logger, migrate bool) (*App, error)
 		go pushService.Notify(context.Background(), senderID, userIDs, push.Message{Kind: kind, Title: title, Body: body, URL: path})
 	})
 
-	api := httpapi.New(cfg, logger, site, authService, socialService, pushService, settings.NewService(pool), issues.NewService(pool, site))
+	api := httpapi.New(cfg, logger, site, authService, socialService, pushService, settings.NewService(pool), issues.NewService(pool, site), human)
 	return &App{
 		Handler: api.Handler(),
 		Config:  cfg,
@@ -136,4 +143,22 @@ func newMailer(cfg config.Config, renderer *email.Renderer, logger *slog.Logger)
 	default:
 		return nil, fmt.Errorf("unsupported EMAIL_MODE %q", cfg.EmailMode)
 	}
+}
+
+// In production a token must come from one of our own sites; development runs on Cloudflare's test keys,
+// which answer for example.com.
+func humanCheck(cfg config.Config) (*turnstile.Verifier, error) {
+	var hostnames []string
+	if cfg.IsProduction() {
+		for origin := range cfg.AllowedOrigins {
+			if u, err := url.Parse(origin); err == nil && u.Hostname() != "" {
+				hostnames = append(hostnames, u.Hostname())
+			}
+		}
+	}
+	// An empty list relaxes the checks for test keys, so production must never end up with one.
+	if cfg.IsProduction() && len(hostnames) == 0 {
+		return nil, fmt.Errorf("turnstile: no hostnames from ALLOWED_ORIGINS")
+	}
+	return turnstile.New(cfg.TurnstileSecret, hostnames, ""), nil
 }

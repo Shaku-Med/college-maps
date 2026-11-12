@@ -4,6 +4,7 @@ import { MAP_ORIGINS } from "@/data/campus";
 import { API_ORIGIN, REALTIME_ORIGIN, apiOriginFor } from "@/lib/api";
 import { STREET_ROUTING_ORIGIN } from "@/lib/directions";
 import { PUSH_CONNECT_ORIGINS } from "@/lib/push-origins";
+import { TURNSTILE_ORIGIN } from "@/lib/turnstile";
 
 // The Host header is only used to pick a private network API address in development; apiOriginFor ignores anything else.
 function requestHostname(request: NextRequest) {
@@ -20,7 +21,8 @@ export function proxy(request: NextRequest) {
 
   const csp = [
     "default-src 'self'",
-    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${isDev ? " 'unsafe-eval'" : ""}`,
+    // The Turnstile host only matters to old browsers; newer ones go by the nonce and strict-dynamic.
+    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic' ${TURNSTILE_ORIGIN}${isDev ? " 'unsafe-eval'" : ""}`,
     `style-src 'self' ${isDev ? "'unsafe-inline'" : `'nonce-${nonce}'`}`,
     "style-src-attr 'unsafe-inline'",
     "img-src 'self' blob: data:",
@@ -28,6 +30,7 @@ export function proxy(request: NextRequest) {
     `connect-src 'self' ${[...MAP_ORIGINS, STREET_ROUTING_ORIGIN, ...PUSH_CONNECT_ORIGINS, ...new Set([API_ORIGIN, apiOriginFor(requestHostname(request)), REALTIME_ORIGIN, apiOriginFor(requestHostname(request), REALTIME_ORIGIN)])].filter(Boolean).join(" ")}`,
     "worker-src 'self' blob:",
     "child-src 'self' blob:",
+    `frame-src 'self' blob: ${TURNSTILE_ORIGIN}`,
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self'",

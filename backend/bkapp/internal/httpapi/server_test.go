@@ -1,7 +1,9 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -45,7 +47,7 @@ func newTestEnv(t *testing.T) testEnv {
 		t.Fatal(err)
 	}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	return testEnv{handler: New(cfg, logger, site, svc, nil, nil, nil, nil).Handler(), mail: mail}
+	return testEnv{handler: New(cfg, logger, site, svc, nil, nil, nil, nil, fakeHuman{}).Handler(), mail: mail}
 }
 
 func jsonRequest(method, path, body string) *http.Request {
@@ -114,7 +116,7 @@ func TestUnknownRouteAndMethod(t *testing.T) {
 func TestWritesNeedAllowedOrigin(t *testing.T) {
 	env := newTestEnv(t)
 	for _, origin := range []string{"", "https://evil.example", "null"} {
-		req := jsonRequest(http.MethodPost, "/v1/auth/code", `{"email":"`+student+`"}`)
+		req := jsonRequest(http.MethodPost, "/v1/auth/code", `{"email":"`+student+`","turnstile":"human"}`)
 		if origin == "" {
 			req.Header.Del("Origin")
 		} else {
@@ -159,8 +161,10 @@ func TestRejectsBadBodies(t *testing.T) {
 		{"wrong content type", "text/plain", `{"email":"` + student + `"}`, http.StatusUnsupportedMediaType},
 		{"unknown field", "application/json", `{"email":"` + student + `","admin":true}`, http.StatusBadRequest},
 		{"two objects", "application/json", `{"email":"a"}{"email":"b"}`, http.StatusBadRequest},
-		{"too large", "application/json", `{"email":"` + strings.Repeat("a", 4000) + `"}`, http.StatusBadRequest},
-		{"other domain", "application/json", `{"email":"jane@gmail.com"}`, http.StatusAccepted},
+		{"too large", "application/json", `{"email":"` + strings.Repeat("a", 5000) + `"}`, http.StatusBadRequest},
+		{"other domain", "application/json", `{"email":"jane@gmail.com","turnstile":"human"}`, http.StatusAccepted},
+		{"no human check", "application/json", `{"email":"` + student + `"}`, http.StatusForbidden},
+		{"failed human check", "application/json", `{"email":"` + student + `","turnstile":"bot"}`, http.StatusForbidden},
 	}
 	for _, tc := range cases {
 		req := jsonRequest(http.MethodPost, "/v1/auth/code", tc.body)
@@ -197,10 +201,10 @@ func TestSignInOverHTTP(t *testing.T) {
 		t.Fatalf("me before sign in = %d", res.StatusCode)
 	}
 
-	if res, _ := call(http.MethodPost, "/v1/auth/code", `{"email":"`+student+`"}`); res.StatusCode != http.StatusAccepted {
+	if res, _ := call(http.MethodPost, "/v1/auth/code", `{"email":"`+student+`","turnstile":"human"}`); res.StatusCode != http.StatusAccepted {
 		t.Fatalf("request code = %d", res.StatusCode)
 	}
-	if res, _ := call(http.MethodPost, "/v1/auth/code", `{"email":"`+student+`"}`); res.StatusCode != http.StatusTooManyRequests || res.Header.Get("Retry-After") == "" {
+	if res, _ := call(http.MethodPost, "/v1/auth/code", `{"email":"`+student+`","turnstile":"human"}`); res.StatusCode != http.StatusTooManyRequests || res.Header.Get("Retry-After") == "" {
 		t.Fatalf("second code request = %d", res.StatusCode)
 	}
 
@@ -296,7 +300,7 @@ func TestSignOutEverywhereOverHTTP(t *testing.T) {
 			res.Body.Close()
 			return res
 		}
-		if res := post("/v1/auth/code", `{"email":"`+student+`"}`); res.StatusCode != http.StatusAccepted {
+		if res := post("/v1/auth/code", `{"email":"`+student+`","turnstile":"human"}`); res.StatusCode != http.StatusAccepted {
 			t.Fatalf("code = %d", res.StatusCode)
 		}
 		if res := post("/v1/auth/verify", `{"email":"`+student+`","code":"`+env.mail.Last(student)+`"}`); res.StatusCode != http.StatusOK {
@@ -354,7 +358,7 @@ func TestDeleteAccountOverHTTP(t *testing.T) {
 		res.Body.Close()
 		return res
 	}
-	if res := post("/v1/auth/code", `{"email":"`+student+`"}`); res.StatusCode != http.StatusAccepted {
+	if res := post("/v1/auth/code", `{"email":"`+student+`","turnstile":"human"}`); res.StatusCode != http.StatusAccepted {
 		t.Fatalf("code = %d", res.StatusCode)
 	}
 	if res := post("/v1/auth/verify", `{"email":"`+student+`","code":"`+env.mail.Last(student)+`"}`); res.StatusCode != http.StatusOK {
@@ -414,7 +418,7 @@ func TestExportAccountOverHTTP(t *testing.T) {
 		res.Body.Close()
 		return res
 	}
-	if res := post("/v1/auth/code", `{"email":"`+student+`"}`); res.StatusCode != http.StatusAccepted {
+	if res := post("/v1/auth/code", `{"email":"`+student+`","turnstile":"human"}`); res.StatusCode != http.StatusAccepted {
 		t.Fatalf("code = %d", res.StatusCode)
 	}
 	if res := post("/v1/auth/verify", `{"email":"`+student+`","code":"`+env.mail.Last(student)+`"}`); res.StatusCode != http.StatusOK {
@@ -485,7 +489,7 @@ func TestPhoneAppSignIn(t *testing.T) {
 	}
 	app := map[string]string{"X-CSIMap-Client": "app"}
 
-	if res, _ := call(http.MethodPost, "/v1/auth/code", `{"email":"`+student+`"}`, app); res.StatusCode != http.StatusAccepted {
+	if res, _ := call(http.MethodPost, "/v1/auth/code", `{"email":"`+student+`","turnstile":"human"}`, app); res.StatusCode != http.StatusAccepted {
 		t.Fatalf("app code request = %d", res.StatusCode)
 	}
 	code := env.mail.Last(student)
@@ -534,5 +538,35 @@ func TestPhoneAppSignIn(t *testing.T) {
 	}
 	if res, _ := call(http.MethodGet, "/v1/me", "", bearer); res.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("token after sign out = %d", res.StatusCode)
+	}
+}
+
+// fakeHuman passes only the token "human", the way Turnstile passes only a real one.
+type fakeHuman struct{}
+
+func (fakeHuman) Verify(_ context.Context, token, action, _ string) error {
+	if token != "human" || action != signInAction {
+		return errors.New("not a person")
+	}
+	return nil
+}
+
+func TestFailedHumanCheckSendsNoEmail(t *testing.T) {
+	env := newTestEnv(t)
+	for _, body := range []string{`{"email":"` + student + `"}`, `{"email":"` + student + `","turnstile":"bot"}`} {
+		rec := serve(env.handler, jsonRequest(http.MethodPost, "/v1/auth/code", body))
+		if rec.Code != http.StatusForbidden {
+			t.Fatalf("%s: status = %d, want 403", body, rec.Code)
+		}
+	}
+	if code := env.mail.Last(student); code != "" {
+		t.Fatalf("a code was emailed without passing the human check")
+	}
+	// The app path skips the Origin check, but not this one.
+	req := jsonRequest(http.MethodPost, "/v1/auth/code", `{"email":"`+student+`"}`)
+	req.Header.Del("Origin")
+	req.Header.Set("X-CSIMap-Client", "app")
+	if rec := serve(env.handler, req); rec.Code != http.StatusForbidden {
+		t.Fatalf("app request without a token: status = %d, want 403", rec.Code)
 	}
 }
