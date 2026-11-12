@@ -25,8 +25,8 @@ env:
   # Public addresses only. They are built into the website's browser code.
   SITE_ORIGIN: https://csimap.app
   REALTIME_ORIGIN: https://live.csimap.app
-  # Public too: the Turnstile site key lives in the repo's Actions variables.
-  TURNSTILE_SITE_KEY: ${{ vars.TURNSTILE_SITE_KEY }}
+  # Public, so an Actions variable is enough, but a secret of the same name works too.
+  TURNSTILE_SITE_KEY: ${{ vars.TURNSTILE_SITE_KEY || secrets.TURNSTILE_SITE_KEY }}
 
 jobs:
   test-go:
