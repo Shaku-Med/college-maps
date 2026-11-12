@@ -33,17 +33,22 @@ func TestLoadValidDevelopment(t *testing.T) {
 
 func TestLoadFailsClosed(t *testing.T) {
 	cases := map[string]func(t *testing.T){
-		"missing port":            func(t *testing.T) { t.Setenv("PORT", "") },
-		"bad env":                 func(t *testing.T) { t.Setenv("APP_ENV", "staging") },
-		"missing origins":         func(t *testing.T) { t.Setenv("ALLOWED_ORIGINS", "") },
-		"missing database":        func(t *testing.T) { t.Setenv("DATABASE_URL", "") },
-		"not postgres":            func(t *testing.T) { t.Setenv("DATABASE_URL", "mysql://x@y/z") },
-		"short secret":            func(t *testing.T) { t.Setenv("AUTH_SECRET", "short") },
-		"missing ticket secret":   func(t *testing.T) { t.Setenv("TICKET_SECRET", "") },
-		"ticket secret reused":    func(t *testing.T) { t.Setenv("TICKET_SECRET", "Vq3xT9mLp2Rk7Wn4Zb8Hc6Jd1Fg5Ys0Ea") },
-		"low entropy secret":      func(t *testing.T) { t.Setenv("AUTH_SECRET", strings.Repeat("ab", 30)) },
-		"bad email mode":          func(t *testing.T) { t.Setenv("EMAIL_MODE", "smtp") },
-		"resend without key":      func(t *testing.T) { t.Setenv("EMAIL_MODE", "resend") },
+		"missing port":          func(t *testing.T) { t.Setenv("PORT", "") },
+		"bad env":               func(t *testing.T) { t.Setenv("APP_ENV", "staging") },
+		"missing origins":       func(t *testing.T) { t.Setenv("ALLOWED_ORIGINS", "") },
+		"missing database":      func(t *testing.T) { t.Setenv("DATABASE_URL", "") },
+		"not postgres":          func(t *testing.T) { t.Setenv("DATABASE_URL", "mysql://x@y/z") },
+		"short secret":          func(t *testing.T) { t.Setenv("AUTH_SECRET", "short") },
+		"missing ticket secret": func(t *testing.T) { t.Setenv("TICKET_SECRET", "") },
+		"ticket secret reused":  func(t *testing.T) { t.Setenv("TICKET_SECRET", "Vq3xT9mLp2Rk7Wn4Zb8Hc6Jd1Fg5Ys0Ea") },
+		"low entropy secret":    func(t *testing.T) { t.Setenv("AUTH_SECRET", strings.Repeat("ab", 30)) },
+		"bad email mode":        func(t *testing.T) { t.Setenv("EMAIL_MODE", "smtp") },
+		"resend without key":    func(t *testing.T) { t.Setenv("EMAIL_MODE", "resend") },
+		"resend malformed key": func(t *testing.T) {
+			t.Setenv("EMAIL_MODE", "resend")
+			t.Setenv("RESEND_API_KEY", "not a resend key")
+			t.Setenv("EMAIL_FROM", "CSI Map <signin@example.com>")
+		},
 		"bad client ip header":    func(t *testing.T) { t.Setenv("CLIENT_IP_HEADER", "Bad Header!") },
 		"http origin not local":   func(t *testing.T) { t.Setenv("ALLOWED_ORIGINS", "http://csimap.example.com") },
 		"origin with path":        func(t *testing.T) { t.Setenv("ALLOWED_ORIGINS", "https://csimap.example.com/app") },
@@ -51,21 +56,21 @@ func TestLoadFailsClosed(t *testing.T) {
 		"production without ssl": func(t *testing.T) {
 			t.Setenv("APP_ENV", "production")
 			t.Setenv("EMAIL_MODE", "resend")
-			t.Setenv("RESEND_API_KEY", "re_test")
+			t.Setenv("RESEND_API_KEY", "re_test_0123456789abcdefghij")
 			t.Setenv("EMAIL_FROM", "CSI Map <signin@example.com>")
 			t.Setenv("ALLOWED_ORIGINS", "https://csimap.example.com")
 		},
 		"production localhost origin": func(t *testing.T) {
 			t.Setenv("APP_ENV", "production")
 			t.Setenv("EMAIL_MODE", "resend")
-			t.Setenv("RESEND_API_KEY", "re_test")
+			t.Setenv("RESEND_API_KEY", "re_test_0123456789abcdefghij")
 			t.Setenv("EMAIL_FROM", "CSI Map <signin@example.com>")
 			t.Setenv("DATABASE_URL", "postgres://u:p@ep-x.neon.tech/db?sslmode=verify-full")
 		},
 		"production without certificate check": func(t *testing.T) {
 			t.Setenv("APP_ENV", "production")
 			t.Setenv("EMAIL_MODE", "resend")
-			t.Setenv("RESEND_API_KEY", "re_test")
+			t.Setenv("RESEND_API_KEY", "re_test_0123456789abcdefghij")
 			t.Setenv("EMAIL_FROM", "CSI Map <signin@example.com>")
 			t.Setenv("ALLOWED_ORIGINS", "https://csimap.example.com")
 			t.Setenv("DATABASE_URL", "postgres://u:p@ep-x.neon.tech/db?sslmode=require")
@@ -86,7 +91,7 @@ func TestLoadValidProduction(t *testing.T) {
 	setValid(t)
 	t.Setenv("APP_ENV", "production")
 	t.Setenv("EMAIL_MODE", "resend")
-	t.Setenv("RESEND_API_KEY", "re_test")
+	t.Setenv("RESEND_API_KEY", "re_test_0123456789abcdefghij")
 	t.Setenv("EMAIL_FROM", "CSI Map <signin@example.com>")
 	t.Setenv("ALLOWED_ORIGINS", "https://csimap.example.com")
 	t.Setenv("DATABASE_URL", "postgres://u:p@ep-x.neon.tech/db?sslmode=verify-full")
@@ -213,7 +218,7 @@ func TestLocalNetworkOriginsOnlyInDevelopment(t *testing.T) {
 	setValid(t)
 	t.Setenv("APP_ENV", "production")
 	t.Setenv("EMAIL_MODE", "resend")
-	t.Setenv("RESEND_API_KEY", "re_test")
+	t.Setenv("RESEND_API_KEY", "re_test_0123456789abcdefghij")
 	t.Setenv("EMAIL_FROM", "CSI Map <signin@example.com>")
 	t.Setenv("DATABASE_URL", "postgres://u:p@ep-x.neon.tech/db?sslmode=verify-full")
 	t.Setenv("ALLOWED_ORIGINS", "http://192.168.1.169:3000")

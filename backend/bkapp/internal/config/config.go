@@ -27,6 +27,7 @@ var (
 	googleClientID = regexp.MustCompile(`^[A-Za-z0-9-]{1,128}\.apps\.googleusercontent\.com$`)
 	opaqueSecret   = regexp.MustCompile(`^[A-Za-z0-9._~+/=-]{20,512}$`)
 	reviewCode     = regexp.MustCompile(`^[0-9]{8}$`)
+	resendKey      = regexp.MustCompile(`^re_[A-Za-z0-9_]{20,100}$`)
 	// The fixed review code is for one store review at a time, so it cannot be left on for good.
 	maxReviewWindow = 60 * 24 * time.Hour
 )
@@ -124,9 +125,9 @@ func Load() (Config, error) {
 		}
 	}
 	if cfg.EmailMode == EmailModeResend {
-		cfg.ResendAPIKey = os.Getenv("RESEND_API_KEY")
-		if cfg.ResendAPIKey == "" {
-			add(errors.New("RESEND_API_KEY is required when EMAIL_MODE=resend"))
+		cfg.ResendAPIKey = strings.TrimSpace(os.Getenv("RESEND_API_KEY"))
+		if !resendKey.MatchString(cfg.ResendAPIKey) {
+			add(errors.New("RESEND_API_KEY is required when EMAIL_MODE=resend and looks like re_ followed by letters and digits"))
 		}
 	}
 	if cfg.EmailMode == EmailModeSMTP {
