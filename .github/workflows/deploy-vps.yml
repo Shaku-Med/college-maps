@@ -122,7 +122,14 @@ jobs:
           set -euo pipefail
           value() { printf '%s\n' "$1" | sed -n "s/^$2=//p" | head -n1 | tr -d '\r'; }
           # Only emptiness and equality are tested; values are never printed.
-          for key in ALLOWED_ORIGINS DATABASE_URL AUTH_SECRET TICKET_SECRET EMAIL_MODE; do
+          # The API refuses to start on a bad email setup, so catch it here before the running one is replaced.
+          case "$(value "$API_ENV" EMAIL_MODE)" in
+            smtp) email_keys="EMAIL_FROM SMTP_HOST SMTP_PORT SMTP_USERNAME SMTP_PASSWORD" ;;
+            resend) email_keys="EMAIL_FROM RESEND_API_KEY" ;;
+            gmail) email_keys="EMAIL_FROM GMAIL_CLIENT_ID GMAIL_CLIENT_SECRET GMAIL_REFRESH_TOKEN" ;;
+            *) echo "::error::EMAIL_MODE in CSIMAP_API_ENV must be smtp, resend or gmail"; exit 1 ;;
+          esac
+          for key in ALLOWED_ORIGINS DATABASE_URL AUTH_SECRET TICKET_SECRET $email_keys; do
             [ -n "$(value "$API_ENV" "$key")" ] || { echo "::error::$key is missing from CSIMAP_API_ENV"; exit 1; }
           done
           for key in ALLOWED_ORIGINS TICKET_SECRET; do
