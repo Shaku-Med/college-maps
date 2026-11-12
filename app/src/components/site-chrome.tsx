@@ -40,6 +40,7 @@ const FOOTER_LINKS = [
     links: [
       { href: "/", label: "Open the map" },
       { href: "/about", label: "About" },
+      { href: "/places", label: "Buildings and places" },
       { href: "/report-problem", label: "Report a problem" },
     ],
   },

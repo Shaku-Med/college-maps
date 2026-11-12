@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 
 const LINKS = [
   { href: "/about", label: "About" },
+  { href: "/places", label: "Places" },
   { href: "/privacy", label: "Privacy" },
   { href: "/terms", label: "Terms" },
 ];
@@ -15,7 +16,7 @@ export function SiteNav() {
   return (
     <nav aria-label="Site" className="hidden items-center gap-1 sm:flex">
       {LINKS.map((link) => {
-        const active = pathname === link.href;
+        const active = pathname === link.href || pathname.startsWith(`${link.href}/`);
         return (
           <Link
             key={link.href}
