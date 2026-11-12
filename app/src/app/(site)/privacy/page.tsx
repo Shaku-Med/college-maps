@@ -136,7 +136,7 @@ export default function PrivacyPage() {
         </p>
       </section>
 
-      <section className="flex flex-col gap-3">
+      <section id="delete" className="flex flex-col gap-3 scroll-mt-20">
         <h2 className="text-lg font-semibold">Delete your information</h2>
         <p className="text-sm leading-relaxed text-muted">
           Signed in, open Account and use the <span className="text-foreground">Danger zone</span>.
@@ -144,6 +144,14 @@ export default function PrivacyPage() {
           membership in other people&apos;s meetups, notification subscriptions, sessions, and leftover
           sign-in codes. You will be signed out everywhere. Doing it from this app also clears the class
           list saved in this browser.
+        </p>
+        <p className="text-sm leading-relaxed text-muted">
+          In the phone app, open Account and tap <span className="text-foreground">Delete account</span>. It
+          deletes the same things right away. If you cannot sign in, email{" "}
+          <a href={`mailto:${app.supportEmail}`} className="font-medium text-accent underline-offset-2 hover:underline">
+            {app.supportEmail}
+          </a>{" "}
+          from your school email and we will delete it within 7 days.
         </p>
         <p className="text-sm leading-relaxed text-muted">
           Incomplete accounts that never set a name and username are removed automatically after two
