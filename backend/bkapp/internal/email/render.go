@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"strings"
 	texttemplate "text/template"
+	"time"
 
 	"csimap/bkapp/internal/campus"
 )
@@ -50,7 +51,7 @@ type Renderer struct {
 	text  map[string]*texttemplate.Template
 }
 
-var emails = []string{"login_code"}
+var emails = []string{"login_code", "signin_alert"}
 
 func NewRenderer(brand campus.Brand) (*Renderer, error) {
 	for _, color := range []string{brand.Accent, brand.AccentText, brand.AccentDark} {
@@ -123,6 +124,55 @@ func (r *Renderer) LoginCode(to, code string, minutes int, logoSrc string) (Rend
 			Code    string
 			Minutes int
 		}{code, minutes},
+	})
+}
+
+// SignIn is what the owner sees about a new sign in. Location is empty when it is not known.
+type SignIn struct {
+	When     time.Time
+	Device   string
+	Location string
+	IP       string
+}
+
+type detailRow struct {
+	Label string
+	Value string
+}
+
+// SignInAlert tells the owner their account was signed in to, the way big providers do, so a stolen code shows.
+func (r *Renderer) SignInAlert(to string, in SignIn, logoSrc string) (Rendered, error) {
+	src, err := logoSource(logoSrc)
+	if err != nil {
+		return Rendered{}, err
+	}
+	when := in.When
+	if r.brand.Location != nil {
+		when = when.In(r.brand.Location)
+	}
+	rows := []detailRow{{"When", when.Format("Mon, Jan 2, 2006 at 3:04 PM MST")}}
+	if in.Device != "" {
+		rows = append(rows, detailRow{"Device", in.Device})
+	}
+	if in.Location != "" {
+		rows = append(rows, detailRow{"Near", in.Location})
+	}
+	if in.IP != "" {
+		rows = append(rows, detailRow{"IP address", in.IP})
+	}
+	account := ""
+	if r.brand.URL != "" {
+		account = r.brand.URL + "/?account=1"
+	}
+	return r.render("signin_alert", page{
+		Subject:   fmt.Sprintf("New sign-in to %s", r.brand.AppName),
+		Preheader: "If this was you, there's nothing to do.",
+		Reason:    fmt.Sprintf("You got this email because %s, your %s account, was just signed in to.", to, r.brand.AppName),
+		LogoSrc:   src,
+		Data: struct {
+			Rows       []detailRow
+			AccountURL string
+		}{rows, account},
 	})
 }
 

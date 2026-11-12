@@ -47,12 +47,24 @@ func NewSMTP(host string, port int, username, password, from string, renderer *R
 }
 
 func (s *SMTP) SendLoginCode(ctx context.Context, to, code string) error {
-	if strings.ContainsAny(to, "\r\n") {
-		return errors.New("send email: invalid recipient")
-	}
 	msg, err := s.renderer.LoginCode(to, code, CodeMinutes, "cid:"+LogoContentID)
 	if err != nil {
 		return err
+	}
+	return s.send(ctx, to, msg)
+}
+
+func (s *SMTP) SendSignInAlert(ctx context.Context, to string, in SignIn) error {
+	msg, err := s.renderer.SignInAlert(to, in, "cid:"+LogoContentID)
+	if err != nil {
+		return err
+	}
+	return s.send(ctx, to, msg)
+}
+
+func (s *SMTP) send(ctx context.Context, to string, msg Rendered) error {
+	if strings.ContainsAny(to, "\r\n") {
+		return errors.New("send email: invalid recipient")
 	}
 	body, err := buildMessage(s.from, to, msg, Logo, time.Now())
 	if err != nil {

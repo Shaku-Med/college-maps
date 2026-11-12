@@ -83,7 +83,9 @@ func Build(ctx context.Context, logger *slog.Logger, migrate bool) (*App, error)
 	for _, warning := range cfg.Warnings {
 		logger.Warn(warning)
 	}
-	var authOptions []auth.Option
+	// Emails go out after the response, so asking for a code never waits on the mail server.
+	background := auth.WithBackgroundMail(logger)
+	authOptions := []auth.Option{background}
 	if cfg.ReviewEmail != "" {
 		authOptions = append(authOptions, auth.WithReviewAccount(cfg.ReviewEmail, cfg.ReviewCode, cfg.ReviewUntil))
 		if time.Now().Before(cfg.ReviewUntil) {
@@ -91,10 +93,10 @@ func Build(ctx context.Context, logger *slog.Logger, migrate bool) (*App, error)
 		}
 	}
 	authService, err := auth.NewService(auth.NewPostgresStore(pool), mailer, cfg.AuthSecret, site.EmailDomains, authOptions...)
-	if err != nil && len(authOptions) > 0 {
+	if err != nil && len(authOptions) > 1 {
 		// Only the review account can make this fail with options, say an address outside the school domains.
 		logger.Warn("review sign in is off", "error", err)
-		authService, err = auth.NewService(auth.NewPostgresStore(pool), mailer, cfg.AuthSecret, site.EmailDomains)
+		authService, err = auth.NewService(auth.NewPostgresStore(pool), mailer, cfg.AuthSecret, site.EmailDomains, background)
 	}
 	if err != nil {
 		pool.Close()
@@ -125,8 +127,11 @@ func Build(ctx context.Context, logger *slog.Logger, migrate bool) (*App, error)
 		Handler: api.Handler(),
 		Config:  cfg,
 		Jobs:    []func(context.Context) error{authService.Cleanup, socialService.Cleanup},
-		Close:   pool.Close,
-		api:     api,
+		Close: func() {
+			authService.Wait()
+			pool.Close()
+		},
+		api: api,
 	}, nil
 }
 

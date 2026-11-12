@@ -570,3 +570,50 @@ func TestFailedHumanCheckSendsNoEmail(t *testing.T) {
 		t.Fatalf("app request without a token: status = %d, want 403", rec.Code)
 	}
 }
+
+func TestReturningSignInSendsAlert(t *testing.T) {
+	site, err := campus.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	clock := func() time.Time { return now }
+	mail := &authtest.CapturedMail{}
+	svc, err := auth.NewService(authtest.NewMemoryStore(clock), mail, []byte(strings.Repeat("k", 40)), site.EmailDomains, auth.WithClock(clock))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.Config{Port: 8080, Env: "development", AllowedOrigins: map[string]struct{}{appOrigin: {}}, ClientIPHeader: "X-Real-IP"}
+	h := New(cfg, slog.New(slog.NewTextHandler(io.Discard, nil)), site, svc, nil, nil, nil, nil, fakeHuman{}).Handler()
+
+	signIn := func() {
+		t.Helper()
+		if rec := serve(h, jsonRequest(http.MethodPost, "/v1/auth/code", `{"email":"`+student+`","turnstile":"human"}`)); rec.Code != http.StatusAccepted {
+			t.Fatalf("request code = %d", rec.Code)
+		}
+		req := jsonRequest(http.MethodPost, "/v1/auth/verify", `{"email":"`+student+`","code":"`+mail.Last(student)+`"}`)
+		req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
+		req.Header.Set("X-Real-IP", "203.0.113.9")
+		req.Header.Set("Cf-Ipcity", "Staten Island")
+		req.Header.Set("Cf-Region", "New York")
+		req.Header.Set("Cf-Ipcountry", "US")
+		if rec := serve(h, req); rec.Code != http.StatusOK {
+			t.Fatalf("verify = %d", rec.Code)
+		}
+	}
+
+	signIn()
+	if got := mail.Alerts(student); len(got) != 0 {
+		t.Fatalf("the first sign in sent %d alerts", len(got))
+	}
+	now = now.Add(2 * time.Minute)
+	signIn()
+	got := mail.Alerts(student)
+	if len(got) != 1 {
+		t.Fatalf("sent %d alerts, want 1", len(got))
+	}
+	want := "Chrome on Windows|Staten Island, New York, US|203.0.113.9"
+	if seen := got[0].Device + "|" + got[0].Location + "|" + got[0].IP; seen != want {
+		t.Fatalf("alert = %q, want %q", seen, want)
+	}
+}

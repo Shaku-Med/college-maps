@@ -1,0 +1,9 @@
+{{define "content"}}
+{{template "heading" "New sign-in to your account"}}
+{{template "paragraph" (printf "Your %s account was just signed in to. Here's what we saw:" .Brand.AppName)}}
+{{template "details" .Data.Rows}}
+{{template "paragraph" "If this was you, you're all set and don't need to do anything."}}
+{{template "note" (dict "Lead" "Wasn't you?" "Body" "Someone used a code sent to your school email. Sign in, open your account, and choose Sign out everywhere. Then change your school email password.")}}
+{{if .Data.AccountURL}}{{template "button" (dict "Label" "Open your account" "URL" .Data.AccountURL)}}{{end}}
+{{template "signoff" (printf "The %s team" .Brand.AppName)}}
+{{end}}

@@ -7,6 +7,9 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+	"time"
+	// The runtime image has no zone files, so the zone data ships inside the binary.
+	_ "time/tzdata"
 )
 
 // Copied from app/campus/campus.json by `npm run campus:sync` in the app folder.
@@ -52,6 +55,8 @@ type Brand struct {
 	Accent      string
 	AccentText  string
 	AccentDark  string
+	// Location is the campus time zone, so times in emails read like a local clock.
+	Location *time.Location
 }
 
 type bounds struct {
@@ -70,6 +75,7 @@ type campusFile struct {
 	College struct {
 		Name         string   `json:"name"`
 		EmailDomains []string `json:"emailDomains"`
+		TimeZone     string   `json:"timeZone"`
 	} `json:"college"`
 	Theme struct {
 		Accent           string `json:"accent"`
@@ -157,6 +163,15 @@ func parseBrand(appName string, file campusFile) (Brand, error) {
 		Accent:      "#1F2937",
 		AccentText:  "#FFFFFF",
 	}
+	zone := strings.TrimSpace(file.College.TimeZone)
+	if zone == "" {
+		return Brand{}, fmt.Errorf("campus.json college.timeZone is required, like America/New_York")
+	}
+	location, err := time.LoadLocation(zone)
+	if err != nil {
+		return Brand{}, fmt.Errorf("campus.json college.timeZone %q is not a known time zone", zone)
+	}
+	brand.Location = location
 	if brand.CollegeName == "" || len(brand.CollegeName) > 100 {
 		return Brand{}, fmt.Errorf("campus.json college.name must be 1 to 100 characters")
 	}

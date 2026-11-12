@@ -16,6 +16,7 @@ const CodeMinutes = 10
 
 type Sender interface {
 	SendLoginCode(ctx context.Context, to, code string) error
+	SendSignInAlert(ctx context.Context, to string, in SignIn) error
 }
 
 const resendEndpoint = "https://api.resend.com/emails"
@@ -36,6 +37,18 @@ func (r *Resend) SendLoginCode(ctx context.Context, to, code string) error {
 	if err != nil {
 		return err
 	}
+	return r.send(ctx, to, msg)
+}
+
+func (r *Resend) SendSignInAlert(ctx context.Context, to string, in SignIn) error {
+	msg, err := r.renderer.SignInAlert(to, in, r.renderer.LogoURL())
+	if err != nil {
+		return err
+	}
+	return r.send(ctx, to, msg)
+}
+
+func (r *Resend) send(ctx context.Context, to string, msg Rendered) error {
 	payload, err := json.Marshal(map[string]any{
 		"from":    r.from,
 		"to":      []string{to},
@@ -77,5 +90,10 @@ func NewLog(logger *slog.Logger) *Log {
 
 func (l *Log) SendLoginCode(_ context.Context, to, code string) error {
 	l.logger.Warn("development sign-in code, not emailed", "to", to, "code", code)
+	return nil
+}
+
+func (l *Log) SendSignInAlert(_ context.Context, to string, in SignIn) error {
+	l.logger.Warn("development sign-in alert, not emailed", "to", to, "device", in.Device, "near", in.Location)
 	return nil
 }

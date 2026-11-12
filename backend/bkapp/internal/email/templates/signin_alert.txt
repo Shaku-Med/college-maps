@@ -1,0 +1,14 @@
+{{define "content"}}New sign-in to your account
+
+Your {{.Brand.AppName}} account was just signed in to. Here's what we saw:
+{{range .Data.Rows}}
+    {{.Label}}: {{.Value}}{{end}}
+
+If this was you, you're all set and don't need to do anything.
+
+Wasn't you? Someone used a code sent to your school email. Sign in, open your account, and choose Sign out everywhere. Then change your school email password.{{if .Data.AccountURL}}
+
+Open your account: {{.Data.AccountURL}}{{end}}
+
+Thanks,
+The {{.Brand.AppName}} team{{end}}

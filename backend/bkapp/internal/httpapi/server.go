@@ -59,6 +59,7 @@ func New(
 		settings: settingsService,
 		human:    human,
 		clientIP: ip,
+		appName:  site.AppName,
 		logger:   logger,
 		cookie:   sessionCookie(cfg.IsProduction()),
 	}

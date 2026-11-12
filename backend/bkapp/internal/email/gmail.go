@@ -65,12 +65,24 @@ func NewGmail(clientID, clientSecret, refreshToken, from string, renderer *Rende
 }
 
 func (g *Gmail) SendLoginCode(ctx context.Context, to, code string) error {
-	if strings.ContainsAny(to, "\r\n") {
-		return errors.New("send email: invalid recipient")
-	}
 	msg, err := g.renderer.LoginCode(to, code, CodeMinutes, "cid:"+LogoContentID)
 	if err != nil {
 		return err
+	}
+	return g.send(ctx, to, msg)
+}
+
+func (g *Gmail) SendSignInAlert(ctx context.Context, to string, in SignIn) error {
+	msg, err := g.renderer.SignInAlert(to, in, "cid:"+LogoContentID)
+	if err != nil {
+		return err
+	}
+	return g.send(ctx, to, msg)
+}
+
+func (g *Gmail) send(ctx context.Context, to string, msg Rendered) error {
+	if strings.ContainsAny(to, "\r\n") {
+		return errors.New("send email: invalid recipient")
 	}
 	body, err := buildMessage(g.from, to, msg, Logo, g.now())
 	if err != nil {

@@ -8,10 +8,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"math/big"
 	"net/mail"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 	"unicode"
 	"unicode/utf8"
@@ -35,6 +37,13 @@ const (
 	sessionTokenSize = 32
 	maxEmailLength   = 254
 	maxNameLength    = 40
+)
+
+const (
+	// Background emails share a few connections, and a stuck mail server gives up rather than piling up.
+	maxParallelMail = 8
+	mailTimeout     = 45 * time.Second
+	cleanupTimeout  = 10 * time.Second
 )
 
 var (
@@ -106,6 +115,8 @@ type StoredUser struct {
 	EmailSealed []byte
 	Username    string
 	DisplayName string
+	// Created is set by UpsertUser when this sign in made the account.
+	Created bool
 }
 
 type ProfileUpdate struct {
@@ -170,6 +181,11 @@ type Service struct {
 	reviewEmail string
 	reviewCode  string
 	reviewUntil time.Time
+
+	background bool
+	logger     *slog.Logger
+	mailSlots  chan struct{}
+	pending    sync.WaitGroup
 }
 
 type Option func(*Service)
@@ -177,6 +193,15 @@ type Option func(*Service)
 // WithClock replaces the time source, for tests that need to move time forward.
 func WithClock(now func() time.Time) Option {
 	return func(s *Service) { s.now = now }
+}
+
+// WithBackgroundMail sends emails after the request returns, so nobody waits on the mail server. A code that fails to
+// send is removed, so it holds no cooldown, and the failure is logged.
+func WithBackgroundMail(logger *slog.Logger) Option {
+	return func(s *Service) {
+		s.background = true
+		s.logger = logger
+	}
 }
 
 // WithReviewAccount gives one school address a fixed code for App Store review, under every normal limit, until a date.
@@ -201,6 +226,10 @@ func NewService(store Store, mailer email.Sender, secret []byte, domains []strin
 	for _, opt := range opts {
 		opt(s)
 	}
+	if s.background && s.logger == nil {
+		return nil, errors.New("background mail needs a logger")
+	}
+	s.mailSlots = make(chan struct{}, maxParallelMail)
 	if s.reviewEmail != "" || s.reviewCode != "" {
 		addr, err := s.NormalizeEmail(s.reviewEmail)
 		if err != nil || addr != s.reviewEmail || !codePattern.MatchString(s.reviewCode) || s.reviewUntil.IsZero() {
@@ -277,23 +306,83 @@ func (s *Service) RequestCode(ctx context.Context, rawEmail string) error {
 	if review {
 		return nil
 	}
-	if err := s.mailer.SendLoginCode(ctx, addr, code); err != nil {
+	return s.mail(ctx, "sign-in code",
+		func(ctx context.Context) error { return s.mailer.SendLoginCode(ctx, addr, code) },
 		// Nobody received this code, so it should not spend one of the sender's tries or hold the cooldown open.
-		_ = s.store.DeleteCodes(context.WithoutCancel(ctx), index)
-		return fmt.Errorf("%w: %v", ErrSendFailed, err)
+		func(ctx context.Context) { _ = s.store.DeleteCodes(ctx, index) },
+	)
+}
+
+// mail sends now, or after the response with background mail on. Either way failed runs when the send fails.
+func (s *Service) mail(ctx context.Context, kind string, send func(context.Context) error, failed func(context.Context)) error {
+	cleanUp := func() {
+		ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), cleanupTimeout)
+		defer cancel()
+		failed(ctx)
 	}
+	if !s.background {
+		if err := send(ctx); err != nil {
+			cleanUp()
+			return fmt.Errorf("%w: %v", ErrSendFailed, err)
+		}
+		return nil
+	}
+	s.pending.Add(1)
+	go func() {
+		defer s.pending.Done()
+		ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), mailTimeout)
+		defer cancel()
+		select {
+		case s.mailSlots <- struct{}{}:
+			defer func() { <-s.mailSlots }()
+		case <-ctx.Done():
+			cleanUp()
+			s.logger.Warn("email not sent: too many waiting", "kind", kind)
+			return
+		}
+		if err := send(ctx); err != nil {
+			cleanUp()
+			s.logger.Warn("email not sent", "kind", kind, "error", err)
+		}
+	}()
 	return nil
+}
+
+// Wait blocks until background emails finish, so a shutdown does not drop them.
+func (s *Service) Wait() {
+	s.pending.Wait()
 }
 
 // VerifyCode signs the user in and returns a new session token for the cookie.
 func (s *Service) VerifyCode(ctx context.Context, rawEmail, code string) (User, string, error) {
+	user, token, _, err := s.verifyCode(ctx, rawEmail, code)
+	return user, token, err
+}
+
+// SignIn is VerifyCode that also emails the owner where the sign in came from, unless it just made the account.
+// The alert never blocks or fails the sign in.
+func (s *Service) SignIn(ctx context.Context, rawEmail, code string, seen email.SignIn) (User, string, error) {
+	user, token, created, err := s.verifyCode(ctx, rawEmail, code)
+	if err != nil || created || (s.reviewEmail != "" && user.Email == s.reviewEmail) {
+		return user, token, err
+	}
+	seen.When = s.now()
+	to := user.Email
+	_ = s.mail(ctx, "sign-in alert",
+		func(ctx context.Context) error { return s.mailer.SendSignInAlert(ctx, to, seen) },
+		func(context.Context) {},
+	)
+	return user, token, nil
+}
+
+func (s *Service) verifyCode(ctx context.Context, rawEmail, code string) (User, string, bool, error) {
 	addr, err := s.NormalizeEmail(rawEmail)
 	if err != nil {
-		return User{}, "", err
+		return User{}, "", false, err
 	}
 	code = strings.TrimSpace(code)
 	if !codePattern.MatchString(code) {
-		return User{}, "", ErrInvalidCode
+		return User{}, "", false, ErrInvalidCode
 	}
 
 	now := s.now()
@@ -303,39 +392,39 @@ func (s *Service) VerifyCode(ctx context.Context, rawEmail, code string) (User, 
 		return hmac.Equal(stored, expected)
 	})
 	if err != nil {
-		return User{}, "", err
+		return User{}, "", false, err
 	}
 	switch {
 	case outcome == CodeLocked, outcome == CodeMismatch && left == 0:
-		return User{}, "", ErrCodeLocked
+		return User{}, "", false, ErrCodeLocked
 	case outcome == CodeMismatch:
-		return User{}, "", &WrongCodeError{AttemptsLeft: left}
+		return User{}, "", false, &WrongCodeError{AttemptsLeft: left}
 	case outcome != CodeAccepted:
-		return User{}, "", ErrInvalidCode
+		return User{}, "", false, ErrInvalidCode
 	}
 
 	sealed, err := s.keys.sealEmail(addr, index)
 	if err != nil {
-		return User{}, "", err
+		return User{}, "", false, err
 	}
 	stored, err := s.store.UpsertUser(ctx, index, sealed, now)
 	if err != nil {
-		return User{}, "", err
+		return User{}, "", false, err
 	}
 	user, err := s.reveal(stored)
 	if err != nil {
-		return User{}, "", err
+		return User{}, "", false, err
 	}
 
 	raw := make([]byte, sessionTokenSize)
 	if _, err := io.ReadFull(s.random, raw); err != nil {
-		return User{}, "", err
+		return User{}, "", false, err
 	}
 	token := base64.RawURLEncoding.EncodeToString(raw)
 	if err := s.store.CreateSession(ctx, user.ID, s.keys.tokenHash(token), now.Add(SessionTTL)); err != nil {
-		return User{}, "", err
+		return User{}, "", false, err
 	}
-	return user, token, nil
+	return user, token, stored.Created, nil
 }
 
 func (s *Service) reveal(stored StoredUser) (User, error) {

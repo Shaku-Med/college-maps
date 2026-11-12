@@ -37,3 +37,21 @@
 {{define "note"}}<p class="body" style="margin:0 0 16px 0; font-size:15px; line-height:24px; color:#3C434C;"><strong class="ink" style="font-weight:600; color:#1A1D21;">{{.Lead}}</strong> {{.Body}}</p>{{end}}
 
 {{define "signoff"}}<p class="body" style="margin:24px 0 28px 0; font-size:15px; line-height:24px; color:#3C434C;">Thanks,<br>{{.}}</p>{{end}}
+
+{{/* Label and value rows in a soft box, such as when and where a sign in happened. */}}
+{{define "details"}}
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:4px 0 20px 0;">
+  <tr>
+    <td class="codebox" style="background-color:#F5F6F8; border:1px solid #E6E8EB; border-radius:10px; padding:10px 16px;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+        {{range .}}
+        <tr>
+          <td class="muted" valign="top" width="112" style="padding:6px 12px 6px 0; font-size:13px; line-height:20px; color:#6B7480; white-space:nowrap;">{{.Label}}</td>
+          <td class="ink" valign="top" style="padding:6px 0; font-size:14px; line-height:20px; font-weight:500; color:#1A1D21; word-break:break-word;">{{.Value}}</td>
+        </tr>
+        {{end}}
+      </table>
+    </td>
+  </tr>
+</table>
+{{end}}

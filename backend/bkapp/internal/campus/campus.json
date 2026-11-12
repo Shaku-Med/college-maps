@@ -10,7 +10,8 @@
   "college": {
     "name": "College of Staten Island",
     "shortName": "CSI",
-    "emailDomains": ["stu-mail.csi.cuny.edu", "csi.cuny.edu"]
+    "emailDomains": ["stu-mail.csi.cuny.edu", "csi.cuny.edu"],
+    "timeZone": "America/New_York"
   },
   "theme": {
     "accent": "#1268D2",

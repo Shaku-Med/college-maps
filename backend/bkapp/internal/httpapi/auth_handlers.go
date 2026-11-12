@@ -41,6 +41,7 @@ type authHandlers struct {
 	settings *settings.Service
 	human    humanCheck
 	clientIP func(*http.Request) string
+	appName  string
 	logger   *slog.Logger
 	cookie   cookieSettings
 }
@@ -144,7 +145,7 @@ func (a *authHandlers) verify(w http.ResponseWriter, r *http.Request, signedIn f
 		return
 	}
 
-	user, token, err := a.service.VerifyCode(r.Context(), body.Email, body.Code)
+	user, token, err := a.service.SignIn(r.Context(), body.Email, body.Code, a.seenAt(r))
 	var wrong *auth.WrongCodeError
 	switch {
 	case err == nil:

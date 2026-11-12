@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"csimap/bkapp/internal/auth"
+	"csimap/bkapp/internal/email"
 )
 
 type memCode struct {
@@ -164,7 +165,9 @@ func (m *MemoryStore) UpsertUser(_ context.Context, index, sealed []byte, _ time
 	m.nextID++
 	u := &auth.StoredUser{ID: fmt.Sprintf("user-%d", m.nextID), EmailIndex: index, EmailSealed: sealed}
 	m.users = append(m.users, u)
-	return *u, nil
+	created := *u
+	created.Created = true
+	return created, nil
 }
 
 func (m *MemoryStore) CreateSession(_ context.Context, userID string, tokenHash []byte, expiresAt time.Time) error {
@@ -292,12 +295,33 @@ func (m *MemoryStore) UpdateProfile(_ context.Context, userID string, update aut
 
 func (m *MemoryStore) DeleteExpired(context.Context, time.Time, time.Time) error { return nil }
 
-// CapturedMail records the last code sent to each address.
+// CapturedMail records the last code and sign in alert sent to each address.
 type CapturedMail struct {
-	mu    sync.Mutex
-	codes map[string]string
-	Fail  bool
-	sent  map[string]int
+	mu     sync.Mutex
+	codes  map[string]string
+	Fail   bool
+	sent   map[string]int
+	alerts map[string][]email.SignIn
+}
+
+func (c *CapturedMail) SendSignInAlert(_ context.Context, to string, in email.SignIn) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.Fail {
+		return fmt.Errorf("provider down")
+	}
+	if c.alerts == nil {
+		c.alerts = map[string][]email.SignIn{}
+	}
+	c.alerts[to] = append(c.alerts[to], in)
+	return nil
+}
+
+// Alerts lists the sign in alerts sent to an address, oldest first.
+func (c *CapturedMail) Alerts(to string) []email.SignIn {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return append([]email.SignIn(nil), c.alerts[to]...)
 }
 
 func (c *CapturedMail) SendLoginCode(_ context.Context, to, code string) error {

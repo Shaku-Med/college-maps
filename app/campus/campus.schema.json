@@ -142,6 +142,11 @@
             "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$"
           },
           "description": "Email domains allowed to create accounts, like stu-mail.csi.cuny.edu. Exact matches only."
+        },
+        "timeZone": {
+          "type": "string",
+          "pattern": "^[A-Za-z]+(/[A-Za-z0-9_+-]+){1,2}$",
+          "description": "The campus time zone, like America/New_York. Times in emails, such as a new sign in, use it."
         }
       }
     },

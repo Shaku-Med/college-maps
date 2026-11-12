@@ -142,15 +142,18 @@ func (p *PostgresStore) CheckCode(ctx context.Context, emailIndex []byte, now ti
 
 func (p *PostgresStore) UpsertUser(ctx context.Context, emailIndex, emailSealed []byte, now time.Time) (StoredUser, error) {
 	var user StoredUser
+	var created bool
 	err := db.WithScope(ctx, p.pool, db.Scope{EmailIndex: emailIndex}, func(tx pgx.Tx) (err error) {
+		// xmax is zero only on a row this statement inserted, so it tells a new account from a returning one.
 		user, err = scanUser(tx.QueryRow(ctx,
 			`insert into users as u (email_index, email_sealed, last_login_at) values ($1, $2, $3)
 			 on conflict (email_index) do update set last_login_at = excluded.last_login_at
-			 returning `+userColumns,
+			 returning `+userColumns+`, (u.xmax = 0)`,
 			emailIndex, emailSealed, now,
-		))
+		), &created)
 		return err
 	})
+	user.Created = created
 	return user, err
 }
 
