@@ -29,6 +29,18 @@ const nextConfig: NextConfig = {
   output: process.env.NEXT_OUTPUT_STANDALONE === "true" ? "standalone" : undefined,
   // Lets a phone on the same Wi-Fi load the dev server by this computer's local address.
   allowedDevOrigins: ["10.*.*.*", "192.168.*.*", ...Array.from({ length: 16 }, (_, i) => `172.${16 + i}.*.*`)],
+  // Old links to the Vercel copy, like the one on LinkedIn, land on the same page of the real site.
+  async redirects() {
+    if (!campus.app.url) return [];
+    return [
+      {
+        source: "/:path*",
+        has: [{ type: "host", value: ".*\\.vercel\\.app" }],
+        destination: `${campus.app.url}/:path*`,
+        permanent: true,
+      },
+    ];
+  },
   async rewrites() {
     const upstream = apiUpstream();
     if (!upstream) return [];
