@@ -51,7 +51,7 @@ type Renderer struct {
 	text  map[string]*texttemplate.Template
 }
 
-var emails = []string{"login_code", "signin_alert"}
+var emails = []string{"login_code", "signin_alert", "report_alert"}
 
 func NewRenderer(brand campus.Brand) (*Renderer, error) {
 	for _, color := range []string{brand.Accent, brand.AccentText, brand.AccentDark} {
@@ -173,6 +173,43 @@ func (r *Renderer) SignInAlert(to string, in SignIn, logoSrc string) (Rendered, 
 			Rows       []detailRow
 			AccountURL string
 		}{rows, account},
+	})
+}
+
+// ContentReport is a student's report about a person or an event, sent to the support inbox to act on.
+type ContentReport struct {
+	When     time.Time
+	Reporter string
+	About    string
+	Reason   string
+	Details  string
+}
+
+// ReportAlert tells the support inbox about a new report, since the stores expect one to be looked at within a day.
+func (r *Renderer) ReportAlert(to string, in ContentReport, logoSrc string) (Rendered, error) {
+	src, err := logoSource(logoSrc)
+	if err != nil {
+		return Rendered{}, err
+	}
+	when := in.When
+	if r.brand.Location != nil {
+		when = when.In(r.brand.Location)
+	}
+	rows := []detailRow{
+		{"When", when.Format("Mon, Jan 2, 2006 at 3:04 PM MST")},
+		{"From", in.Reporter},
+		{"About", in.About},
+		{"Reason", in.Reason},
+	}
+	if in.Details != "" {
+		rows = append(rows, detailRow{"Details", in.Details})
+	}
+	return r.render("report_alert", page{
+		Subject:   fmt.Sprintf("New %s report about %s", in.Reason, in.About),
+		Preheader: "Look at it within 24 hours.",
+		Reason:    fmt.Sprintf("You got this email because %s is the support address for %s.", to, r.brand.AppName),
+		LogoSrc:   src,
+		Data:      struct{ Rows []detailRow }{rows},
 	})
 }
 

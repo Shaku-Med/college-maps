@@ -46,6 +46,14 @@ const (
 	cleanupTimeout  = 10 * time.Second
 )
 
+// The mail provider sends 1000 a day. Codes may use nearly all of it; alerts stop early so codes always have room.
+const (
+	dailyMailLimit    = 950
+	dailyOptionalMail = 600
+)
+
+var errMailBudget = errors.New("daily email limit reached")
+
 var (
 	ErrInvalidEmail        = errors.New("invalid email")
 	ErrDomainNotAllowed    = errors.New("email domain not allowed")
@@ -186,6 +194,27 @@ type Service struct {
 	logger     *slog.Logger
 	mailSlots  chan struct{}
 	pending    sync.WaitGroup
+	budget     mailBudget
+}
+
+// mailBudget counts emails per UTC day, the day the provider's quota resets on.
+type mailBudget struct {
+	mu   sync.Mutex
+	day  string
+	sent int
+}
+
+func (b *mailBudget) take(limit int, now time.Time) bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if day := now.UTC().Format(time.DateOnly); day != b.day {
+		b.day, b.sent = day, 0
+	}
+	if b.sent >= limit {
+		return false
+	}
+	b.sent++
+	return true
 }
 
 type Option func(*Service)
@@ -306,12 +335,14 @@ func (s *Service) RequestCode(ctx context.Context, rawEmail string) error {
 	if review {
 		return nil
 	}
-	return s.mail(ctx, "sign-in code",
+	return s.mail(ctx, mailCode,
 		func(ctx context.Context) error { return s.mailer.SendLoginCode(ctx, addr, code) },
 		// Nobody received this code, so it should not spend one of the sender's tries or hold the cooldown open.
 		func(ctx context.Context) { _ = s.store.DeleteCodes(ctx, index) },
 	)
 }
+
+const mailCode = "sign-in code"
 
 // mail sends now, or after the response with background mail on. Either way failed runs when the send fails.
 func (s *Service) mail(ctx context.Context, kind string, send func(context.Context) error, failed func(context.Context)) error {
@@ -319,6 +350,17 @@ func (s *Service) mail(ctx context.Context, kind string, send func(context.Conte
 		ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), cleanupTimeout)
 		defer cancel()
 		failed(ctx)
+	}
+	limit := dailyOptionalMail
+	if kind == mailCode {
+		limit = dailyMailLimit
+	}
+	if !s.budget.take(limit, s.now()) {
+		cleanUp()
+		if s.logger != nil {
+			s.logger.Warn("email not sent", "kind", kind, "error", errMailBudget)
+		}
+		return fmt.Errorf("%w: %v", ErrSendFailed, errMailBudget)
 	}
 	if !s.background {
 		if err := send(ctx); err != nil {
@@ -346,6 +388,11 @@ func (s *Service) mail(ctx context.Context, kind string, send func(context.Conte
 		}
 	}()
 	return nil
+}
+
+// Notify sends an email that is not about a sign in the same way as the others, in the background when that is on.
+func (s *Service) Notify(ctx context.Context, kind string, send func(context.Context) error) error {
+	return s.mail(ctx, kind, send, func(context.Context) {})
 }
 
 // Wait blocks until background emails finish, so a shutdown does not drop them.

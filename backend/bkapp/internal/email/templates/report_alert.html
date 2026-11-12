@@ -1,0 +1,7 @@
+{{define "content"}}
+{{template "heading" "A student filed a report"}}
+{{template "paragraph" (printf "Someone on %s reported a person or an event. Here's what they sent:" .Brand.AppName)}}
+{{template "details" .Data.Rows}}
+{{template "note" (dict "Lead" "Within 24 hours" "Body" "Look into it and remove the content or the account if it breaks the terms. Apple and Google expect reports to be handled within a day.")}}
+{{template "signoff" (printf "The %s team" .Brand.AppName)}}
+{{end}}

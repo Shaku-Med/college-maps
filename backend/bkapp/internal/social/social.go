@@ -2,6 +2,7 @@
 package social
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
@@ -52,6 +53,7 @@ type Service struct {
 	now          func() time.Time
 	random       io.Reader
 	notify       func(kind, senderID string, userIDs []string, title, body, path string)
+	reportAlert  func(context.Context, FiledReport)
 }
 
 // The kinds of notification, which a student can turn off one by one.

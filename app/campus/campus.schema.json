@@ -87,7 +87,8 @@
       "required": [
         "name",
         "shortName",
-        "description"
+        "description",
+        "supportEmail"
       ],
       "additionalProperties": false,
       "properties": {
@@ -109,6 +110,12 @@
           "type": "string",
           "maxLength": 200,
           "description": "Shown at the bottom of the place list"
+        },
+        "supportEmail": {
+          "type": "string",
+          "maxLength": 254,
+          "pattern": "^[^\\s@<>]+@[^\\s@<>]+\\.[^\\s@<>]+$",
+          "description": "Public contact address shown on the site and in the app. Reports from students are emailed here."
         },
         "url": {
           "type": "string",

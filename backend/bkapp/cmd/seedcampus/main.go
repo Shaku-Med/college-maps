@@ -34,6 +34,8 @@ func (c *catchMail) SendLoginCode(_ context.Context, _, code string) error {
 
 func (c *catchMail) SendSignInAlert(context.Context, string, email.SignIn) error { return nil }
 
+func (c *catchMail) SendReportAlert(context.Context, string, email.ContentReport) error { return nil }
+
 var _ email.Sender = (*catchMail)(nil)
 
 type seedEvent struct {

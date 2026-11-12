@@ -297,11 +297,12 @@ func (m *MemoryStore) DeleteExpired(context.Context, time.Time, time.Time) error
 
 // CapturedMail records the last code and sign in alert sent to each address.
 type CapturedMail struct {
-	mu     sync.Mutex
-	codes  map[string]string
-	Fail   bool
-	sent   map[string]int
-	alerts map[string][]email.SignIn
+	mu      sync.Mutex
+	codes   map[string]string
+	Fail    bool
+	sent    map[string]int
+	alerts  map[string][]email.SignIn
+	reports map[string][]email.ContentReport
 }
 
 func (c *CapturedMail) SendSignInAlert(_ context.Context, to string, in email.SignIn) error {
@@ -322,6 +323,26 @@ func (c *CapturedMail) Alerts(to string) []email.SignIn {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return append([]email.SignIn(nil), c.alerts[to]...)
+}
+
+func (c *CapturedMail) SendReportAlert(_ context.Context, to string, in email.ContentReport) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.Fail {
+		return fmt.Errorf("provider down")
+	}
+	if c.reports == nil {
+		c.reports = map[string][]email.ContentReport{}
+	}
+	c.reports[to] = append(c.reports[to], in)
+	return nil
+}
+
+// Reports lists the report alerts sent to an address, oldest first.
+func (c *CapturedMail) Reports(to string) []email.ContentReport {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return append([]email.ContentReport(nil), c.reports[to]...)
 }
 
 func (c *CapturedMail) SendLoginCode(_ context.Context, to, code string) error {

@@ -1,0 +1,10 @@
+{{define "content"}}A student filed a report
+
+Someone on {{.Brand.AppName}} reported a person or an event. Here's what they sent:
+{{range .Data.Rows}}
+    {{.Label}}: {{.Value}}{{end}}
+
+Within 24 hours: look into it and remove the content or the account if it breaks the terms. Apple and Google expect reports to be handled within a day.
+
+Thanks,
+The {{.Brand.AppName}} team{{end}}

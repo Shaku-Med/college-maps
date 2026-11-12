@@ -3,7 +3,9 @@ package social
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5"
@@ -33,6 +35,20 @@ var reportReasons = map[string]bool{
 	"harassment":    true,
 	"inappropriate": true,
 	"other":         true,
+}
+
+// FiledReport is a stored report, worded for the support inbox.
+type FiledReport struct {
+	When     time.Time
+	Reporter string
+	About    string
+	Reason   string
+	Details  string
+}
+
+// SetReportAlert is called after each report is stored, so someone can act on it.
+func (s *Service) SetReportAlert(fn func(context.Context, FiledReport)) {
+	s.reportAlert = fn
 }
 
 // FileReport stores a content report. The reporter must be signed in with a profile; they cannot report themselves.
@@ -84,7 +100,8 @@ func (s *Service) FileReport(ctx context.Context, me auth.User, report Report) e
 	if username != nil {
 		lookup = *username
 	}
-	return db.WithScope(ctx, s.pool, db.Scope{UserID: me.ID, LookupUsername: lookup}, func(tx pgx.Tx) error {
+	about := ""
+	err := db.WithScope(ctx, s.pool, db.Scope{UserID: me.ID, LookupUsername: lookup}, func(tx pgx.Tx) error {
 		var recent int
 		if err := tx.QueryRow(ctx,
 			`select count(*)::int from content_reports where reporter_id = $1::uuid and created_at > now() - interval '1 hour'`,
@@ -98,11 +115,16 @@ func (s *Service) FileReport(ctx context.Context, me auth.User, report Report) e
 
 		if kind == "meetup" {
 			// Must be a meetup the reporter is allowed to see (member, invitee, or live public event).
-			if _, err := s.load(ctx, tx, me, *meetupID); err != nil {
+			meetup, err := s.load(ctx, tx, me, *meetupID)
+			if err != nil {
 				if errors.Is(err, ErrMeetupNotFound) || errors.Is(err, pgx.ErrNoRows) {
 					return invalid("That event could not be reported.")
 				}
 				return err
+			}
+			about = "event " + *meetupID
+			if meetup.Title != "" {
+				about = fmt.Sprintf("event %q (%s)", meetup.Title, *meetupID)
 			}
 		}
 		if kind == "user" {
@@ -112,6 +134,7 @@ func (s *Service) FileReport(ctx context.Context, me auth.User, report Report) e
 				}
 				return err
 			}
+			about = "@" + *username
 		}
 
 		var detailsArg any
@@ -124,4 +147,8 @@ func (s *Service) FileReport(ctx context.Context, me auth.User, report Report) e
 			me.ID, kind, meetupID, username, reason, detailsArg)
 		return err
 	})
+	if err == nil && s.reportAlert != nil {
+		s.reportAlert(ctx, FiledReport{When: s.now(), Reporter: "@" + me.Username, About: about, Reason: reason, Details: details})
+	}
+	return err
 }

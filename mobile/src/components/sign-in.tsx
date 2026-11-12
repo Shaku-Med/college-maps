@@ -148,15 +148,17 @@ export function SignIn() {
       <Button size="lg" isDisabled={busy || wait > 0 || !HUMAN_CHECK_AVAILABLE} onPress={() => void sendCode()}>
         <Button.Label>{busy ? 'Sending' : wait > 0 ? `Try again in ${wait}s` : 'Email me a code'}</Button.Label>
       </Button>
-      <View className="flex-row items-center justify-center gap-4">
-        <Pressable onPress={() => void openWeb('/privacy')} hitSlop={8} className="active:opacity-60">
-          <Text className="text-sm font-medium text-accent">Privacy</Text>
-        </Pressable>
-        <Text className="text-sm text-muted">·</Text>
-        <Pressable onPress={() => void openWeb('/terms')} hitSlop={8} className="active:opacity-60">
-          <Text className="text-sm font-medium text-accent">Terms</Text>
-        </Pressable>
-      </View>
+      <Text className="text-center text-sm leading-5 text-muted">
+        By continuing, you agree to the{' '}
+        <Text accessibilityRole="link" onPress={() => void openWeb('/terms')} className="font-medium text-accent">
+          Terms of use
+        </Text>
+        , which allow no abuse or objectionable content, and the{' '}
+        <Text accessibilityRole="link" onPress={() => void openWeb('/privacy')} className="font-medium text-accent">
+          Privacy policy
+        </Text>
+        .
+      </Text>
     </View>
   );
 }

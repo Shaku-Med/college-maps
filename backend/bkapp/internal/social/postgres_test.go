@@ -579,3 +579,24 @@ func TestAppPushTokens(t *testing.T) {
 		t.Fatalf("token still stored after removing it: %d %v", left, err)
 	}
 }
+
+func TestReportAlertsSupport(t *testing.T) {
+	h, ctx := setup(t)
+	var got []social.FiledReport
+	h.social.SetReportAlert(func(_ context.Context, r social.FiledReport) { got = append(got, r) })
+	alice := h.person(t, ctx, "alice")
+	bob := h.person(t, ctx, "bob")
+
+	if err := h.social.FileReport(ctx, alice, social.Report{Kind: "user", Username: bob.Username, Reason: "nope"}); err == nil {
+		t.Fatal("a bad reason should be refused")
+	}
+	if len(got) != 0 {
+		t.Fatal("a refused report must not alert anyone")
+	}
+	if err := h.social.FileReport(ctx, alice, social.Report{Kind: "user", Username: bob.Username, Reason: "harassment", Details: "rude"}); err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].About != "@"+bob.Username || got[0].Reporter != "@"+alice.Username || got[0].Reason != "harassment" {
+		t.Fatalf("alert = %+v", got)
+	}
+}

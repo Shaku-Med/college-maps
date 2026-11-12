@@ -160,6 +160,17 @@ export default function PrivacyPage() {
         </p>
       </section>
 
+      <section className="flex flex-col gap-3">
+        <h2 className="text-lg font-semibold">Contact</h2>
+        <p className="text-sm leading-relaxed text-muted">
+          Questions about your data, or a request you cannot make from the app? Email{" "}
+          <a href={`mailto:${app.supportEmail}`} className="font-medium text-accent underline-offset-2 hover:underline">
+            {app.supportEmail}
+          </a>
+          .
+        </p>
+      </section>
+
       <p className="text-xs leading-relaxed text-muted">
         {app.name} is a student-built campus map for {college.name}. It is not an official{" "}
         {college.shortName} service. See also the{" "}

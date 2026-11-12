@@ -2,7 +2,7 @@ import Constants from 'expo-constants';
 import { router, Stack } from 'expo-router';
 import type { SFSymbol } from 'expo-symbols';
 import { Card, ListGroup, Separator, Spinner, Switch, useThemeColor, useToast } from 'heroui-native';
-import { Alert, Platform, ScrollView, Text, View } from 'react-native';
+import { Alert, Linking, Platform, ScrollView, Text, View } from 'react-native';
 
 import { Icon } from '@/components/icon';
 import { ProfileForm } from '@/components/profile-form';
@@ -296,6 +296,13 @@ export default function AccountScreen() {
               title="Terms of use"
               description="Rules for the map, friends, and meetups"
               onPress={() => void openWeb('/terms')}
+            />
+            <Separator className="mx-4" />
+            <Row
+              symbol="envelope"
+              title="Contact support"
+              description={CAMPUS.app.supportEmail}
+              onPress={() => void Linking.openURL(`mailto:${CAMPUS.app.supportEmail}`)}
             />
             <Separator className="mx-4" />
             <Row symbol="safari" title="Open CSI Map on the web" onPress={() => void openWeb('/')} />

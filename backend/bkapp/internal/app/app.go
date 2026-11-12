@@ -122,6 +122,22 @@ func Build(ctx context.Context, logger *slog.Logger, migrate bool) (*App, error)
 		go pushService.Notify(context.Background(), senderID, userIDs, push.Message{Kind: kind, Title: title, Body: body, URL: path})
 	})
 
+	support := site.Brand.SupportEmail
+	var gate reportAlertGate
+	socialService.SetReportAlert(func(ctx context.Context, r social.FiledReport) {
+		if !gate.allow(r.Reporter, r.When) {
+			logger.Warn("report alert skipped: daily cap reached, the report is still saved")
+			return
+		}
+		report := email.ContentReport{When: r.When, Reporter: r.Reporter, About: r.About, Reason: r.Reason, Details: r.Details}
+		err := authService.Notify(ctx, "report_alert", func(ctx context.Context) error {
+			return mailer.SendReportAlert(ctx, support, report)
+		})
+		if err != nil {
+			logger.Warn("report alert not sent", "error", err)
+		}
+	})
+
 	api := httpapi.New(cfg, logger, site, authService, socialService, pushService, settings.NewService(pool), issues.NewService(pool, site), human)
 	return &App{
 		Handler: api.Handler(),

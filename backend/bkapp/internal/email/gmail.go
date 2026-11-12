@@ -80,6 +80,14 @@ func (g *Gmail) SendSignInAlert(ctx context.Context, to string, in SignIn) error
 	return g.send(ctx, to, msg)
 }
 
+func (g *Gmail) SendReportAlert(ctx context.Context, to string, in ContentReport) error {
+	msg, err := g.renderer.ReportAlert(to, in, "cid:"+LogoContentID)
+	if err != nil {
+		return err
+	}
+	return g.send(ctx, to, msg)
+}
+
 func (g *Gmail) send(ctx context.Context, to string, msg Rendered) error {
 	if strings.ContainsAny(to, "\r\n") {
 		return errors.New("send email: invalid recipient")

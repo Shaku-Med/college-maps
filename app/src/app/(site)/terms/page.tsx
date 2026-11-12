@@ -71,8 +71,10 @@ export default function TermsPage() {
         <h2 className="text-lg font-semibold">Blocking, reporting, and removals</h2>
         <p className="text-sm leading-relaxed text-muted">
           You can block someone so they cannot add or invite you, and you can report a person or a
-          campus event from inside the app. We may remove content, end meetups, or suspend or delete
-          accounts that break these terms or put others at risk. Blocking and reporting do not replace
+          campus event from inside the app. There is no tolerance for objectionable content or abusive
+          users. Every report is reviewed within 24 hours, and content that breaks these terms is
+          removed, meetups are ended, and the people responsible are suspended or have their accounts
+          deleted. Blocking and reporting do not replace
           calling campus security or emergency services when you need them.
         </p>
       </section>
@@ -113,6 +115,17 @@ export default function TermsPage() {
           We may update these terms when the app changes. The page you are reading is the current
           version. Keeping an account after a change means you accept the updated terms. You can delete
           your account anytime from Account.
+        </p>
+      </section>
+
+      <section className="flex flex-col gap-3">
+        <h2 className="text-lg font-semibold">Contact</h2>
+        <p className="text-sm leading-relaxed text-muted">
+          Questions about these terms, a report that needs a person, or a safety concern? Email{" "}
+          <a href={`mailto:${app.supportEmail}`} className="font-medium text-accent underline-offset-2 hover:underline">
+            {app.supportEmail}
+          </a>
+          .
         </p>
       </section>
 

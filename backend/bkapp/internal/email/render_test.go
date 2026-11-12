@@ -116,3 +116,24 @@ func TestSignInAlertLeavesOutUnknowns(t *testing.T) {
 		}
 	}
 }
+
+func TestReportAlert(t *testing.T) {
+	r := testRenderer(t)
+	msg, err := r.ReportAlert("support@csimap.app", ContentReport{
+		When: time.Date(2026, 11, 12, 1, 15, 0, 0, time.UTC), Reporter: "@jane", About: "@bob", Reason: "harassment", Details: "He said <rude> things",
+	}, "cid:"+LogoContentID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"@jane", "@bob", "harassment", "Wed, Nov 11, 2026 at 8:15 PM EST", "24 hours"} {
+		if !strings.Contains(msg.HTML, want) || !strings.Contains(msg.Text, want) {
+			t.Errorf("report alert is missing %q", want)
+		}
+	}
+	if strings.Contains(msg.HTML, "<rude>") {
+		t.Error("the details must be escaped in the HTML")
+	}
+	if msg.Subject != "New harassment report about @bob" {
+		t.Errorf("subject = %q", msg.Subject)
+	}
+}

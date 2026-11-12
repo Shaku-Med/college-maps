@@ -62,6 +62,14 @@ func (s *SMTP) SendSignInAlert(ctx context.Context, to string, in SignIn) error 
 	return s.send(ctx, to, msg)
 }
 
+func (s *SMTP) SendReportAlert(ctx context.Context, to string, in ContentReport) error {
+	msg, err := s.renderer.ReportAlert(to, in, "cid:"+LogoContentID)
+	if err != nil {
+		return err
+	}
+	return s.send(ctx, to, msg)
+}
+
 func (s *SMTP) send(ctx context.Context, to string, msg Rendered) error {
 	if strings.ContainsAny(to, "\r\n") {
 		return errors.New("send email: invalid recipient")

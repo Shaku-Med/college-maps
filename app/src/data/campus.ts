@@ -38,7 +38,7 @@ export type ThemeColors = { accent?: string; accentForeground?: string };
 export type FloorRule = "leadingDigits" | "firstDigit" | "none";
 
 export type CampusConfig = {
-  app: { name: string; shortName: string; description: string; disclaimer?: string; url?: string };
+  app: { name: string; shortName: string; description: string; disclaimer?: string; url?: string; supportEmail: string };
   college: { name: string; shortName: string; emailDomains: string[] };
   theme: ThemeColors & { dark?: ThemeColors };
   map: {
@@ -148,6 +148,15 @@ function emailDomains(errors: ConfigErrors, value: unknown): string[] {
     return [];
   }
   return [...new Set(value as string[])];
+}
+
+function supportEmail(errors: ConfigErrors, value: unknown) {
+  const address = typeof value === "string" ? value.trim() : "";
+  if (address.length > 254 || !/^[^\s@<>"]+@[^\s@<>"]+\.[^\s@<>"]+$/.test(address)) {
+    errors.add("app.supportEmail", "must be a contact address like support@example.com");
+    return "";
+  }
+  return address;
 }
 
 function siteOrigin(errors: ConfigErrors, value: unknown) {
@@ -317,6 +326,7 @@ export function loadCampus(raw: unknown): CampusConfig {
       description: text(errors, app, "description", "app", 160) ?? "",
       disclaimer: text(errors, app, "disclaimer", "app", 200, true),
       url: app.url === undefined ? undefined : siteOrigin(errors, app.url),
+      supportEmail: supportEmail(errors, app.supportEmail),
     },
     college: {
       name: text(errors, college, "name", "college", 100) ?? "",

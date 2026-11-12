@@ -4,6 +4,7 @@ import (
 	_ "embed"
 	"encoding/json"
 	"fmt"
+	"net/mail"
 	"net/url"
 	"regexp"
 	"strings"
@@ -52,9 +53,11 @@ type Brand struct {
 	CollegeName string
 	Disclaimer  string
 	URL         string
-	Accent      string
-	AccentText  string
-	AccentDark  string
+	// SupportEmail is public, and reports from students are sent to it.
+	SupportEmail string
+	Accent       string
+	AccentText   string
+	AccentDark   string
 	// Location is the campus time zone, so times in emails read like a local clock.
 	Location *time.Location
 }
@@ -68,9 +71,10 @@ type bounds struct {
 
 type campusFile struct {
 	App struct {
-		Name       string `json:"name"`
-		Disclaimer string `json:"disclaimer"`
-		URL        string `json:"url"`
+		Name         string `json:"name"`
+		Disclaimer   string `json:"disclaimer"`
+		URL          string `json:"url"`
+		SupportEmail string `json:"supportEmail"`
 	} `json:"app"`
 	College struct {
 		Name         string   `json:"name"`
@@ -163,6 +167,11 @@ func parseBrand(appName string, file campusFile) (Brand, error) {
 		Accent:      "#1F2937",
 		AccentText:  "#FFFFFF",
 	}
+	support := strings.TrimSpace(file.App.SupportEmail)
+	if address, err := mail.ParseAddress(support); err != nil || address.Address != support || address.Name != "" || len(support) > 254 {
+		return Brand{}, fmt.Errorf("campus.json app.supportEmail is required, like support@example.com")
+	}
+	brand.SupportEmail = support
 	zone := strings.TrimSpace(file.College.TimeZone)
 	if zone == "" {
 		return Brand{}, fmt.Errorf("campus.json college.timeZone is required, like America/New_York")
