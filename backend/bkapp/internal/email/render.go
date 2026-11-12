@@ -63,7 +63,6 @@ func NewRenderer(brand campus.Brand) (*Renderer, error) {
 		"accent":     func() htmltemplate.CSS { return htmltemplate.CSS(brand.Accent) },
 		"accentText": func() htmltemplate.CSS { return htmltemplate.CSS(brand.AccentText) },
 		"accentDark": func() htmltemplate.CSS { return htmltemplate.CSS(brand.AccentDark) },
-		"groupCode":  groupCode,
 		"hostOf":     hostOf,
 		"dict":       dict,
 	}
@@ -125,14 +124,6 @@ func (r *Renderer) LoginCode(to, code string, minutes int, logoSrc string) (Rend
 			Minutes int
 		}{code, minutes},
 	})
-}
-
-// groupCode splits a code into pairs of four, which is easier to read and type: 7387 0601.
-func groupCode(code string) string {
-	if len(code) != 8 {
-		return code
-	}
-	return code[:4] + " " + code[4:]
 }
 
 func hostOf(raw string) string {

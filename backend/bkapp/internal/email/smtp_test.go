@@ -179,7 +179,7 @@ func TestSMTPSendsOverTLS(t *testing.T) {
 		t.Fatal(err)
 	}
 	text, _ := io.ReadAll(quotedprintable.NewReader(textPart))
-	if !strings.Contains(string(text), "1234 5678") {
+	if !strings.Contains(string(text), "12345678") {
 		t.Fatalf("plain text part is missing the code: %s", text)
 	}
 
@@ -194,7 +194,7 @@ func TestSMTPSendsOverTLS(t *testing.T) {
 		t.Fatal(err)
 	}
 	html, _ := io.ReadAll(quotedprintable.NewReader(htmlPart))
-	if !strings.Contains(string(html), "1234 5678") || !strings.Contains(string(html), "cid:"+LogoContentID) {
+	if !strings.Contains(string(html), "12345678") || !strings.Contains(string(html), "cid:"+LogoContentID) {
 		t.Fatal("html part should show the code and point at the attached logo")
 	}
 

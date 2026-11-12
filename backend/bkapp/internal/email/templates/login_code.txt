@@ -2,7 +2,7 @@
 
 Here's your code. Enter it in {{.Brand.AppName}} to finish signing in.
 
-    {{groupCode .Data.Code}}
+    {{.Data.Code}}
 
 It works once and expires in {{.Data.Minutes}} minutes. We'll never ask you to share it with anyone.
 

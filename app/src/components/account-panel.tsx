@@ -320,6 +320,8 @@ function SignIn({ onUser, settingRows }: { onUser: (user: AccountUser) => void; 
           setError(undefined);
         }}
         onComplete={(value) => void verify(value)}
+        // Codes copied from older emails or other apps can carry spaces or dashes.
+        pasteTransformer={(text) => text.replace(/[^0-9]/g, "").slice(0, CODE_LENGTH)}
         pattern="^[0-9]+$"
         inputMode="numeric"
         autoComplete="one-time-code"

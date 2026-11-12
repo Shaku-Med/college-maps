@@ -27,12 +27,12 @@ func TestLoginCodeEmail(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	for _, want := range []string{"7387 0601", "cid:" + LogoContentID, r.brand.CollegeName, "Sign in to CSI Map", "expires in 10 minutes"} {
+	for _, want := range []string{"73870601", "cid:" + LogoContentID, r.brand.CollegeName, "Sign in to CSI Map", "expires in 10 minutes"} {
 		if !strings.Contains(msg.HTML, want) {
 			t.Errorf("html is missing %q", want)
 		}
 	}
-	for _, want := range []string{"7387 0601", r.brand.AppName, "expires in 10 minutes"} {
+	for _, want := range []string{"73870601", r.brand.AppName, "expires in 10 minutes"} {
 		if !strings.Contains(msg.Text, want) {
 			t.Errorf("text is missing %q", want)
 		}

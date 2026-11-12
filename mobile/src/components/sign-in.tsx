@@ -88,6 +88,8 @@ export function SignIn() {
           value={code}
           onChange={setCode}
           onComplete={(value) => void verify(value)}
+          // Codes copied from older emails or other apps can carry spaces or dashes.
+          pasteTransformer={(text) => text.replace(/[^0-9]/g, '').slice(0, CODE_LENGTH)}
           pattern={REGEXP_ONLY_DIGITS}
           inputMode="numeric"
           isInvalid={error !== null}
