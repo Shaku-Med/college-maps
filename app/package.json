@@ -18,6 +18,7 @@
     "campus:outlines": "node scripts/build-building-outlines.mjs",
     "campus:indoor": "node scripts/build-indoor.mjs",
     "campus:amenities": "node scripts/build-campus-amenities.mjs",
+    "indexnow": "node scripts/indexnow.mjs",
     "voice:bank": "node --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/build-voice-bank.mjs"
   },
   "dependencies": {
