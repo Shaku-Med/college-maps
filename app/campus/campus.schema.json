@@ -117,6 +117,11 @@
           "pattern": "^[^\\s@<>]+@[^\\s@<>]+\\.[^\\s@<>]+$",
           "description": "Public contact address shown on the site and in the app. Reports from students are emailed here."
         },
+        "iosAppId": {
+          "type": "string",
+          "pattern": "^[0-9]{6,12}$",
+          "description": "The App Store id of your iPhone app, the number in its apps.apple.com link. Safari on iPhone then offers the app above the site."
+        },
         "url": {
           "type": "string",
           "description": "Public address of the deployed site, like https://csimap.example.com. Used for canonical links and share previews."

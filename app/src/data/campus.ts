@@ -38,7 +38,7 @@ export type ThemeColors = { accent?: string; accentForeground?: string };
 export type FloorRule = "leadingDigits" | "firstDigit" | "none";
 
 export type CampusConfig = {
-  app: { name: string; shortName: string; description: string; disclaimer?: string; url?: string; supportEmail: string };
+  app: { name: string; shortName: string; description: string; disclaimer?: string; url?: string; supportEmail: string; iosAppId?: string };
   college: { name: string; shortName: string; emailDomains: string[] };
   theme: ThemeColors & { dark?: ThemeColors };
   map: {
@@ -148,6 +148,15 @@ function emailDomains(errors: ConfigErrors, value: unknown): string[] {
     return [];
   }
   return [...new Set(value as string[])];
+}
+
+function iosAppId(errors: ConfigErrors, value: unknown) {
+  if (value === undefined) return undefined;
+  if (typeof value !== "string" || !/^[0-9]{6,12}$/.test(value)) {
+    errors.add("app.iosAppId", "must be the number from your apps.apple.com link");
+    return undefined;
+  }
+  return value;
 }
 
 function supportEmail(errors: ConfigErrors, value: unknown) {
@@ -327,6 +336,7 @@ export function loadCampus(raw: unknown): CampusConfig {
       disclaimer: text(errors, app, "disclaimer", "app", 200, true),
       url: app.url === undefined ? undefined : siteOrigin(errors, app.url),
       supportEmail: supportEmail(errors, app.supportEmail),
+      iosAppId: iosAppId(errors, app.iosAppId),
     },
     college: {
       name: text(errors, college, "name", "college", 100) ?? "",

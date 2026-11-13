@@ -48,6 +48,7 @@ export const metadata: Metadata = {
   title: { default: app.name, template: `%s · ${app.name}` },
   description: app.description,
   applicationName: app.name,
+  ...(app.iosAppId ? { itunes: { appId: app.iosAppId } } : {}),
   keywords: [
     college.name,
     college.shortName,
