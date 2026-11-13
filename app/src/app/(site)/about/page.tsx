@@ -1,4 +1,4 @@
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, Smartphone } from "lucide-react";
 import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
@@ -9,6 +9,7 @@ import { CAMPUS } from "@/data/campus";
 
 const { app, college, rooms, schedule } = CAMPUS;
 const portal = schedule.portalName ?? "your student portal";
+const appStore = app.iosAppId ? `https://apps.apple.com/us/app/id${app.iosAppId}` : undefined;
 
 export const metadata: Metadata = {
   title: "About",
@@ -17,14 +18,14 @@ export const metadata: Metadata = {
   robots: { index: true, follow: true },
 };
 
-// Phone screenshots, cut from 1080 wide captures with the status bar and gesture handle removed.
-const SHOT_WIDTH = 720;
-const SHOT_HEIGHT = 1469;
+// Phones cut out of the App Store screenshots with their callouts, on a transparent background.
+const SHOT_WIDTH = 880;
+const SHOT_HEIGHT = 1387;
 
 const STORIES = [
   {
-    shot: "place",
-    alt: "A building card in the app with a Which room field and a Directions button",
+    shot: "search",
+    alt: "Search in the app listing campus buildings, with a callout reading Floor 2, Room 204",
     kicker: "Search",
     title: `Type ${rooms.example}. That is the whole search.`,
     body: `Every building and room at ${college.shortName} is in it, along with the floor each room is on. Only know the building? Leave the room empty and it takes you to the door.`,
@@ -36,7 +37,7 @@ const STORIES = [
   },
   {
     shot: "classes",
-    alt: "The Classes screen with the next class on top and a week strip",
+    alt: "The Classes screen with the next class on top and a Directions button",
     kicker: "Classes",
     title: "Your schedule, with the walk built in.",
     body: `Paste it from ${portal} once. The next class sits on top with directions a tap away, and each day of the week is one tap on the strip.`,
@@ -48,14 +49,24 @@ const STORIES = [
   },
   {
     shot: "friends",
-    alt: "The Friends screen with a friend request, meetups, and a list of friends",
+    alt: "The Friends screen with New meetup and Campus event buttons and a friends list",
     kicker: "Friends",
     title: "Meet up without the “where are you” texts.",
     body: "Pick a spot and invite friends. Everyone shows on the map until the meetup ends, and then it forgets where you were.",
     points: [
       "Friends find you by username. Your email stays private.",
-      "Campus events anyone can join, from study groups to pickup games.",
       "Block or report anyone, any time.",
+    ],
+  },
+  {
+    shot: "events",
+    alt: "The campus map filtered to events, with a building card listing the events inside",
+    kicker: "Events",
+    title: "See what is on today.",
+    body: "Campus events sit right on the map. Tap a building to see what is happening inside, then get walked to the door.",
+    points: [
+      "Anyone can join, from study groups to pickup games.",
+      "Filter the map to student life, academic buildings, and more.",
     ],
   },
 ];
@@ -70,29 +81,30 @@ const DETAILS = [
 ];
 
 function Shot({ name, alt, className = "", eager = false }: { name: string; alt: string; className?: string; eager?: boolean }) {
-  const loading = eager ? "eager" : "lazy";
   return (
-    <div
-      className={`rounded-[2.4rem] border border-separator bg-surface p-1.5 shadow-[0_40px_90px_-45px_rgb(0_0_0/0.5)] ${className}`}>
-      <Image
-        src={`/about/${name}-light.webp`}
-        alt={alt}
-        width={SHOT_WIDTH}
-        height={SHOT_HEIGHT}
-        loading={loading}
-        unoptimized
-        className="block h-auto w-full rounded-[2.05rem] dark:hidden"
-      />
-      <Image
-        src={`/about/${name}-dark.webp`}
-        alt={alt}
-        width={SHOT_WIDTH}
-        height={SHOT_HEIGHT}
-        loading={loading}
-        unoptimized
-        className="hidden h-auto w-full rounded-[2.05rem] dark:block"
-      />
-    </div>
+    <Image
+      src={`/about/${name}.webp`}
+      alt={alt}
+      width={SHOT_WIDTH}
+      height={SHOT_HEIGHT}
+      loading={eager ? "eager" : "lazy"}
+      unoptimized
+      className={`block h-auto select-none drop-shadow-[0_30px_40px_rgb(0_0_0/0.18)] ${className}`}
+    />
+  );
+}
+
+function AppStoreLink({ className = "" }: { className?: string }) {
+  if (!appStore) return null;
+  return (
+    <a
+      href={appStore}
+      target="_blank"
+      rel="noopener noreferrer"
+      className={`inline-flex items-center justify-center gap-2 rounded-full border border-separator bg-surface font-medium outline-none transition-[background-color,transform] hover:bg-surface-secondary active:scale-[0.98] focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background ${className}`}>
+      <Smartphone className="size-4" aria-hidden />
+      Get the iPhone app
+    </a>
   );
 }
 
@@ -161,19 +173,19 @@ export default function AboutPage() {
               <Link href="/" className={`${OPEN_MAP_CLASS} h-12 px-6 text-base`}>
                 Open the map
               </Link>
-              <Link
-                href="#how"
-                className="group inline-flex items-center gap-2 rounded-full text-base font-medium outline-none focus-visible:ring-2 focus-visible:ring-accent">
-                See how it works
-                <ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" aria-hidden />
-              </Link>
+              <AppStoreLink className="h-12 px-6 text-base" />
             </div>
-            <p className="text-sm text-muted">Free, and on the web today. The iPhone and Android apps are in testing.</p>
+            <p className="text-sm text-muted">
+              Free on the web and iPhone. Android is on the way.{" "}
+              <Link href="#how" className="rounded font-medium text-foreground underline-offset-4 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-accent">
+                See how it works
+              </Link>
+            </p>
           </div>
           <Shot
-            name="nav"
-            alt="Turn by turn walking directions in the app, with the next turn on top and the time left at the bottom"
-            className="mx-auto w-[72%] max-w-[320px] sm:max-w-[340px] lg:w-[min(400px,calc((100svh-11rem)*0.49))] lg:max-w-none"
+            name="directions"
+            alt="Turn by turn walking directions in the app, with the next turn on top and a Spoken directions callout"
+            className="mx-auto w-full max-w-[400px] sm:max-w-[440px] lg:w-[min(520px,calc((100svh-9rem)*0.63))] lg:max-w-none"
             eager
           />
         </div>
@@ -197,7 +209,9 @@ export default function AboutPage() {
                   ))}
                 </ul>
               </div>
-              <Shot name={story.shot} alt={story.alt} className="mx-auto w-[72%] max-w-[320px] lg:w-[66%] lg:max-w-[380px]" />
+              <div className="flex justify-center overflow-hidden rounded-[2rem] bg-surface-secondary/60 px-4 pt-10 sm:px-10 lg:pt-14">
+                <Shot name={story.shot} alt={story.alt} className="-mb-[18%] w-full max-w-[380px] lg:max-w-[420px]" />
+              </div>
             </div>
           </div>
         ))}
@@ -242,9 +256,12 @@ export default function AboutPage() {
           <h2 className="max-w-3xl text-4xl font-semibold leading-[1.05] tracking-[-0.03em] sm:text-5xl lg:text-6xl">
             Try it on your way to class.
           </h2>
-          <Link href="/" className={`${OPEN_MAP_CLASS} h-12 shrink-0 px-6 text-base`}>
-            Open the map
-          </Link>
+          <div className="flex flex-wrap items-center gap-3">
+            <Link href="/" className={`${OPEN_MAP_CLASS} h-12 shrink-0 px-6 text-base`}>
+              Open the map
+            </Link>
+            <AppStoreLink className="h-12 px-6 text-base" />
+          </div>
         </div>
       </section>
     </>
