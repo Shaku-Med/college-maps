@@ -35,11 +35,30 @@ npm run dev
 
 **Mobile:** follow `mobile/README.md`. The app uses native code, so it runs in a development build, not Expo Go. Add packages with `npx expo install`, not `npm install`, so versions match the Expo SDK.
 
-**Backend:** copy `.env.example` to `.env.development` in `backend/bkapp` or `backend/rtapp`, fill it in, then `go run ./cmd/api`. The servers refuse to start when a required setting is missing. That is on purpose.
+**Backend:** copy `.env.example` to `.env.development` in `backend/bkapp` or `backend/rtapp`, fill it in as below, then `go run ./cmd/api`. The servers refuse to start when a required setting is missing. That is on purpose.
+
+### Run it with no keys
+
+Nobody needs the maintainer's `.env` files, and you should never ask for them. Everything runs on free stand ins you make yourself.
+
+**Just the map:** run the web app with no `.env` at all. The map, search, directions and voice all work; only accounts are off. That covers most map and UI work.
+
+**With accounts:** in `backend/bkapp/.env.development` use:
+
+| Setting | Use | Cost |
+|---|---|---|
+| `DATABASE_URL` | Your own free [Neon](https://neon.tech) database, or Postgres on your machine | free |
+| `EMAIL_MODE` | `log`, so sign in codes print in the terminal instead of being emailed | free |
+| `TURNSTILE_SECRET` | Cloudflare's public test secret `1x0000000000000000000000000000000AA` | free |
+| `AUTH_SECRET`, `TICKET_SECRET` | Two different random strings from `openssl rand -base64 48` | free |
+
+Use the same `TICKET_SECRET` in `backend/rtapp/.env.development` if you work on live meetups. In `app/.env.development`, set `NEXT_PUBLIC_TURNSTILE_SITE_KEY=1x00000000000000000000AA` and keep the localhost URLs from `.env.example`. The API creates its tables on first start. With these settings nothing touches a real mail account or the production database, and production refuses the test keys, so a mixed up file fails loudly instead of quietly.
+
+Most phone app work (the map, search, directions, screens) needs no account either. If yours needs accounts against a local API, open an issue first and we'll sort out a test setup together.
 
 ## Before you open a pull request
 
-Run the checks for whatever you touched:
+Every pull request runs the same checks automatically (`.github/workflows/checks.yml`), and nothing is reviewed until they pass. Run them yourself first to save a round trip:
 
 ```bash
 # web
@@ -90,7 +109,26 @@ Add a new numbered file in `backend/bkapp/migrations`, like `0015_something.sql`
 - Write commit messages as a plain sentence about what changed and why, for example: *Keep the map following through reroutes, since iOS reported our own camera moves as finger pans*.
 - Keep each pull request to one topic.
 - In the description, say what changed and how you tested it. Add screenshots for anything visual, in light and dark.
-- If you used an AI tool, you are responsible for every line it wrote, so read it and test it. Don't let tools add co-author lines or commit and push on their own.
+
+## Using AI tools
+
+AI tools are fine. Pull requests you don't understand are not.
+
+- **You own every line.** Read all of it before you open the pull request, and be ready to explain any line in review. "The AI wrote it" is not an answer.
+- **Say so.** Mention in the description which parts an AI tool wrote or changed.
+- **Test it for real.** Run the checks, then use the feature yourself in light and dark mode and at phone width. A diff that passes checks but was never opened in a browser or on a phone will be closed.
+- **Keep it small.** One topic per pull request. Large generated rewrites, mass reformatting, or changes to files you didn't need to touch will be closed without review.
+- **Double check the risky parts.** AI tools often skip input validation, remove rate limits, log personal data, add packages, or invent APIs that don't exist. The security rules above apply to every line, generated or not.
+- **No autopilot.** Don't let tools open pull requests, commit, push, or add co-author lines on their own.
+
+## How changes reach the phone app
+
+Merging a pull request does not ship it to phones. The maintainer releases the app on their own schedule:
+
+- **JavaScript only changes** (screens, text, logic in `mobile/src` or the shared `app/src`) go out together as an over the air update, usually in a weekly batch. No App Store review needed.
+- **Native changes** (a new package with native code, permissions, `app.json`, anything that needs a new build) wait for the next store release, a few times a semester. Say clearly in your pull request if your change needs a new build.
+
+So there's no need to rush: a merged change just waits for the next batch.
 
 ## Using CSI Map for your own college
 
