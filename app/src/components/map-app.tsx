@@ -29,6 +29,7 @@ import { useHeading } from "@/hooks/use-heading";
 import { useMeetupLive } from "@/hooks/use-meetup-live";
 import { useSocial } from "@/hooks/use-social";
 import { useVoiceChoice } from "@/hooks/use-voice-choice";
+import { useRouteHazards } from "@/hooks/use-route-hazards";
 import { useVoiceGuidance } from "@/hooks/use-voice-guidance";
 import { useWakeLock } from "@/hooks/use-wake-lock";
 import { useWalkShare } from "@/hooks/use-walk-share";
@@ -884,6 +885,7 @@ export function MapApp({ initialPlaceId, initialRoom, initialAccountOpen = false
 
   const geo = useGeolocation({ onPosition: handlePosition, onError: handleGeoError });
   useWakeLock(mode === "navigate");
+  const hazards = useRouteHazards(mode === "navigate" ? navRoute : null, progress?.distanceAlong ?? 0);
   const voice = useVoiceGuidance({
     route: mode === "navigate" ? navRoute : null,
     progress,
@@ -892,6 +894,7 @@ export function MapApp({ initialPlaceId, initialRoom, initialAccountOpen = false
     isWrongWay,
     hasArrived,
     notice: routeNotice,
+    hazards,
     paused: isRiding,
     speed: () => motionStateRef.current.speed,
   });
@@ -2194,6 +2197,7 @@ export function MapApp({ initialPlaceId, initialRoom, initialAccountOpen = false
           hasAlternate={previousRoute !== null}
           hasArrived={hasArrived}
           weakSignal={(geo.accuracy ?? 0) > WEAK_ACCURACY_METERS}
+          hazards={hazards}
           isRiding={isRiding}
           voiceOn={voice.enabled}
           onToggleVoice={voice.toggle}

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { RouteNotice } from "@/components/navigation-hud";
+import { hazardLine, type RouteHazard } from "@/lib/hazards";
 import type { Route, RouteProgress } from "@/lib/routing";
 import {
   clearPreparedSpeech,
@@ -38,12 +39,16 @@ import {
   type StepLines,
 } from "@/lib/voice-plan";
 
+const NO_HAZARDS: readonly RouteHazard[] = [];
+
 /** Makes the lines every trip falls back on in the voice just picked. */
 export function prepareEverydayLines() {
   prepareSpeech(EVERYDAY_LINES, { later: true });
 }
 
 type Guidance = {
+  /** Warnings along the route, like crosswalks, said when no direction is due. */
+  hazards?: readonly RouteHazard[];
   route: Route | null;
   progress?: RouteProgress;
   destinationName?: string;
@@ -66,6 +71,7 @@ export function useVoiceGuidance({
   isWrongWay,
   hasArrived,
   notice,
+  hazards = NO_HAZARDS,
   paused = false,
   speed: currentSpeed,
 }: Guidance) {
@@ -78,6 +84,7 @@ export function useVoiceGuidance({
   const primedRef = useRef<{ route: Route | null; lines: Map<number, StepLines> }>({ route: null, lines: new Map() });
   const routeRef = useRef(route);
   const speedRef = useRef(currentSpeed);
+  const hazardsRef = useRef(hazards);
 
   useEffect(() => {
     nameRef.current = destinationName;
@@ -85,6 +92,13 @@ export function useVoiceGuidance({
     routeRef.current = route;
     speedRef.current = currentSpeed;
   }, [destinationName, arrivalNote, route, currentSpeed]);
+
+  useEffect(() => {
+    hazardsRef.current = hazards;
+    if (!enabledRef.current || hazards.length === 0) return;
+    const travel = routeRef.current?.travel;
+    prepareSpeech([...new Set(hazards.map((hazard) => hazardLine(hazard, travel)))], { later: true });
+  }, [hazards]);
 
   /** Starts making the opening lines while the route is only being previewed, so they are ready on Start. */
   const prime = useCallback((preview: Route) => {
@@ -186,7 +200,7 @@ export function useVoiceGuidance({
     const fresh = planAhead(spokenRef.current, route, progress.stepIndex, progress.distanceAlong, destination, speed);
     prepareSpeech(fresh.lines);
     prepareSpeech(fresh.extras, { later: true });
-    const due = dueLine(spokenRef.current, route, progress, destination, speed);
+    const due = dueLine(spokenRef.current, route, progress, destination, speed, hazardsRef.current);
     if (due) speak(due.line, { urgent: due.urgent, fallback: due.fallback, optional: due.optional });
   }, [route, progress, hasArrived, isWrongWay, paused]);
 

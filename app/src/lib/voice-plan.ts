@@ -1,5 +1,6 @@
 // When each spoken direction is said, shared by the web app and the phone app so both talk the same way.
 import { turnAngle } from "@/lib/geo";
+import { HAZARD_REPEAT_METERS, hazardCue, hazardLine, type HazardKind, type RouteHazard } from "@/lib/hazards";
 import { stepText } from "@/lib/instructions";
 import type { Route, RouteProgress, TravelMode } from "@/lib/routing";
 import {
@@ -64,13 +65,20 @@ export type StepLines = {
   early?: { line: string; meters: number };
   onward?: string;
 };
-export type Spoken = { route: Route | null; said: Set<string>; lines: Map<number, StepLines> };
+export type Spoken = {
+  route: Route | null;
+  said: Set<string>;
+  lines: Map<number, StepLines>;
+  /** Where along the route each kind of warning was last said. */
+  hazardAt: Map<HazardKind, number>;
+};
 export type DueLine = { line: string; urgent?: boolean; fallback?: string; optional?: boolean };
 
 export const freshSpoken = (route: Route | null = null, lines = new Map<number, StepLines>()): Spoken => ({
   route,
   said: new Set(),
   lines,
+  hazardAt: new Map(),
 });
 
 const key = (index: number, cue: Cue) => `${index}:${cue}`;
@@ -233,8 +241,37 @@ export const plannedLines = (spoken: Spoken): FreshLines => {
 // GPS drifting between buildings can reroute a walk again and again; saying so every time is noise, so it is said once a minute.
 export const NOTICE_REPEAT_MS = 60_000;
 
-/** The line due at this point of the route, if any, marked as said. */
-export function dueLine(spoken: Spoken, route: Route, progress: RouteProgress, destination: string, speed: number): DueLine | null {
+/** The line due at this point of the route, if any, marked as said. Directions come first; warnings fill the quiet. */
+export function dueLine(
+  spoken: Spoken,
+  route: Route,
+  progress: RouteProgress,
+  destination: string,
+  speed: number,
+  hazards: readonly RouteHazard[] = [],
+): DueLine | null {
+  return stepLine(spoken, route, progress, destination, speed) ?? hazardDue(spoken, route, progress, speed, hazards);
+}
+
+function hazardDue(spoken: Spoken, route: Route, progress: RouteProgress, speed: number, hazards: readonly RouteHazard[]): DueLine | null {
+  const travel = route.travel ?? "walk";
+  const cue = hazardCue(travel, speed);
+  for (const hazard of hazards) {
+    const ahead = hazard.at - progress.distanceAlong;
+    if (ahead > cue) break;
+    const id = `hazard:${hazard.id}`;
+    // Right on top of it, the warning is too late to help.
+    if (ahead < 3 || spoken.said.has(id)) continue;
+    spoken.said.add(id);
+    const last = spoken.hazardAt.get(hazard.kind);
+    if (last !== undefined && hazard.at - last < HAZARD_REPEAT_METERS[travel]) continue;
+    spoken.hazardAt.set(hazard.kind, hazard.at);
+    return { line: hazardLine(hazard, travel) };
+  }
+  return null;
+}
+
+function stepLine(spoken: Spoken, route: Route, progress: RouteProgress, destination: string, speed: number): DueLine | null {
   const index = nextSpokenIndex(route, Math.min(progress.stepIndex + 1, route.steps.length - 1));
   const step = route.steps[index];
   if (step.kind === "arrive" && !step.street?.side) return null;

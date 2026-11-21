@@ -23,6 +23,7 @@ import { useNow } from '@/hooks/use-now';
 import type { RouteNotice } from '@/hooks/use-voice-guidance';
 import { arrivalClock, formatRouteTime } from '@/lib/directions';
 import { formatDistance } from '@/lib/geo';
+import { hazardAhead, hazardLabel, type RouteHazard } from '@/lib/hazards';
 import { stepText } from '@/lib/instructions';
 import { parkingChoices, parkingDetail, parkingTitle, type ParkingPrompt } from '@/lib/parking';
 import type { Route, RouteProgress } from '@/lib/routing';
@@ -63,6 +64,8 @@ type TopProps = {
   notice?: RouteNotice;
   hasAlternate: boolean;
   weakSignal?: boolean;
+  /** Warnings along the route; the next one shows as it comes up. */
+  hazards?: readonly RouteHazard[];
   /** The place after this one, when this one is a stop on the way. */
   nextStopName?: string;
   /** Shown once arrived, such as which floor the room is on. */
@@ -72,6 +75,8 @@ type TopProps = {
   onExpandedChange: (expanded: boolean) => void;
   onUseAlternate: () => void;
 };
+
+const NO_HAZARDS: readonly RouteHazard[] = [];
 
 // Within this of the coming turn, the one after it shows too, the way Apple Maps says "Then".
 const THEN_WITHIN_METERS = 60;
@@ -149,6 +154,7 @@ export function NavigationBanner({
   notice,
   hasAlternate,
   weakSignal = false,
+  hazards = NO_HAZARDS,
   nextStopName,
   arrivalNote,
   expanded,
@@ -170,6 +176,7 @@ export function NavigationBanner({
   const toStep = Math.max(0, step.startDistance - along);
   const then = route.steps[index + 1];
   const wrong = isWrongWay && !hasArrived;
+  const warning = !hasArrived && !wrong ? hazardAhead(hazards, along, route.travel) : undefined;
   const canExpand = !hasArrived && !wrong && index < route.steps.length - 1;
   const open = expanded && canExpand;
   const ahead = route.steps.slice(index + 1);
@@ -311,6 +318,8 @@ export function NavigationBanner({
         <Pill symbol="bus.fill" text="Riding. Directions pick up when you get off" />
       ) : notice && !hasArrived ? (
         <Pill symbol={notice === 'faster' ? 'bolt.fill' : 'arrow.triangle.branch'} text={NOTICE_TEXT[notice]} />
+      ) : warning ? (
+        <Pill key={warning.id} symbol="exclamationmark.triangle.fill" text={hazardLabel(warning)} />
       ) : hasAlternate && !hasArrived && !wrong ? (
         <Press accessibilityRole="button" onPress={onUseAlternate} dim={0.7} className="items-center">
           <Pill symbol="arrow.uturn.backward" text="Tap to take your earlier route" />

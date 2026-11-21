@@ -1,5 +1,6 @@
 // What spoken directions say, shared by the web app, the phone app, and scripts/build-voice-bank.mjs.
 import { cardinal } from "@/lib/geo";
+import { HAZARD_LINES } from "@/lib/hazards";
 import { stepText } from "@/lib/instructions";
 import type { Route, RouteStep, TravelMode, TurnDirection } from "@/lib/routing";
 import { PREVIEW_LINE } from "@/lib/voice-options";
@@ -275,6 +276,7 @@ export function bankLines(placeNames: readonly string[]) {
     ...Object.values(NOTICE_LINES),
     ...Object.values(RIDING_LINES),
     ...Object.values(TRAVEL_SWITCH_LINES),
+    ...HAZARD_LINES,
     ...COMMON_CAMPUS_LINES,
     ...CAMPUS_INSTRUCTIONS.flatMap((instruction) => CAMPUS_HEADS_UP_METERS.map((meters) => `${headsUpLine(meters, instruction)}.`)),
     ...DEPART_LINES.flatMap((line) => FACING_TURNS.map((lead) => `${lead}, then ${lowerFirst(line)}`)),

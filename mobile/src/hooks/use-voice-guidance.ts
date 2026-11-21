@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AccessibilityInfo } from 'react-native';
 
+import { hazardCue, hazardLine, type RouteHazard } from '@/lib/hazards';
 import type { Route, RouteProgress } from '@/lib/routing';
 import {
   clearPreparedSpeech,
@@ -35,9 +36,13 @@ import {
   type StepLines,
 } from '@/lib/voice-plan';
 
+const NO_HAZARDS: readonly RouteHazard[] = [];
+
 export type RouteNotice = keyof typeof NOTICE_LINES;
 
 type Guidance = {
+  /** Warnings along the route, like crosswalks, said when no direction is due. */
+  hazards?: readonly RouteHazard[];
   route: Route | null;
   progress?: RouteProgress;
   destinationName?: string;
@@ -59,6 +64,7 @@ export function useVoiceGuidance({
   isWrongWay,
   hasArrived,
   notice,
+  hazards = NO_HAZARDS,
   paused = false,
   speed,
 }: Guidance) {
@@ -71,6 +77,7 @@ export function useVoiceGuidance({
   const noteRef = useRef(arrivalNote);
   const routeRef = useRef(route);
   const speedRef = useRef(speed);
+  const hazardsRef = useRef(hazards);
 
   useEffect(() => {
     nameRef.current = destinationName;
@@ -78,6 +85,13 @@ export function useVoiceGuidance({
     routeRef.current = route;
     speedRef.current = speed;
   }, [destinationName, arrivalNote, route, speed]);
+
+  useEffect(() => {
+    hazardsRef.current = hazards;
+    if (!enabledRef.current || hazards.length === 0) return;
+    const travel = routeRef.current?.travel;
+    prepareSpeech([...new Set(hazards.map((hazard) => hazardLine(hazard, travel)))], { later: true });
+  }, [hazards]);
 
   /** Gets the voice ready while the route is being looked at, so the first line on Start has no delay. */
   const prepare = useCallback(() => {
@@ -172,7 +186,7 @@ export function useVoiceGuidance({
     const fresh = planAhead(spokenRef.current, route, progress.stepIndex, progress.distanceAlong, destination, currentSpeed);
     prepareSpeech(fresh.lines);
     prepareSpeech(fresh.extras, { later: true });
-    const due = dueLine(spokenRef.current, route, progress, destination, currentSpeed);
+    const due = dueLine(spokenRef.current, route, progress, destination, currentSpeed, hazardsRef.current);
     if (due) void speak(due.line, { urgent: due.urgent, fallback: due.fallback, optional: due.optional });
   }, [route, progress, hasArrived, isWrongWay, paused]);
 
@@ -185,7 +199,7 @@ export function useVoiceGuidance({
     void speak(arrivalLine(nameRef.current ?? DEFAULT_DESTINATION, noteRef.current), { urgent: true });
   }, [hasArrived]);
 
-  useScreenReaderCues({ route, progress, destinationName, arrivalNote, isWrongWay, hasArrived, paused, voiceOn: enabled });
+  useScreenReaderCues({ route, progress, destinationName, arrivalNote, isWrongWay, hasArrived, paused, hazards, voiceOn: enabled });
 
   return { enabled, toggle, begin, prime, announceStep, prepare, say, ask };
 }
@@ -213,13 +227,16 @@ function useScreenReaderCues({
   isWrongWay,
   hasArrived,
   paused,
+  hazards,
   voiceOn,
 }: Pick<Guidance, 'route' | 'progress' | 'destinationName' | 'arrivalNote' | 'isWrongWay' | 'hasArrived' | 'paused'> & {
+  hazards: readonly RouteHazard[];
   voiceOn: boolean;
 }) {
   const screenReader = useScreenReader();
   const active = screenReader && !voiceOn;
   const lastRef = useRef<{ route: Route | null; step: number }>({ route: null, step: -1 });
+  const warnedRef = useRef(new Set<number>());
 
   useEffect(() => {
     if (!active || !route || !progress || hasArrived || isWrongWay || paused) return;
@@ -231,6 +248,15 @@ function useScreenReaderCues({
     const away = route.steps[index].startDistance - progress.distanceAlong;
     AccessibilityInfo.announceForAccessibility(away > 15 ? headsUpLine(away, instruction) : instruction);
   }, [active, route, progress, destinationName, hasArrived, isWrongWay, paused]);
+
+  useEffect(() => {
+    if (!active || !route || !progress || hasArrived || isWrongWay || paused) return;
+    const reach = hazardCue(route.travel);
+    const hazard = hazards.find((h) => h.at - progress.distanceAlong >= 3 && h.at - progress.distanceAlong <= reach);
+    if (!hazard || warnedRef.current.has(hazard.id)) return;
+    warnedRef.current.add(hazard.id);
+    AccessibilityInfo.announceForAccessibility(hazardLine(hazard, route.travel));
+  }, [active, route, progress, hazards, hasArrived, isWrongWay, paused]);
 
   useEffect(() => {
     if (active && isWrongWay && !hasArrived) AccessibilityInfo.announceForAccessibility(WRONG_WAY_LINE);

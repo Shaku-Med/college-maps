@@ -53,6 +53,7 @@ import { useNow } from '@/hooks/use-now';
 import { mapCameraPadding, PANEL_WIDTH, useMapChromeBottom, useShortViewport, useTabRail, useWide } from '@/hooks/use-layout';
 import { FOLLOW_ZOOM, useNavigation, WALK_FOLLOW_ZOOM, type FollowTarget } from '@/hooks/use-navigation';
 import { useRoutePreview } from '@/hooks/use-route-preview';
+import { useRouteHazards } from '@/hooks/use-route-hazards';
 import { useVoiceGuidance } from '@/hooks/use-voice-guidance';
 import { holdVoice } from '@/lib/voice';
 import { useProfile } from '@/lib/account';
@@ -453,6 +454,7 @@ export default function MapScreen() {
       streets: fromStreets ? { here: livePosition, travel: trip.travelMode, toFirst: legSeconds(route) } : null,
     });
   }, [preview.plan, preview.route, preview.isOffCampus, livePosition, trip.travelMode]);
+  const hazards = useRouteHazards(navigating ? navigation.route : null, navigation.progress?.distanceAlong ?? 0);
   const voice = useVoiceGuidance({
     route: navigating ? navigation.route : null,
     progress: navigation.progress,
@@ -461,6 +463,7 @@ export default function MapScreen() {
     isWrongWay: navigation.isWrongWay,
     hasArrived: navigation.hasArrived,
     notice: navigation.notice,
+    hazards,
     paused: navigation.isRiding,
     speed: navigation.speed,
   });
@@ -1460,6 +1463,7 @@ export default function MapScreen() {
             notice={navigation.notice}
             hasAlternate={navigation.previousPath !== null}
             weakSignal={(location.fix?.accuracy ?? 0) > 60}
+            hazards={hazards}
             expanded={hudPanel === 'steps'}
             onExpandedChange={(open) => setHudPanel(open ? 'steps' : null)}
             onUseAlternate={() => {

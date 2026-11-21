@@ -14,6 +14,7 @@ import {
   Navigation2,
   RefreshCw,
   SquareParking,
+  TriangleAlert,
   Undo2,
   Volume2,
   VolumeX,
@@ -34,6 +35,7 @@ import { useDragPanel } from "@/hooks/use-drag-panel";
 import { useNow } from "@/hooks/use-now";
 import { arrivalClock, formatRouteTime } from "@/lib/directions";
 import { formatDistance } from "@/lib/geo";
+import { hazardAhead, hazardLabel, type RouteHazard } from "@/lib/hazards";
 import { stepText } from "@/lib/instructions";
 import { parkingChoices, parkingDetail, parkingTitle, type ParkingPrompt } from "@/lib/parking";
 import type { Route, RouteProgress } from "@/lib/routing";
@@ -50,6 +52,8 @@ type NavigationHudProps = {
   hasAlternate: boolean;
   hasArrived: boolean;
   weakSignal: boolean;
+  /** Warnings along the route; the next one shows as it comes up. */
+  hazards?: readonly RouteHazard[];
   /** Moving faster than this way of travel allows, like walking directions on a bus. Guidance holds still. */
   isRiding: boolean;
   voiceOn: boolean;
@@ -233,6 +237,7 @@ export function NavigationHud({
   hasAlternate,
   hasArrived,
   weakSignal,
+  hazards = [],
   isRiding,
   voiceOn,
   onToggleVoice,
@@ -288,7 +293,8 @@ export function NavigationHud({
   const arrive = arrivalClock(route, remaining, now);
   const then = ahead[0];
   const showThen = !stepping && !stepsOpen && then !== undefined && shownDistance <= THEN_WITHIN_METERS;
-  const showPill = !hasArrived && (isRiding || Boolean(notice) || (hasAlternate && !isWrongWay) || weakSignal);
+  const warning = !hasArrived && !isWrongWay ? hazardAhead(hazards, along, route.travel) : undefined;
+  const showPill = !hasArrived && (isRiding || Boolean(notice) || Boolean(warning) || (hasAlternate && !isWrongWay) || weakSignal);
   const { clip: stepsClip, content: stepsContent, mounted: stepsMounted, dragging: stepsDragging, zone: stepsZone } = useDragPanel({
     edge: "top",
     open: stepsOpen,
@@ -434,6 +440,14 @@ export function NavigationHud({
                 : notice === "switched"
                   ? "Back on your earlier route"
                   : "Route updated. Your old route is faded"}
+            </p>
+          ) : warning ? (
+            <p
+              key={warning.id}
+              role="status"
+              className="animate-pill-in pointer-events-none mx-auto mt-2 flex w-fit items-center gap-1.5 rounded-full bg-overlay px-3.5 py-2 text-sm font-medium text-overlay-foreground shadow-md">
+              <TriangleAlert className="size-4 shrink-0 text-accent" aria-hidden />
+              {hazardLabel(warning)}
             </p>
           ) : hasAlternate && !isWrongWay ? (
             <p className="animate-pill-in pointer-events-none mx-auto mt-2 w-fit rounded-full bg-overlay px-3.5 py-1.5 text-sm text-muted shadow-sm">

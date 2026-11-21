@@ -102,6 +102,12 @@ export default function PrivacyPage() {
           through our servers and we do not keep them.
         </p>
         <p className="text-sm leading-relaxed text-muted">
+          While you follow a route, its line is sent the same way to OpenStreetMap&rsquo;s free Overpass
+          service, which answers with what lies along it, like crosswalks and railroad crossings, so the
+          app can warn you ahead of them. That request holds the route&rsquo;s line, not who you are, and
+          it never passes through our servers.
+        </p>
+        <p className="text-sm leading-relaxed text-muted">
           The lines every campus walk uses, like &ldquo;Turn left&rdquo; or the name of the building you are
           walking to, are recorded ahead of time in each voice and downloaded from this site as they are
           needed. Like any file from this site, that request names only the recording, not where you are.
