@@ -79,7 +79,7 @@ function ToggleRow({
         <ListGroup.ItemTitle>{title}</ListGroup.ItemTitle>
         {description ? <ListGroup.ItemDescription>{description}</ListGroup.ItemDescription> : null}
       </ListGroup.ItemContent>
-      <Switch isSelected={value} onSelectedChange={onChange} />
+      <Switch accessibilityLabel={title} isSelected={value} onSelectedChange={onChange} />
     </ListGroup.Item>
   );
 }

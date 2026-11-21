@@ -1,4 +1,5 @@
 import { SymbolView, type AndroidSymbol, type SFSymbol, type SymbolViewProps } from 'expo-symbols';
+import { Platform, View } from 'react-native';
 
 // Android has no SF Symbols, so every symbol the app uses has its Material Symbol here.
 const MATERIAL: Partial<Record<SFSymbol, AndroidSymbol>> = {
@@ -113,5 +114,12 @@ type IconProps = Omit<SymbolViewProps, 'name'> & { name: SFSymbol };
 
 /** An SF Symbol on iOS and the matching Material Symbol on Android. */
 export function Icon({ name, ...props }: IconProps) {
-  return <SymbolView name={{ ios: name, android: MATERIAL[name] ?? 'circle' }} {...props} />;
+  const symbol = <SymbolView name={{ ios: name, android: MATERIAL[name] ?? 'circle' }} {...props} />;
+  if (Platform.OS !== 'android') return symbol;
+  // expo-symbols draws Android icons as a Text glyph and drops accessibility props, so TalkBack read the glyph into labels.
+  return (
+    <View collapsable={false} importantForAccessibility="no-hide-descendants">
+      {symbol}
+    </View>
+  );
 }

@@ -135,6 +135,7 @@ export default function ReportScreen() {
                     <ListGroup.ItemDescription>You will no longer see each other as friends.</ListGroup.ItemDescription>
                   </ListGroup.ItemContent>
                   <Switch
+                    accessibilityLabel="Remove as a friend"
                     isSelected={alsoUnfriend || alsoBlock}
                     isDisabled={busy || alsoBlock}
                     onSelectedChange={setAlsoUnfriend}
@@ -151,6 +152,7 @@ export default function ReportScreen() {
                 </ListGroup.ItemDescription>
               </ListGroup.ItemContent>
               <Switch
+                accessibilityLabel={`Block @${username}`}
                 isSelected={alsoBlock}
                 isDisabled={busy}
                 onSelectedChange={(next) => {

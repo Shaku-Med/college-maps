@@ -126,7 +126,7 @@ export default function ReportProblemScreen() {
                 <ListGroup.ItemTitle>You can email me about this</ListGroup.ItemTitle>
                 <ListGroup.ItemDescription>We would only write to your school email about this report.</ListGroup.ItemDescription>
               </ListGroup.ItemContent>
-              <Switch isSelected={mayContact} isDisabled={busy} onSelectedChange={setMayContact} />
+              <Switch accessibilityLabel="You can email me about this" isSelected={mayContact} isDisabled={busy} onSelectedChange={setMayContact} />
             </ListGroup.Item>
           </ListGroup>
 

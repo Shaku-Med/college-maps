@@ -244,7 +244,7 @@ export function DirectionsPanel({
         {!isOffCampus || trip.travelMode === 'walk' ? (
           <View className="flex-row items-center justify-between px-1">
             <Text className="text-sm text-foreground">Avoid stairs</Text>
-            <Switch isSelected={trip.avoidStairs} onSelectedChange={setAvoidStairs} />
+            <Switch accessibilityLabel="Avoid stairs" isSelected={trip.avoidStairs} onSelectedChange={setAvoidStairs} />
           </View>
         ) : null}
 

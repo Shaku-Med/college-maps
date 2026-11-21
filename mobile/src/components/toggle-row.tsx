@@ -28,7 +28,7 @@ export function ToggleRow({
         <ListGroup.ItemTitle>{title}</ListGroup.ItemTitle>
         {description ? <ListGroup.ItemDescription>{description}</ListGroup.ItemDescription> : null}
       </ListGroup.ItemContent>
-      <Switch isSelected={value} isDisabled={disabled} onSelectedChange={onChange} />
+      <Switch accessibilityLabel={title} isSelected={value} isDisabled={disabled} onSelectedChange={onChange} />
     </ListGroup.Item>
   );
 }
