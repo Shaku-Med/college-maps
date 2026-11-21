@@ -94,7 +94,7 @@ export default function ReportScreen() {
     <ScrollView keyboardShouldPersistTaps="handled" contentContainerClassName="gap-5 px-5" contentContainerStyle={sheet}>
       <View className="flex-row items-center justify-between">
         <Text className="text-xl font-bold text-foreground">Submit report</Text>
-        <CloseButton onPress={() => router.back()} isDisabled={busy} />
+        <CloseButton accessibilityLabel="Close" onPress={() => router.back()} isDisabled={busy} />
       </View>
 
       <View className="gap-2">

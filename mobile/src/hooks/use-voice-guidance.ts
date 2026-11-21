@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { AccessibilityInfo } from 'react-native';
 
 import type { Route, RouteProgress } from '@/lib/routing';
 import {
@@ -17,6 +18,7 @@ import {
   WRONG_WAY_LINE,
   actLine,
   arrivalLine,
+  headsUpLine,
   standInAct,
 } from '@/lib/voice-lines';
 import {
@@ -183,5 +185,60 @@ export function useVoiceGuidance({
     void speak(arrivalLine(nameRef.current ?? DEFAULT_DESTINATION, noteRef.current), { urgent: true });
   }, [hasArrived]);
 
+  useScreenReaderCues({ route, progress, destinationName, arrivalNote, isWrongWay, hasArrived, paused, voiceOn: enabled });
+
   return { enabled, toggle, begin, prime, announceStep, prepare, say, ask };
+}
+
+function useScreenReader() {
+  const [on, setOn] = useState(false);
+  useEffect(() => {
+    let live = true;
+    void AccessibilityInfo.isScreenReaderEnabled().then((value) => live && setOn(value));
+    const sub = AccessibilityInfo.addEventListener('screenReaderChanged', setOn);
+    return () => {
+      live = false;
+      sub.remove();
+    };
+  }, []);
+  return on;
+}
+
+/** VoiceOver and TalkBack read each new turn when spoken directions are off, so the two never talk over each other. */
+function useScreenReaderCues({
+  route,
+  progress,
+  destinationName,
+  arrivalNote,
+  isWrongWay,
+  hasArrived,
+  paused,
+  voiceOn,
+}: Pick<Guidance, 'route' | 'progress' | 'destinationName' | 'arrivalNote' | 'isWrongWay' | 'hasArrived' | 'paused'> & {
+  voiceOn: boolean;
+}) {
+  const screenReader = useScreenReader();
+  const active = screenReader && !voiceOn;
+  const lastRef = useRef<{ route: Route | null; step: number }>({ route: null, step: -1 });
+
+  useEffect(() => {
+    if (!active || !route || !progress || hasArrived || isWrongWay || paused) return;
+    const index = Math.min(progress.stepIndex + 1, route.steps.length - 1);
+    const last = lastRef.current;
+    if (last.route === route && last.step === index) return;
+    lastRef.current = { route, step: index };
+    const instruction = actLine(route, index, destinationName ?? DEFAULT_DESTINATION);
+    const away = route.steps[index].startDistance - progress.distanceAlong;
+    AccessibilityInfo.announceForAccessibility(away > 15 ? headsUpLine(away, instruction) : instruction);
+  }, [active, route, progress, destinationName, hasArrived, isWrongWay, paused]);
+
+  useEffect(() => {
+    if (active && isWrongWay && !hasArrived) AccessibilityInfo.announceForAccessibility(WRONG_WAY_LINE);
+  }, [active, isWrongWay, hasArrived]);
+
+  useEffect(() => {
+    if (active && hasArrived) AccessibilityInfo.announceForAccessibility(arrivalLine(destinationName ?? DEFAULT_DESTINATION, arrivalNote));
+    // Only the moment of arriving, not later name or note changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active, hasArrived]);
 }

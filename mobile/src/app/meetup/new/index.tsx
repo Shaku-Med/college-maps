@@ -115,7 +115,7 @@ export default function NewMeetupSheet() {
       <Stack.Screen options={{ title: isPublic ? 'Campus event' : 'New meetup' }} />
       <View className="flex-row items-center justify-between">
         <Text className="text-xl font-bold text-foreground">{isPublic ? 'Campus event' : 'New meetup'}</Text>
-        <CloseButton onPress={() => router.back()} />
+        <CloseButton accessibilityLabel="Close" onPress={() => router.back()} />
       </View>
       <Text className="text-sm leading-5 text-muted">
         {isPublic

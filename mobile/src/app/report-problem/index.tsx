@@ -74,7 +74,7 @@ export default function ReportProblemScreen() {
       <Stack.Screen options={{ title: 'Report a problem' }} />
       <View className="flex-row items-center justify-between">
         <Text className="text-xl font-bold text-foreground">Report a problem</Text>
-        <CloseButton onPress={() => router.back()} isDisabled={busy} />
+        <CloseButton accessibilityLabel="Close" onPress={() => router.back()} isDisabled={busy} />
       </View>
       <Text className="text-sm leading-5 text-muted">
         Something broken, a building in the wrong spot, or an idea? Tell us and we will look into it.

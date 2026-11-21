@@ -108,7 +108,7 @@ export function DirectionsPanel({
               {trip.room ? `Room ${trip.room}` : destination.name}
             </Text>
           </View>
-          <CloseButton onPress={onClose} />
+          <CloseButton accessibilityLabel="Close" onPress={onClose} />
         </View>
 
         <Pressable
@@ -256,6 +256,8 @@ export function DirectionsPanel({
             {events.slice(0, 3).map((meetup) => (
               <Pressable
                 key={meetup.id}
+                accessibilityRole="button"
+                accessibilityLabel={`${meetup.title ?? 'Campus event'}${meetup.going > 0 ? `, ${meetup.going} going` : ''}`}
                 onPress={() => onOpenEvent?.(meetup)}
                 className="flex-row items-center gap-2.5 rounded-2xl bg-default px-3 py-2.5 active:opacity-70">
                 <Icon name="calendar" size={14} tintColor={accent} />
@@ -282,7 +284,12 @@ export function DirectionsPanel({
                 {route.hasStairs ? ' · Stairs' : ''}
               </Text>
             </View>
-            <Pressable onPress={() => setShowSteps((value) => !value)} hitSlop={8} className="active:opacity-60">
+            <Pressable
+              accessibilityRole="button"
+              accessibilityState={{ expanded: showSteps }}
+              onPress={() => setShowSteps((value) => !value)}
+              hitSlop={8}
+              className="active:opacity-60">
               <Text className="text-sm font-semibold text-accent">{showSteps ? 'Hide steps' : 'Steps'}</Text>
             </Pressable>
           </View>

@@ -105,7 +105,7 @@ export function PlaceDetails({ place, room, onDone }: { place: Place; room?: str
             </Text>
           </View>
         </View>
-        <CloseButton onPress={onDone} />
+        <CloseButton accessibilityLabel="Close" onPress={onDone} />
       </View>
 
       {askRoom ? (

@@ -312,7 +312,7 @@ export function NavigationBanner({
       ) : notice && !hasArrived ? (
         <Pill symbol={notice === 'faster' ? 'bolt.fill' : 'arrow.triangle.branch'} text={NOTICE_TEXT[notice]} />
       ) : hasAlternate && !hasArrived && !wrong ? (
-        <Press onPress={onUseAlternate} dim={0.7} className="items-center">
+        <Press accessibilityRole="button" onPress={onUseAlternate} dim={0.7} className="items-center">
           <Pill symbol="arrow.uturn.backward" text="Tap to take your earlier route" />
         </Press>
       ) : weakSignal && !hasArrived ? (

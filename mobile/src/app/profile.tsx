@@ -14,7 +14,7 @@ export default function ProfileSheet() {
     <ScrollView keyboardShouldPersistTaps="handled" contentContainerClassName="gap-5 px-5" contentContainerStyle={sheet}>
       <View className="flex-row items-center justify-between">
         <Text className="text-xl font-bold text-foreground">Edit profile</Text>
-        <CloseButton onPress={() => router.back()} />
+        <CloseButton accessibilityLabel="Close" onPress={() => router.back()} />
       </View>
       <ProfileForm user={account.user} submitLabel="Save" onSaved={() => router.back()} />
     </ScrollView>

@@ -106,10 +106,14 @@ export function SignIn() {
           <Button.Label>{busy ? 'Signing in' : 'Sign in'}</Button.Label>
         </Button>
         <View className="flex-row justify-between px-1">
-          <Pressable onPress={() => setStep('email')} hitSlop={8} className="active:opacity-60">
+          <Pressable accessibilityRole="button" onPress={() => setStep('email')} hitSlop={8} className="active:opacity-60">
             <Text className="text-sm font-medium text-accent">Use another email</Text>
           </Pressable>
-          <Pressable disabled={wait > 0 || busy || !human} onPress={() => void sendCode()} hitSlop={8} className="active:opacity-60">
+          <Pressable
+            accessibilityRole="button"
+            accessibilityState={{ disabled: wait > 0 || busy || !human }}
+            disabled={wait > 0 || busy || !human}
+            onPress={() => void sendCode()} hitSlop={8} className="active:opacity-60">
             <Text className={wait > 0 || !human ? 'text-sm text-muted' : 'text-sm font-medium text-accent'}>
               {wait > 0 ? `New code in ${wait}s` : 'Send a new code'}
             </Text>

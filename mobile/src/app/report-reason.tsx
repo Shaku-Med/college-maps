@@ -42,7 +42,7 @@ export default function ReportReasonScreen() {
     <ScrollView keyboardShouldPersistTaps="handled" contentContainerClassName="gap-5 px-5" contentContainerStyle={sheet}>
       <View className="flex-row items-center justify-between">
         <Text className="text-xl font-bold text-foreground">Why are you reporting?</Text>
-        <CloseButton onPress={() => router.back()} />
+        <CloseButton accessibilityLabel="Close" onPress={() => router.back()} />
       </View>
       <Text className="text-base leading-6 text-muted">
         {kind === 'meetup'

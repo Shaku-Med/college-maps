@@ -48,7 +48,7 @@ export default function ImportSheet() {
     <ScrollView keyboardShouldPersistTaps="handled" contentContainerClassName="gap-5 px-5" contentContainerStyle={sheet}>
       <View className="flex-row items-center justify-between">
         <Text className="text-xl font-bold text-foreground">Paste your schedule</Text>
-        <CloseButton onPress={() => router.back()} />
+        <CloseButton accessibilityLabel="Close" onPress={() => router.back()} />
       </View>
       <Text className="text-sm leading-5 text-muted">
         In {portal}, open your class schedule, select it all, and copy. Then paste it here. Classes with a room on

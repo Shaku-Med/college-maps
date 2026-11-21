@@ -79,7 +79,7 @@ export default function ClassSheet() {
     <ScrollView keyboardShouldPersistTaps="handled" contentContainerClassName="gap-5 px-5" contentContainerStyle={sheet}>
       <View className="flex-row items-center justify-between">
         <Text className="text-xl font-bold text-foreground">{existing ? 'Edit class' : 'Add a class'}</Text>
-        <CloseButton onPress={() => router.back()} />
+        <CloseButton accessibilityLabel="Close" onPress={() => router.back()} />
       </View>
 
       <TextField isRequired isInvalid={tried && !name.trim()}>

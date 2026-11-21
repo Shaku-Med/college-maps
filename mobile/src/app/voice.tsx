@@ -11,7 +11,7 @@ export default function VoiceScreen() {
     <ScrollView keyboardShouldPersistTaps="handled" contentContainerClassName="gap-5 px-5" contentContainerStyle={sheet}>
       <View className="flex-row items-center justify-between">
         <Text className="text-xl font-bold text-foreground">Directions voice</Text>
-        <CloseButton onPress={() => router.back()} />
+        <CloseButton accessibilityLabel="Close" onPress={() => router.back()} />
       </View>
       <Text className="text-base leading-6 text-muted">
         Pick who reads out each turn. Tap play to hear a voice first. The natural voices are the same ones as on the

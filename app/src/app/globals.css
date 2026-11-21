@@ -396,6 +396,17 @@ html:has(.site-page) body {
     --map-safe-right: max(0.75rem, env(safe-area-inset-right, 0px));
   }
 
+  /* HeroUI's light muted and placeholder sit under 4.5:1 on the page background; these clear it. */
+  :root:not(.dark) {
+    --muted: oklch(51% 0.0138 285.94);
+    --field-placeholder: var(--muted);
+  }
+
+  /* HeroUI leaves the search field on the browser's faint default placeholder. */
+  .search-field__input::placeholder {
+    color: var(--field-placeholder, var(--muted));
+  }
+
   /* HeroUI tokens live on .dark. Production CSP can block the inline class toggle, so
      copy the dark variables onto the root when the system theme is dark. */
   @media (prefers-color-scheme: dark) {

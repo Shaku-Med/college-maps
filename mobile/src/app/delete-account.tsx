@@ -53,7 +53,7 @@ export default function DeleteAccountScreen() {
         <View className="size-12 items-center justify-center rounded-2xl bg-danger-soft">
           <Icon name="trash" size={20} tintColor={danger} />
         </View>
-        <CloseButton onPress={() => router.back()} />
+        <CloseButton accessibilityLabel="Close" onPress={() => router.back()} />
       </View>
 
       <View className="gap-2">

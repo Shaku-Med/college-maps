@@ -157,7 +157,7 @@ export default function MeetupSheet() {
               </View>
             </NativeMenu>
           )}
-          <CloseButton onPress={() => router.back()} />
+          <CloseButton accessibilityLabel="Close" onPress={() => router.back()} />
         </View>
       </View>
 

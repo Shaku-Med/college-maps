@@ -46,7 +46,7 @@ export default function AddFriendSheet() {
           <Text className="text-xl font-bold text-foreground">Add a friend</Text>
           <Text className="text-sm leading-5 text-muted">Friends find each other by username. Emails stay private.</Text>
         </View>
-        <CloseButton onPress={() => router.back()} />
+        <CloseButton accessibilityLabel="Close" onPress={() => router.back()} />
       </View>
 
       <View className="gap-3">

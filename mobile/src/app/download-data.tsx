@@ -47,7 +47,7 @@ export default function DownloadDataScreen() {
     <ScrollView keyboardShouldPersistTaps="handled" contentContainerClassName="gap-5 px-5" contentContainerStyle={sheet}>
       <View className="flex-row items-center justify-between">
         <Text className="text-xl font-bold text-foreground">Download my information</Text>
-        <CloseButton onPress={() => router.back()} isDisabled={busy} />
+        <CloseButton accessibilityLabel="Close" onPress={() => router.back()} isDisabled={busy} />
       </View>
       <Text className="text-base leading-6 text-muted">
         Everything we store about your account, plus the class list saved on this phone. Pick a format, then save or
