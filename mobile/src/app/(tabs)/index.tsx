@@ -34,7 +34,7 @@ import { RouteLine } from '@/components/route-line';
 import { PersonCard, PersonPin } from '@/components/person-pin';
 import { MapControls, type MapControl } from '@/components/map-controls';
 import { MapButton } from '@/components/map-button';
-import { BreakCard, NavigationBanner, NavigationFooter, ParkingCard } from '@/components/navigation-hud';
+import { BreakCard, NavigationBanner, NavigationFooter, ParkingCard, SpeedLimitSign } from '@/components/navigation-hud';
 import { WalkShareSection } from '@/components/walk-share-section';
 import { PlaceDetails } from '@/components/place-details';
 import { CameraArrows } from '@/components/camera-arrows';
@@ -97,6 +97,7 @@ import { showMeetupOnMap, useShownMeetup } from '@/lib/meetup-focus';
 import { findRoute, remainingPath, type Route } from '@/lib/routing';
 import { useSocial } from '@/lib/social';
 import { isWalk } from '@/lib/social-api';
+import { speedLimitAt } from '@/lib/hazards';
 import {
   MY_LOCATION,
   closeTrip,
@@ -454,7 +455,9 @@ export default function MapScreen() {
       streets: fromStreets ? { here: livePosition, travel: trip.travelMode, toFirst: legSeconds(route) } : null,
     });
   }, [preview.plan, preview.route, preview.isOffCampus, livePosition, trip.travelMode]);
-  const hazards = useRouteHazards(navigating ? navigation.route : null, navigation.progress?.distanceAlong ?? 0);
+  const { hazards, limits: speedLimits } = useRouteHazards(navigating ? navigation.route : null, navigation.progress?.distanceAlong ?? 0);
+  const speedLimit =
+    navigating && !navigation.hasArrived ? speedLimitAt(speedLimits, navigation.progress?.distanceAlong ?? 0) : null;
   const voice = useVoiceGuidance({
     route: navigating ? navigation.route : null,
     progress: navigation.progress,
@@ -1535,8 +1538,9 @@ export default function MapScreen() {
           <Animated.View
             entering={FadeIn.duration(180)}
             pointerEvents="box-none"
-            className="items-end px-4"
+            className="flex-row items-end justify-between px-4"
             onLayout={(event) => setControlsHeight(event.nativeEvent.layout.height)}>
+            {speedLimit !== null ? <SpeedLimitSign mph={speedLimit} speed={location.fix?.speed} /> : <View />}
             <MapControls controls={controls} />
           </Animated.View>
         ) : null}

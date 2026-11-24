@@ -23,7 +23,7 @@ import { useNow } from '@/hooks/use-now';
 import type { RouteNotice } from '@/hooks/use-voice-guidance';
 import { arrivalClock, formatRouteTime } from '@/lib/directions';
 import { formatDistance } from '@/lib/geo';
-import { hazardAhead, hazardLabel, type RouteHazard } from '@/lib/hazards';
+import { hazardAhead, hazardLabel, isOverLimit, type RouteHazard } from '@/lib/hazards';
 import { stepText } from '@/lib/instructions';
 import { parkingChoices, parkingDetail, parkingTitle, type ParkingPrompt } from '@/lib/parking';
 import type { Route, RouteProgress } from '@/lib/routing';
@@ -50,6 +50,26 @@ function Pill({ symbol, text, tone = 'default' }: { symbol: SFSymbol; text: stri
           {text}
         </Text>
       </Glass>
+    </Animated.View>
+  );
+}
+
+/** The posted limit while driving, like the sign at the roadside; it turns red when going faster. */
+export function SpeedLimitSign({ mph, speed }: { mph: number; speed?: number }) {
+  const over = isOverLimit(speed, mph);
+  const ink = over ? 'text-danger-foreground' : 'text-foreground';
+  return (
+    <Animated.View
+      entering={FadeIn.duration(180)}
+      accessible
+      accessibilityRole="image"
+      accessibilityLabel={`Speed limit ${mph} miles per hour${over ? ', you are going faster' : ''}`}
+      className={`w-14 items-center rounded-xl border-2 px-1 pb-1 pt-1.5 ${over ? 'border-danger bg-danger' : 'border-foreground bg-background'}`}>
+      <Text className={`text-[9px] font-bold uppercase ${ink}`}>Speed</Text>
+      <Text className={`text-[9px] font-bold uppercase ${ink}`}>Limit</Text>
+      <Text className={`text-2xl font-bold ${ink}`} style={{ fontVariant: ['tabular-nums'] }}>
+        {mph}
+      </Text>
     </Animated.View>
   );
 }

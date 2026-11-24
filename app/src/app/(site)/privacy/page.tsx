@@ -103,8 +103,9 @@ export default function PrivacyPage() {
         </p>
         <p className="text-sm leading-relaxed text-muted">
           While you follow a route, its line is sent the same way to OpenStreetMap&rsquo;s free Overpass
-          service, which answers with what lies along it, like crosswalks and railroad crossings, so the
-          app can warn you ahead of them. That request holds the route&rsquo;s line, not who you are, and
+          service (or a public copy of it at overpass.private.coffee when the main one is down), which
+          answers with what lies along it, like crosswalks, railroad crossings, speed cameras and speed
+          limits, so the app can warn you ahead of them. That request holds the route&rsquo;s line, not who you are, and
           it never passes through our servers.
         </p>
         <p className="text-sm leading-relaxed text-muted">

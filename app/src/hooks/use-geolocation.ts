@@ -97,6 +97,7 @@ export function useGeolocation({ onPosition, onError }: GeoOptions = {}) {
     status,
     position: fix?.position,
     accuracy: fix?.accuracy,
+    speed: fix?.speed,
     /** True once any fix has arrived, even if the signal was lost afterwards. */
     located: fix !== undefined,
     start,

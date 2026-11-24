@@ -885,7 +885,7 @@ export function MapApp({ initialPlaceId, initialRoom, initialAccountOpen = false
 
   const geo = useGeolocation({ onPosition: handlePosition, onError: handleGeoError });
   useWakeLock(mode === "navigate");
-  const hazards = useRouteHazards(mode === "navigate" ? navRoute : null, progress?.distanceAlong ?? 0);
+  const { hazards, limits: speedLimits } = useRouteHazards(mode === "navigate" ? navRoute : null, progress?.distanceAlong ?? 0);
   const voice = useVoiceGuidance({
     route: mode === "navigate" ? navRoute : null,
     progress,
@@ -2198,6 +2198,8 @@ export function MapApp({ initialPlaceId, initialRoom, initialAccountOpen = false
           hasArrived={hasArrived}
           weakSignal={(geo.accuracy ?? 0) > WEAK_ACCURACY_METERS}
           hazards={hazards}
+          speedLimits={speedLimits}
+          speed={geo.speed}
           isRiding={isRiding}
           voiceOn={voice.enabled}
           onToggleVoice={voice.toggle}

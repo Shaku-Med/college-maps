@@ -35,7 +35,7 @@ import { useDragPanel } from "@/hooks/use-drag-panel";
 import { useNow } from "@/hooks/use-now";
 import { arrivalClock, formatRouteTime } from "@/lib/directions";
 import { formatDistance } from "@/lib/geo";
-import { hazardAhead, hazardLabel, type RouteHazard } from "@/lib/hazards";
+import { hazardAhead, hazardLabel, isOverLimit, speedLimitAt, type RouteHazard, type SpeedLimit } from "@/lib/hazards";
 import { stepText } from "@/lib/instructions";
 import { parkingChoices, parkingDetail, parkingTitle, type ParkingPrompt } from "@/lib/parking";
 import type { Route, RouteProgress } from "@/lib/routing";
@@ -54,6 +54,9 @@ type NavigationHudProps = {
   weakSignal: boolean;
   /** Warnings along the route; the next one shows as it comes up. */
   hazards?: readonly RouteHazard[];
+  /** Posted limits along a drive, and how fast the device says it is going in metres per second. */
+  speedLimits?: readonly SpeedLimit[];
+  speed?: number;
   /** Moving faster than this way of travel allows, like walking directions on a bus. Guidance holds still. */
   isRiding: boolean;
   voiceOn: boolean;
@@ -227,6 +230,19 @@ function TripSetting({ label, isSelected, onChange }: { label: string; isSelecte
   );
 }
 
+function SpeedLimitSign({ mph, over }: { mph: number; over: boolean }) {
+  return (
+    <div
+      role="img"
+      aria-label={`Speed limit ${mph} miles per hour${over ? ", you are going faster" : ""}`}
+      className={`animate-pill-in mr-auto flex w-14 flex-col items-center rounded-xl border-2 px-1 pb-1 pt-1.5 shadow-lg transition-colors duration-300 ${over ? "border-danger bg-danger text-danger-foreground" : "border-foreground bg-background text-foreground"}`}>
+      <span className="text-[9px] font-bold uppercase leading-tight tracking-wide">Speed</span>
+      <span className="text-[9px] font-bold uppercase leading-tight tracking-wide">Limit</span>
+      <span key={mph} className="animate-step-in text-2xl font-bold leading-none tabular-nums">{mph}</span>
+    </div>
+  );
+}
+
 export function NavigationHud({
   destination,
   route,
@@ -238,6 +254,8 @@ export function NavigationHud({
   hasArrived,
   weakSignal,
   hazards = [],
+  speedLimits = [],
+  speed,
   isRiding,
   voiceOn,
   onToggleVoice,
@@ -294,6 +312,7 @@ export function NavigationHud({
   const then = ahead[0];
   const showThen = !stepping && !stepsOpen && then !== undefined && shownDistance <= THEN_WITHIN_METERS;
   const warning = !hasArrived && !isWrongWay ? hazardAhead(hazards, along, route.travel) : undefined;
+  const limit = !hasArrived ? speedLimitAt(speedLimits, along) : null;
   const showPill = !hasArrived && (isRiding || Boolean(notice) || Boolean(warning) || (hasAlternate && !isWrongWay) || weakSignal);
   const { clip: stepsClip, content: stepsContent, mounted: stepsMounted, dragging: stepsDragging, zone: stepsZone } = useDragPanel({
     edge: "top",
@@ -463,7 +482,8 @@ export function NavigationHud({
 
       <div className="absolute inset-x-0 bottom-0 z-30 md:bottom-4 md:left-4 md:right-auto md:w-[420px]">
         {!hasArrived && !stepping ? (
-          <div className="mb-3 flex justify-end gap-2 px-3 md:px-0">
+          <div className="mb-3 flex items-end justify-end gap-2 px-3 md:px-0">
+            {limit !== null ? <SpeedLimitSign mph={limit} over={isOverLimit(speed, limit)} /> : null}
             {!facingUp && isRotated ? (
               <Button
                 isIconOnly

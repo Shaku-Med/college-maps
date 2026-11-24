@@ -3,7 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { MAP_ORIGINS } from "@/data/campus";
 import { API_ORIGIN, REALTIME_ORIGIN, apiOriginFor } from "@/lib/api";
 import { STREET_ROUTING_ORIGIN } from "@/lib/directions";
-import { OVERPASS_ORIGIN } from "@/lib/hazards";
+import { OVERPASS_ORIGINS } from "@/lib/hazards";
 import { PUSH_CONNECT_ORIGINS } from "@/lib/push-origins";
 import { TURNSTILE_ORIGIN } from "@/lib/turnstile";
 
@@ -28,7 +28,7 @@ export function proxy(request: NextRequest) {
     "style-src-attr 'unsafe-inline'",
     "img-src 'self' blob: data:",
     "font-src 'self'",
-    `connect-src 'self' ${[...MAP_ORIGINS, STREET_ROUTING_ORIGIN, OVERPASS_ORIGIN, ...PUSH_CONNECT_ORIGINS, ...new Set([API_ORIGIN, apiOriginFor(requestHostname(request)), REALTIME_ORIGIN, apiOriginFor(requestHostname(request), REALTIME_ORIGIN)])].filter(Boolean).join(" ")}`,
+    `connect-src 'self' ${[...MAP_ORIGINS, STREET_ROUTING_ORIGIN, ...OVERPASS_ORIGINS, ...PUSH_CONNECT_ORIGINS, ...new Set([API_ORIGIN, apiOriginFor(requestHostname(request)), REALTIME_ORIGIN, apiOriginFor(requestHostname(request), REALTIME_ORIGIN)])].filter(Boolean).join(" ")}`,
     "worker-src 'self' blob:",
     "child-src 'self' blob:",
     `frame-src 'self' blob: ${TURNSTILE_ORIGIN}`,
