@@ -1196,7 +1196,12 @@ export default function MapScreen() {
       {cameraToggle}
     </View>
   ) : (
-    <View pointerEvents="box-none" className="flex-row items-center justify-end gap-2 px-3">
+    <View pointerEvents="box-none" className="flex-row items-end justify-end gap-2 px-3">
+      {speedLimit !== null ? (
+        <View className="mr-auto">
+          <SpeedLimitSign mph={speedLimit} speed={location.fix?.speed} />
+        </View>
+      ) : null}
       {cameraToggle}
       {!facingUp && isRotated ? (
         <MapButton iconOnly variant="secondary" symbol="location.north.fill" label="Point north" onPress={pointNorth} />
@@ -1538,9 +1543,8 @@ export default function MapScreen() {
           <Animated.View
             entering={FadeIn.duration(180)}
             pointerEvents="box-none"
-            className="flex-row items-end justify-between px-4"
+            className="items-end px-4"
             onLayout={(event) => setControlsHeight(event.nativeEvent.layout.height)}>
-            {speedLimit !== null ? <SpeedLimitSign mph={speedLimit} speed={location.fix?.speed} /> : <View />}
             <MapControls controls={controls} />
           </Animated.View>
         ) : null}
