@@ -231,14 +231,21 @@ function TripSetting({ label, isSelected, onChange }: { label: string; isSelecte
 }
 
 function SpeedLimitSign({ mph, over }: { mph: number; over: boolean }) {
+  const ink = over ? "text-danger" : "text-foreground";
   return (
     <div
       role="img"
       aria-label={`Speed limit ${mph} miles per hour${over ? ", you are going faster" : ""}`}
-      className={`animate-pill-in mr-auto flex w-14 flex-col items-center rounded-xl border-2 px-1 pb-1 pt-1.5 shadow-lg transition-colors duration-300 ${over ? "border-danger bg-danger text-danger-foreground" : "border-foreground bg-background text-foreground"}`}>
-      <span className="text-[9px] font-bold uppercase leading-tight tracking-wide">Speed</span>
-      <span className="text-[9px] font-bold uppercase leading-tight tracking-wide">Limit</span>
-      <span key={mph} className="animate-step-in text-2xl font-bold leading-none tabular-nums">{mph}</span>
+      className="animate-pill-in mr-auto w-12 rounded-2xl border border-border bg-overlay p-1 shadow-lg">
+      {/* A roadside style plate in the same chrome as the map buttons beside it. */}
+      <div
+        className={`flex flex-col items-center rounded-xl border-[1.5px] bg-background pb-1 pt-1.5 transition-colors duration-300 ${over ? "border-danger" : "border-foreground"}`}>
+        <span className={`text-[8px] font-bold uppercase leading-[9px] tracking-wide transition-colors duration-300 ${ink}`}>Speed</span>
+        <span className={`text-[8px] font-bold uppercase leading-[9px] tracking-wide transition-colors duration-300 ${ink}`}>Limit</span>
+        <span key={mph} className={`animate-step-in text-xl font-bold leading-6 tabular-nums transition-colors duration-300 ${ink}`}>
+          {mph}
+        </span>
+      </div>
     </div>
   );
 }

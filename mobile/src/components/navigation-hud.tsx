@@ -57,19 +57,25 @@ function Pill({ symbol, text, tone = 'default' }: { symbol: SFSymbol; text: stri
 /** The posted limit while driving, like the sign at the roadside; it turns red when going faster. */
 export function SpeedLimitSign({ mph, speed }: { mph: number; speed?: number }) {
   const over = isOverLimit(speed, mph);
-  const ink = over ? 'text-danger-foreground' : 'text-foreground';
+  const ink = over ? 'text-danger' : 'text-foreground';
   return (
     <Animated.View
       entering={FadeIn.duration(180)}
       accessible
       accessibilityRole="image"
-      accessibilityLabel={`Speed limit ${mph} miles per hour${over ? ', you are going faster' : ''}`}
-      className={`w-14 items-center rounded-xl border-2 px-1 pb-1 pt-1.5 ${over ? 'border-danger bg-danger' : 'border-foreground bg-background'}`}>
-      <Text className={`text-[9px] font-bold uppercase ${ink}`}>Speed</Text>
-      <Text className={`text-[9px] font-bold uppercase ${ink}`}>Limit</Text>
-      <Text className={`text-2xl font-bold ${ink}`} style={{ fontVariant: ['tabular-nums'] }}>
-        {mph}
-      </Text>
+      accessibilityLabel={`Speed limit ${mph} miles per hour${over ? ', you are going faster' : ''}`}>
+      {/* Same glass and width as the map buttons beside it, with a roadside style plate inside. */}
+      <Glass radius={16} className="p-1" style={{ width: 48 }}>
+        <View
+          className={`items-center rounded-xl bg-background pb-1 pt-1.5 ${over ? 'border-danger' : 'border-foreground'}`}
+          style={{ borderWidth: 1.5 }}>
+          <Text className={`text-[8px] font-bold uppercase leading-[9px] tracking-wide ${ink}`}>Speed</Text>
+          <Text className={`text-[8px] font-bold uppercase leading-[9px] tracking-wide ${ink}`}>Limit</Text>
+          <Text className={`text-xl font-bold leading-6 ${ink}`} style={{ fontVariant: ['tabular-nums'] }}>
+            {mph}
+          </Text>
+        </View>
+      </Glass>
     </Animated.View>
   );
 }
